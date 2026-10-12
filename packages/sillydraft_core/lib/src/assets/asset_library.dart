@@ -129,6 +129,21 @@ final class AssetLibrary {
     );
   }
 
+  /// Installs a previously verified portable asset without changing its hash.
+  /// Existing files are checked, never blindly overwritten.
+  Future<void> installBackupFile(String name, Uint8List bytes) async {
+    if (!RegExp(r'^[a-f0-9]{64}\.(png|jpg)$').hasMatch(name) ||
+        bytes.isEmpty ||
+        bytes.length > maxBytes) {
+      throw const FormatException('备份图片文件无效');
+    }
+    final hash = name.substring(0, 64);
+    if (sha256.convert(bytes).toString() != hash) {
+      throw const FormatException('备份图片校验失败');
+    }
+    await _writeFile(hash, name.substring(65), bytes);
+  }
+
   Future<StoryAsset> importImage({
     required String branchId,
     required String name,

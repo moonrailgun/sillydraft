@@ -16,6 +16,24 @@ Uint8List testPicture() => img.encodePng(
 );
 
 void main() {
+  test(
+    'inserting a block illustration preserves the split paragraph heading',
+    () {
+      final content = ManuscriptContent.fromDelta([
+        {'insert': '标题文字'},
+        {
+          'insert': '\n',
+          'attributes': {'header': 1},
+        },
+      ]).insertImage(2, 'illustration');
+      final lineBreaks = content.delta
+          .where((op) => op['insert'] == '\n')
+          .toList();
+      expect(lineBreaks.first['attributes'], {'header': 1});
+      expect(lineBreaks.last['attributes'], {'header': 1});
+      expect(content.text, '标题\n\uFFFC\n文字\n');
+    },
+  );
   late Directory dir;
   late StoryRepository repo;
   late AssetLibrary assets;

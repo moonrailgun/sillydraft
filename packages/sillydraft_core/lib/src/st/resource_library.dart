@@ -32,6 +32,19 @@ final class ResourceLibrary {
   final Future<List<int>> Function() keyProvider;
   final _cipher = AesGcm.with256bits();
 
+  /// Re-wrap an authenticated backup original using this installation's key.
+  /// The resource identity is authenticated too; copying requires a new box.
+  Future<Uint8List> protectOriginal(String id, Uint8List bytes) async {
+    final key = await keyProvider();
+    if (key.length != 32) throw const FormatException('资源保险库密钥无效');
+    final box = await _cipher.encrypt(
+      bytes,
+      secretKey: SecretKey(key),
+      aad: utf8.encode(id),
+    );
+    return Uint8List.fromList(box.concatenation());
+  }
+
   ResourcePreview inspect(
     Uint8List bytes, {
     required String filename,

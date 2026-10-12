@@ -108,9 +108,9 @@
 
 **Files:** core `src/transfer/`; Flutter import/export/sync flows; archive and conflict tests.
 
-- [ ] Write failing real-file round trips for complete backup and TXT/Markdown/EPUB exports, excluding credentials.
-- [ ] Implement validation, atomic import, resource packaging and revision-aware remote synchronization with conflict copies.
-- [ ] Verify corrupted archives do not change existing projects and concurrent device edits remain recoverable; commit.
+- [x] Write failing real-file round trips for complete backup and TXT/Markdown/EPUB exports, excluding credentials.
+- [x] Implement validation, atomic import, resource packaging and revision-aware remote synchronization with conflict copies.
+- [x] Verify corrupted archives do not change existing projects and concurrent device edits remain recoverable; commit.
 
 ## Task 10: Native mobile and desktop integration
 

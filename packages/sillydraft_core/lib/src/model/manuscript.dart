@@ -122,6 +122,21 @@ final class ManuscriptContent {
 
   ManuscriptContent insertImage(int offset, String assetId) {
     validateRange(offset, offset);
+    // Quill stores paragraph formatting on its terminating newline. Splitting
+    // that paragraph with a block image must retain the first part's format.
+    Map<String, dynamic>? paragraphAttributes;
+    var scanPosition = 0;
+    for (final op in delta) {
+      final value = op['insert'];
+      final length = value is String ? value.length : 1;
+      if (value is String &&
+          value.indexOf('\n', (offset - scanPosition).clamp(0, length)) >= 0 &&
+          scanPosition + length > offset) {
+        paragraphAttributes = op['attributes'] as Map<String, dynamic>?;
+        break;
+      }
+      scanPosition += length;
+    }
     final operations = <Map<String, dynamic>>[];
     var position = 0, inserted = false;
     for (final op in delta) {
@@ -137,7 +152,10 @@ final class ManuscriptContent {
         }
         // Block images occupy their own paragraph in Quill and the reader.
         if (offset > 0 && text[offset - 1] != '\n') {
-          operations.add({'insert': '\n'});
+          operations.add({
+            'insert': '\n',
+            'attributes': ?paragraphAttributes,
+          });
         }
         operations.add({
           'insert': {'image': 'asset:$assetId'},

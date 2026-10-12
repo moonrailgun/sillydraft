@@ -11,6 +11,7 @@ import '../agent/agent_screen.dart';
 import '../lore/lore_screen.dart';
 import '../branches/branch_screen.dart';
 import '../illustrations/illustration_gallery.dart';
+import '../transfer/transfer_screen.dart';
 
 final novelProvider = FutureProvider.family<Novel, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -263,6 +264,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                     builder: (_) => BranchScreen(novelId: story.novel.id),
                   ),
                 );
+              } else if (value == 'transfer') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TransferScreen(novelId: story.novel.id),
+                  ),
+                );
               } else if (value == 'illustrations') {
                 Navigator.push(
                   context,
@@ -279,6 +287,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               PopupMenuItem(value: 'info', child: Text('作品信息')),
               PopupMenuItem(value: 'branches', child: Text('故事分支')),
               PopupMenuItem(value: 'illustrations', child: Text('插图与素材')),
+              PopupMenuItem(value: 'transfer', child: Text('导出、备份与同步')),
             ],
           ),
           const SizedBox(width: 8),

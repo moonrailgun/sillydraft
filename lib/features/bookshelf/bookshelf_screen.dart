@@ -10,6 +10,8 @@ import '../settings/settings_screen.dart';
 import 'novel_dialog.dart';
 import '../resources/resource_library_screen.dart';
 import '../illustrations/asset_image.dart';
+import '../transfer/restore_screen.dart';
+import '../transfer/sync_screen.dart';
 
 class BookshelfScreen extends ConsumerStatefulWidget {
   const BookshelfScreen({super.key});
@@ -234,6 +236,21 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
             onPressed: _settings,
             tooltip: '设置',
             icon: const Icon(Icons.tune_rounded),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '导入与同步',
+            onSelected: (value) => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => value == 'restore'
+                    ? const RestoreBackupScreen()
+                    : const ProjectSyncScreen(),
+              ),
+            ),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'restore', child: Text('恢复项目备份')),
+              PopupMenuItem(value: 'sync', child: Text('连接远端作品')),
+            ],
           ),
           const SizedBox(width: 12),
         ],

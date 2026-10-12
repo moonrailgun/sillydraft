@@ -1,5 +1,10 @@
 library;
 
+export 'src/transfer/publication_exporter.dart';
+export 'src/transfer/project_snapshot.dart';
+export 'src/transfer/project_backup.dart';
+export 'src/transfer/project_sync.dart';
+
 export 'src/model/manuscript.dart';
 export 'src/model/story.dart';
 export 'src/storage/story_repository.dart';

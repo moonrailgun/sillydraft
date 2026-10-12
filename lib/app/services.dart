@@ -79,6 +79,15 @@ final class AppServices {
   late final ResourceLibrary library;
   late final AssetLibrary? assets;
   late final IllustrationService illustrations;
+  ProjectBackup get backups => ProjectBackup(
+    repository: repository,
+    assets: assets ?? (throw StateError('本地资源目录尚未就绪')),
+    resources: library,
+  );
+  PublicationExporter get publications => PublicationExporter(
+    repository: repository,
+    assets: assets ?? (throw StateError('本地资源目录尚未就绪')),
+  );
   Future<List<int>>? _keyFuture;
   Future<List<int>> _resourceKey() => _keyFuture ??= _loadResourceKey();
   Future<List<int>> _loadResourceKey() async {
