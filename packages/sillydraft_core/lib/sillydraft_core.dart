@@ -8,3 +8,8 @@ export 'src/st/import_types.dart';
 export 'src/st/preset_importer.dart';
 export 'src/st/world_book.dart';
 export 'src/transfer/safe_archive.dart';
+export 'src/st/macro_engine.dart';
+export 'src/st/prompt_compiler.dart';
+export 'src/st/regex_pipeline.dart';
+export 'src/st/template_engine.dart';
+export 'src/st/world_book_engine.dart';

@@ -56,9 +56,9 @@
 
 **Interfaces:** `PromptCompiler.compile(PresetInput input) -> CompiledPrompt` returns ordered messages/text, parameters, trace, diagnostic coverage and tentative variable state; input is an immutable branch snapshot.
 
-- [ ] Write failing ST fixture tests for 100001 selection, disabled prompts, injection grouping, overrides/original, templates, macro side effects and regex phases.
-- [ ] Implement distinct chat/text compilers and deterministic per-task evaluation; preserve stage semantics.
-- [ ] Test branch/time filtering, world-book recursion/budgets and unsupported dependency reporting; commit.
+- [x] Write failing ST fixture tests for 100001 selection, disabled prompts, injection grouping, overrides/original, templates, macro side effects and regex phases.
+- [x] Implement distinct chat/text compilers and deterministic per-task evaluation; preserve stage semantics.
+- [x] Test branch/time filtering, world-book recursion/budgets and unsupported dependency reporting; commit.
 
 ## Task 4: Providers, agent and recoverable tasks
 

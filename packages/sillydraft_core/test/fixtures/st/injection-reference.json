@@ -1,0 +1,103 @@
+{
+  "commit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "functionSha256": "6cae479c70b299cb058d634490cb45dc3a80b53b124c0af4604f5cf76e5909b8",
+  "assumptions": [
+    "No extension prompts",
+    "Input history newest first",
+    "Maximum injection depth 100"
+  ],
+  "injections": [
+    {
+      "role": "system",
+      "content": "priority-100-system",
+      "injection_depth": 1,
+      "injection_order": 100
+    },
+    {
+      "role": "user",
+      "content": "priority-100-user",
+      "injection_depth": 1,
+      "injection_order": 100
+    },
+    {
+      "role": "assistant",
+      "content": "priority-100-assistant",
+      "injection_depth": 1,
+      "injection_order": 100
+    },
+    {
+      "role": "system",
+      "content": "priority-200",
+      "injection_depth": 1,
+      "injection_order": 200
+    },
+    {
+      "role": "system",
+      "content": "same-role",
+      "injection_depth": 1,
+      "injection_order": 100
+    },
+    {
+      "role": "system",
+      "content": "depth-zero",
+      "injection_depth": 0,
+      "injection_order": 100
+    },
+    {
+      "role": "system",
+      "content": "deep",
+      "injection_depth": 8,
+      "injection_order": 100
+    }
+  ],
+  "inputNewestFirst": [
+    {
+      "role": "user",
+      "content": "brief"
+    },
+    {
+      "role": "assistant",
+      "content": "accepted scene"
+    }
+  ],
+  "expected": [
+    {
+      "role": "system",
+      "content": "deep",
+      "injected": true
+    },
+    {
+      "role": "assistant",
+      "content": "accepted scene"
+    },
+    {
+      "role": "assistant",
+      "content": "priority-100-assistant",
+      "injected": true
+    },
+    {
+      "role": "user",
+      "content": "priority-100-user",
+      "injected": true
+    },
+    {
+      "role": "system",
+      "content": "priority-100-system\nsame-role",
+      "injected": true
+    },
+    {
+      "role": "system",
+      "content": "priority-200",
+      "injected": true
+    },
+    {
+      "role": "user",
+      "content": "brief"
+    },
+    {
+      "role": "system",
+      "content": "depth-zero",
+      "injected": true
+    }
+  ]
+}
