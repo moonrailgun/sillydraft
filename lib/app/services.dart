@@ -15,7 +15,11 @@ abstract interface class SecretStore {
 }
 
 final class PlatformSecrets implements SecretStore {
-  final _storage = const FlutterSecureStorage();
+  final _storage = Platform.isMacOS
+      ? const FlutterSecureStorage(
+          mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+        )
+      : const FlutterSecureStorage();
   @override
   Future<String?> read(String key) => _storage.read(key: key);
   @override

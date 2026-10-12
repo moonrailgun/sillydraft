@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -396,162 +397,190 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
       }
       _index = _index.clamp(0, story.scenes.length - 1);
       final scene = story.scenes[_index];
-      return PopScope(
-        canPop: true,
-        onPopInvokedWithResult: (popped, _) {
-          if (popped) {
-            unawaited(
-              _saveProgress().catchError((Object error) {
-                if (context.mounted) showError(context, error);
-              }),
-            );
-          }
-        },
-        child: Scaffold(
-          backgroundColor: background,
-          appBar: AppBar(
-            backgroundColor: background,
-            foregroundColor: foreground,
-            title: Text(
-              story.novel.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            actions: [
-              IconButton(
-                tooltip: '搜索正文',
-                onPressed: () => _search(story),
-                icon: const Icon(Icons.search),
-              ),
-              PopupMenuButton<String>(
-                tooltip: '阅读设置',
-                onSelected: (value) {
-                  if (value == 'style') {
-                    _preferences();
-                  } else {
-                    _bookmarks(story);
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'style', child: Text('排版与主题')),
-                  PopupMenuItem(value: 'bookmarks', child: Text('书签')),
-                ],
-              ),
-            ],
+      return Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xff7060ad),
+            brightness: _theme == 'night' ? Brightness.dark : Brightness.light,
+            surface: background,
           ),
-          body: SelectionArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: SingleChildScrollView(
-                  key: _viewportKey,
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(28, 32, 28, 64),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        story.chapters
-                            .where((c) => c.id == scene.chapterId)
-                            .first
-                            .title,
-                        style: TextStyle(
-                          color: foreground.withValues(alpha: .6),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        scene.title,
-                        style: TextStyle(
-                          fontSize: _fontSize + 8,
-                          fontWeight: FontWeight.w600,
-                          color: foreground,
-                        ),
-                      ),
-                      const SizedBox(height: 36),
-                      Text.rich(
-                        _manuscriptSpan(scene.content, foreground),
-                        key: _textKey,
-                        style: TextStyle(
-                          fontSize: _fontSize,
-                          height: _lineHeight,
-                          color: foreground,
-                          fontFamilyFallback: const [
-                            'Songti SC',
-                            'Noto Serif CJK SC',
+          textTheme: Theme.of(context).textTheme
+              .apply(bodyColor: foreground, displayColor: foreground),
+        ),
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.keyF, control: true): () =>
+                _search(story),
+            const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () =>
+                _search(story),
+          },
+          child: Focus(
+            autofocus: true,
+            child: PopScope(
+              canPop: true,
+              onPopInvokedWithResult: (popped, _) {
+                if (popped) {
+                  unawaited(
+                    _saveProgress().catchError((Object error) {
+                      if (context.mounted) showError(context, error);
+                    }),
+                  );
+                }
+              },
+              child: Scaffold(
+                backgroundColor: background,
+                appBar: AppBar(
+                  backgroundColor: background,
+                  foregroundColor: foreground,
+                  title: Text(
+                    story.novel.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  actions: [
+                    IconButton(
+                      tooltip: '搜索正文',
+                      onPressed: () => _search(story),
+                      icon: const Icon(Icons.search),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: '阅读设置',
+                      onSelected: (value) {
+                        if (value == 'style') {
+                          _preferences();
+                        } else {
+                          _bookmarks(story);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'style', child: Text('排版与主题')),
+                        PopupMenuItem(value: 'bookmarks', child: Text('书签')),
+                      ],
+                    ),
+                  ],
+                ),
+                body: SelectionArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: SingleChildScrollView(
+                        key: _viewportKey,
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(28, 32, 28, 64),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              story.chapters
+                                  .where((c) => c.id == scene.chapterId)
+                                  .first
+                                  .title,
+                              style: TextStyle(
+                                color: foreground.withValues(alpha: .6),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              scene.title,
+                              style: TextStyle(
+                                fontSize: _fontSize + 8,
+                                fontWeight: FontWeight.w600,
+                                color: foreground,
+                              ),
+                            ),
+                            const SizedBox(height: 36),
+                            Text.rich(
+                              _manuscriptSpan(scene.content, foreground),
+                              key: _textKey,
+                              style: TextStyle(
+                                fontSize: _fontSize,
+                                height: _lineHeight,
+                                color: foreground,
+                                fontFamilyFallback: const [
+                                  'Songti SC',
+                                  'Noto Serif CJK SC',
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 36),
+                            Text(
+                              _index == story.scenes.length - 1
+                                  ? '— 当前正文结束 —'
+                                  : '— 本幕完 —',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: foreground.withValues(alpha: .5),
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (_index == story.scenes.length - 1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 24),
+                                child: TextButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => BranchScreen(
+                                        novelId: story.novel.id,
+                                        sourceBranchId: story.branch.id,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.fork_right),
+                                  label: const Text('探索后续走向与结局'),
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 36),
-                      Text(
-                        _index == story.scenes.length - 1
-                            ? '— 当前正文结束 —'
-                            : '— 本幕完 —',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: foreground.withValues(alpha: .5),
-                          fontSize: 13,
-                        ),
-                      ),
-                      if (_index == story.scenes.length - 1)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 24),
-                          child: TextButton.icon(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute<void>(
-                                builder: (_) => BranchScreen(
-                                  novelId: story.novel.id,
-                                  sourceBranchId: story.branch.id,
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.fork_right),
-                            label: const Text('探索后续走向与结局'),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          bottomNavigationBar: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: '目录',
-                    onPressed: () => _contents(story),
-                    icon: Icon(Icons.list_rounded, color: foreground),
-                  ),
-                  IconButton(
-                    tooltip: '上一幕',
-                    onPressed: _index > 0 ? () => _go(_index - 1) : null,
-                    icon: Icon(Icons.chevron_left, color: foreground),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '${_index + 1} / ${story.scenes.length}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: foreground),
                     ),
                   ),
-                  IconButton(
-                    tooltip: '下一幕',
-                    onPressed: _index < story.scenes.length - 1
-                        ? () => _go(_index + 1)
-                        : null,
-                    icon: Icon(Icons.chevron_right, color: foreground),
+                ),
+                bottomNavigationBar: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: '目录',
+                          onPressed: () => _contents(story),
+                          icon: Icon(Icons.list_rounded, color: foreground),
+                        ),
+                        IconButton(
+                          tooltip: '上一幕',
+                          onPressed: _index > 0 ? () => _go(_index - 1) : null,
+                          icon: Icon(Icons.chevron_left, color: foreground),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '${_index + 1} / ${story.scenes.length}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: foreground),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '下一幕',
+                          onPressed: _index < story.scenes.length - 1
+                              ? () => _go(_index + 1)
+                              : null,
+                          icon: Icon(Icons.chevron_right, color: foreground),
+                        ),
+                        IconButton(
+                          tooltip: '排版与主题',
+                          onPressed: _preferences,
+                          icon: Icon(
+                            Icons.text_fields_rounded,
+                            color: foreground,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  IconButton(
-                    tooltip: '排版与主题',
-                    onPressed: _preferences,
-                    icon: Icon(Icons.text_fields_rounded, color: foreground),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

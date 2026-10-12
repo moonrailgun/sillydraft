@@ -116,9 +116,9 @@
 
 **Files:** platform projects, app shortcuts/menus, file gateway, theme/accessibility and lifecycle controllers.
 
-- [ ] Add tests for narrow/large layouts, shortcut actions, app lifecycle flushing and settings persistence.
-- [ ] Finish platform entitlements, keyboard/menu behavior, system import/share/save, desktop panel resizing and responsive navigation.
-- [ ] Build and run all locally available targets; retain clear validation status for other hosts; commit.
+- [x] Add tests for narrow/large layouts, shortcut actions, app lifecycle flushing and settings persistence.
+- [x] Finish platform entitlements, keyboard/menu behavior, system import/share/save, desktop panel resizing and responsive navigation.
+- [x] Build and run all locally available targets; retain clear validation status for other hosts; commit.
 
 ## Task 11: Optional remote task runner
 

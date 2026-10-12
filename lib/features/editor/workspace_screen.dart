@@ -7,6 +7,7 @@ import '../../app/widgets.dart';
 import '../bookshelf/novel_dialog.dart';
 import '../reader/reader_screen.dart';
 import 'editor_screen.dart';
+import 'resizable_workspace.dart';
 import '../agent/agent_screen.dart';
 import '../lore/lore_screen.dart';
 import '../branches/branch_screen.dart';
@@ -218,7 +219,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
     );
     return Scaffold(
       appBar: AppBar(
-        title: const Text('作品工作区'),
+        title: Text(wide ? '作品工作区' : '工作区'),
         actions: [
           IconButton(
             tooltip: '故事资料',
@@ -296,57 +297,52 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       body: SafeArea(
         top: false,
         child: wide
-            ? Row(
-                children: [
-                  SizedBox(width: 320, child: outline),
-                  const VerticalDivider(width: 1),
-                  Expanded(
-                    child: selected == null
-                        ? const Center(child: Text('选择一个场景'))
-                        : Padding(
-                            padding: const EdgeInsets.all(40),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+            ? ResizableWorkspace(
+                outline: outline,
+                content: selected == null
+                    ? const Center(child: Text('选择一个场景'))
+                    : Padding(
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        selected.title,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .headlineSmall,
-                                      ),
-                                    ),
-                                    FilledButton.icon(
-                                      onPressed: () => _edit(selected),
-                                      icon: const Icon(
-                                        Icons.edit_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('编辑正文'),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 32),
                                 Expanded(
-                                  child: SingleChildScrollView(
-                                    child: SelectableText(
-                                      selected.content.text.trim().isEmpty
-                                          ? '这一幕，等待你的第一句话。'
-                                          : selected.content.text,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        height: 1.9,
-                                      ),
-                                    ),
+                                  child: Text(
+                                    selected.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall,
                                   ),
+                                ),
+                                FilledButton.icon(
+                                  onPressed: () => _edit(selected),
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('编辑正文'),
                                 ),
                               ],
                             ),
-                          ),
-                  ),
-                ],
+                            const SizedBox(height: 32),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                child: SelectableText(
+                                  selected.content.text.trim().isEmpty
+                                      ? '这一幕，等待你的第一句话。'
+                                      : selected.content.text,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    height: 1.9,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
               )
             : outline,
       ),

@@ -42,17 +42,27 @@ class SettingsScreen extends ConsumerWidget {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 12),
-                      SegmentedButton<String>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(value: 'system', label: Text('跟随系统')),
-                          ButtonSegment(value: 'light', label: Text('浅色')),
-                          ButtonSegment(value: 'dark', label: Text('深色')),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final entry in const {
+                            'system': '跟随系统',
+                            'light': '浅色',
+                            'dark': '深色',
+                          }.entries)
+                            ChoiceChip(
+                              label: Text(entry.value),
+                              selected:
+                                  (appearance?['mode'] ?? 'system') ==
+                                  entry.key,
+                              onSelected: (_) =>
+                                  ref.read(repositoryProvider).setSetting(
+                                    'appearance',
+                                    {'mode': entry.key},
+                                  ),
+                            ),
                         ],
-                        selected: {appearance?['mode'] as String? ?? 'system'},
-                        onSelectionChanged: (v) => ref
-                            .read(repositoryProvider)
-                            .setSetting('appearance', {'mode': v.single}),
                       ),
                     ],
                   ),

@@ -8,6 +8,7 @@ import '../../app/widgets.dart';
 import '../editor/workspace_screen.dart';
 import '../settings/settings_screen.dart';
 import 'novel_dialog.dart';
+import 'search_screen.dart';
 import '../resources/resource_library_screen.dart';
 import '../illustrations/asset_image.dart';
 import '../transfer/restore_screen.dart';
@@ -103,7 +104,9 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                       onChanged: (v) => setState(() => _query = v),
                     ),
                     const SizedBox(height: 20),
-                    Row(
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
                       children: [
                         ChoiceChip(
                           label: Text(
@@ -112,7 +115,6 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                           selected: !_archived,
                           onSelected: (_) => setState(() => _archived = false),
                         ),
-                        const SizedBox(width: 10),
                         ChoiceChip(
                           label: const Text('已归档'),
                           selected: _archived,
@@ -183,7 +185,10 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                     return SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: columns,
-                        mainAxisExtent: 292,
+                        mainAxisExtent:
+                            292 +
+                            (MediaQuery.textScalerOf(context).scale(100) - 100)
+                                .clamp(0, 300),
                         crossAxisSpacing: 20,
                         mainAxisSpacing: 20,
                       ),
@@ -227,6 +232,16 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: '搜索正文',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const GlobalSearchScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.search),
+          ),
           IconButton(
             onPressed: _resources,
             tooltip: '创作资源库',
