@@ -1,0 +1,32 @@
+name: sillydraft
+description: A mobile-first novel studio with independent manuscripts and SillyTavern compatibility.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  sillydraft_core:
+    path: packages/sillydraft_core
+  flutter_riverpod: ^3.4.3
+  flutter_quill: ^11.6.0
+  path_provider: ^2.1.6
+  file_selector: ^1.1.0
+  flutter_secure_storage: ^11.2.0
+  share_plus: ^13.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

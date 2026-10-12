@@ -35,10 +35,10 @@
 
 **Interfaces:** `StoryRepository.open(String path)` / `.memory()`, `createNovel`, `createChapter`, `createScene`, `saveScene(expectedRevisionId)`, `forkBranch(atSceneId)`, `getStory(branchId)`, `createProposal`, `acceptProposal`, `close`. Typed novel/branch/chapter/scene/revision/proposal/lore/task records and `ManuscriptContent` persist JSON with schema versions.
 
-- [ ] Scaffold Flutter and pure Dart package, pin compatible dependency versions, and document the SDK command.
-- [ ] Write and run failing tests for reopen persistence, optimistic revision conflict, rejected proposal isolation, immutable fork history and scene ordering.
-- [ ] Implement transactional schema and typed records; run core tests to green, including rollback on conflict.
-- [ ] Commit the foundation and record exact test evidence.
+- [x] Scaffold Flutter and pure Dart package, pin compatible dependency versions, and document the SDK command.
+- [x] Write and run failing tests for reopen persistence, optimistic revision conflict, rejected proposal isolation, immutable fork history and scene ordering.
+- [x] Implement transactional schema and typed records; run core tests to green, including rollback on conflict.
+- [x] Commit the foundation and record exact test evidence.
 
 ## Task 2: Character cards and preset import/export
 
