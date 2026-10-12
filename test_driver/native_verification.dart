@@ -14,7 +14,7 @@ Future<void> main() => integrationDriver(
     }
     final output = Directory('docs/verification');
     await output.create(recursive: true);
-    for (final name in ['workspace', 'reader']) {
+    for (final name in ['workspace', 'reader', 'preset']) {
       final encoded = (data['captures'] as Map)[name];
       if (encoded is! String) throw StateError('Missing $name screenshot.');
       final file = File('${output.path}/native-$platform-$name.png');

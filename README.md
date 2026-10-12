@@ -1,83 +1,94 @@
 # SillyDraft · 胡闹草稿
 
-使用 Flutter 构建、以手机体验为优先的跨端小说创作应用。通过写作 Agent 辅助故事起草、修改与打磨，并随创作积累人物、世界观、暗线与剧情分支。
+Flutter 编写的手机优先小说工作室，平台工程覆盖 Android、iOS、macOS、Windows 和 Linux。用 SillyTavern 角色卡和预设起步，边写故事边整理人物、世界观、关系、暗线、地图和插画。
 
-项目工作目录：`/Users/moonrailgun/sillydraft`。
+**正文是作品，Agent 是编辑工具。** Agent 对话、模型原始输出、待审阅候选、已采纳正文和旁路资料分别保存。候选只有在作者采纳后才形成正文版本；正文在生成期间被修改时，旧候选不能覆盖新稿。
 
-已确定的产品方向：
+## 开始使用
 
-- **手机优先**：优先满足 Android、iOS 上的阅读、创作指令、正文编辑和修改审阅，再扩展桌面布局。
-- **角色卡开局**：支持导入 SillyTavern（ST）角色卡，以人物、场景、开场白和角色书建立小说开头与初始世界观，后续边写边补充。
-- **ST 预设兼容**：以 SillyTavern 源码行为为依据，兼容聊天补全预设、独立提示词包、文本补全参数及上下文、指令、系统提示词模板；保留提示词顺序、动态占位、宏、注入与正则规则的语义，按能力报告兼容程度。详见 [ST 预设兼容方案](docs/st-preset-compatibility.md)。
-- **Agent 与正文分离**：写作 Agent 是编辑工具，正文是独立保存、具有版本的作品产物；对话、任务记录和编辑说明与正文分别存储。
-- **独立阅读器**：直接读取小说正文，支持目录、阅读进度、排版和插画，不依赖 Agent 会话。
-- **旁路创作**：写作过程中可创建或更新世界观、人物信息、暗线、伏笔、地点、地图和人物关系；这些任务独立于正文生成。
-- **故事分支**：根据当前故事发展，在正文末尾提出多个后续走向，也支持结局候选；选定方向后继续生成，可保留不同分支。
-- **分支资料隔离**：各分支的剧情事实、人物状态、关系变化和伏笔回收状态分别管理，未选中的候选不进入当前故事的事实记忆。
-- **模型生图**：调用生图模型创建人物、场景和章节插画，图片与对应资料、分支和文稿版本关联。
-- **参考现有写作器**：研究公开文档与开源实现，借鉴上下文检索、章节生成、编辑工具和记忆更新流程。
-
-建议的首个完整流程：
-
-1. 手机导入 ST 角色卡与写作预设，选择开场与叙事视角；未导入预设时使用内置默认配置。
-2. 建立初始人物和世界观，生成第一幕候选文稿。
-3. 审阅、修改并采纳，进入独立阅读器。
-4. 在正文末尾查看后续走向，选择一个方向继续生成。
-5. 旁路整理新出现的人物、设定、关系和伏笔，按需生成插画。
-
-项目正在实现中，完整要求见 [产品规格](docs/product-spec.md)，当前进度以测试和提交记录为准。采用以下技术栈：
-
-| 部分 | 候选方案 |
-| --- | --- |
-| 状态管理 | Riverpod |
-| 本地数据 | Drift 与 SQLite，附件单独存储 |
-| 正文编辑 | Flutter Quill，优先验证中文输入、长章节和撤销体验 |
-| 模型通信 | Dio 与模型服务商适配层，文字与生图分别适配 |
-| Agent | 独立 Dart 模块，负责上下文组装、工具调用与修改提案 |
-| ST 预设 | 独立解析与编译模块，将角色、世界书、当前分支正文和预设转换为模型请求；与编辑 Agent 的控制指令分开 |
-| 持久化任务 | 保存输入版本、任务状态和结果，支持中断后的恢复处理 |
-| 密钥 | 平台安全存储 |
-
-界面建议按「阅读、创作、资料」组织。正文直接编辑使用专注页面；地图和关系图按需全屏打开。桌面端可同时展示多个区域。
-
-ST 导入应保留原始文件和未知字段。卡中明确设定、正文提取事实和模型推测分别标记来源；多个备用开场只采用选中的一个。角色卡中的提示词与扩展内容不能改变应用的工具权限。
-
-ST 预设绑定正文生成任务。编辑 Agent 调用正文生成服务，后者按预设生成候选文稿，再通过统一采纳流程形成正文版本。编辑会话和工具执行记录不进入预设的故事历史。预设兼容分为格式导入、提示词行为、模型参数和输出处理四个层面；成功读取 JSON 不代表所有行为已经生效。
-
-Agent 生成结果建议先保存为候选文稿或修改提案，并绑定所依据的正文版本。采纳后形成新版本，再触发旁路整理；原文变化时，关联的旧分析结果应标记为待复核。普通修改形成版本，剧情方向变化形成分支。
-
-手机端保存草稿与任务状态，离线阅读和编辑不依赖服务端。可选远程执行器用于断开应用后继续执行长任务；多设备同步保留冲突版本。
-
-## 开发环境
-
-基线：Flutter 3.47.7、Dart 3.13.5。当前机器的 Flutter 位于 `/Users/moonrailgun/.local/share/sillydraft-sdk/flutter/bin/flutter`；其他机器使用本机的 Flutter SDK。
+安装 Flutter **3.47.7 / Dart 3.13.5** 及目标平台工具链后：
 
 ```sh
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter run -d macos
-cd packages/sillydraft_core
-dart test
-dart analyze
+# 也可用 flutter devices 查找 Android 或 iOS 设备后指定 -d <设备标识>
 ```
 
-核心包不依赖 Flutter。正文、分支和修改提案使用 SQLite 事务及不可变版本存储，平台工程覆盖 Android、iOS、macOS、Windows 和 Linux。
+当前工作目录为 `/Users/moonrailgun/sillydraft`。此机器的 Flutter 位于 `/Users/moonrailgun/.local/share/sillydraft-sdk/flutter/bin/flutter`。
 
-目前已实现正文版本、分支基础、ST 导入与编译、OpenAI 兼容的聊天/文本补全接口、流式工具调用和持久化任务。界面已接入书架、富文本编辑、独立阅读、Agent 会话、正文候选比较与采纳、任务取消/重试，以及 ST 资源库和写作配置。资料、地图、插画、备份同步与平台整合仍在实现中，不能将当前工程视为完整可用版本。
+首次打开可选“打开示例小说”，无需模型即可阅读和编辑。示例是内置创作样本，未冒充实时模型输出。使用 AI 时，在设置中添加 OpenAI 兼容连接，分别选择正文、编辑 Agent、资料整理和生图使用的模型；密钥进入系统安全存储。
 
-点击书架的资源库图标导入角色卡、预设、世界书或正则。在作品的创作助手里选择「角色卡与预设」绑定具体版本；编辑正文时可选中片段改写，先预览提示词，再生成候选。资源编辑会创建新版本。原始导入文件使用 AES-256-GCM 加密，密钥存在系统安全存储中；预览和 JSON 导出移除已识别凭据。角色卡 JSON 导出不包含二进制附件。
+1. 从书架的创作资源库导入角色卡、ST 预设、世界书或正则脚本。
+2. 在角色卡详情选择“从角色卡新建小说”，指定身份与一个开场；在作品的写作配置中绑定资源版本。
+3. 编写或选中正文片段，预览本次提示词后生成候选，比较并采纳。
+4. 打开独立阅读器阅读；在资料库整理人物、关系、伏笔和地点，在分支页比较候选走向。
+5. 生成插画、设置封面或地图底图；需要迁移时创建加密作品备份。
 
-书架、编辑和阅读的原生验证见 [编辑与阅读记录](docs/verification/editor-reader.md)。资源加密使用 [cryptography 的 AesGcm 实现](https://pub.dev/documentation/cryptography/latest/cryptography/AesGcm-class.html)。
+操作细节见 [使用指南](docs/user-guide.md)。
 
-任务保存输入快照、部分输出与错误。失败后重新生成会创建新任务，不会自动重复网络请求。编辑 Agent 的工具限定在当前分支，正文候选需要作者采纳；预设中暂不支持的预填行为会给出明确诊断。
+## 已实现的工作区
 
-网络协议参考 [OpenAI 流式事件](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events) 与 [工具调用文档](https://developers.openai.com/api/docs/guides/function-calling)。测试使用本地 HTTP 服务，不需要模型密钥或付费请求。
+| 能力 | 行为 |
+| --- | --- |
+| 书架与正文 | 创建、搜索、归档/恢复、章节场景、富文本、自动保存、撤销、历史版本、片段改写、插画 |
+| 阅读 | 独立目录、进度、主题、字号、行距、书签、搜索；删除编辑会话不影响作品 |
+| 编辑 Agent | 流式回复、受分支和故事位置限制的工具、独立写作任务、候选审阅、取消和任务历史 |
+| ST 资源 | V1/V2/V3 JSON、PNG、CHARX；聊天预设/提示词包、文本模板组合、宏、世界书、文本正则；条目编辑、原文件加密与未知字段保留 |
+| 旁路资料 | 人物、设定、组织、物品、地点、事件、暗线/伏笔；事实/计划/推测、来源、分析建议、过期检查 |
+| 地图与关系 | 有方向的关系图、地点标记、路线、可导入或生成的底图 |
+| 分支 | 从历史场景分叉、候选走向/结局、差异比较；资料和宏变量按分支及故事位置隔离 |
+| 插画 | OpenAI 兼容生图与参考图编辑、图库、封面、正文插入、来源版本和重试 |
+| 迁移 | TXT、含图片的 Markdown ZIP、EPUB 3；加密完整备份/恢复；基于强 ETag 的手动同步与冲突副本 |
+| 手机与桌面 | 手机单页导航和系统导入/分享；桌面目录分栏、可调宽度、菜单、快捷键、全局正文搜索 |
+| 远程任务 | 可选个人执行器；手机断开后继续执行，取回同一任务，明确区分重新生成和恢复查询 |
 
-参考资料：
+离线阅读、编辑、资料管理和备份均在本地进行，不强制登录。
 
-- [ST 预设兼容方案与固定源码依据](docs/st-preset-compatibility.md)
-- [角色卡 V2 规范](https://github.com/malfoyslastname/character-card-spec-v2)
-- [角色卡 V3 规范](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md)
-- [Novelcrafter 资料条目与上下文管理](https://www.novelcrafter.com/help/docs/codex/anatomy-codex-entry)
-- [Sudowrite Story Bible](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/what-is-story-bible/jmWepHcQdJetNrE991fjJC)
-- [MuMuAINovel Agent 实现](https://github.com/xiamuceer-j/MuMuAINovel/blob/main/backend/app/services/project_agent_service.py)
-- [MuMuAINovel 章节上下文构建](https://github.com/xiamuceer-j/MuMuAINovel/blob/main/backend/app/services/chapter_context_service.py)
+## ST 兼容边界
+
+源码对照固定到 SillyTavern **1.19.0 / `06bde939fb1e9c4c8d8641d810f0a916b5bce127`**。兼容按文件格式、提示词行为、模型参数和输出处理分别检查；导入成功不代表所有扩展可以运行。
+
+已实现两条编译路径、100001 顺序组、启停、覆盖与 `{{original}}`、深度注入、受测宏/变量、世界书触发与文本正则。手机可编辑提示词条目的开关、顺序、内容、角色、深度和覆盖规则；模板及扩展可使用完整 JSON 编辑。原资源保持不变，编辑生成新版本。
+
+token 预算采用估算；世界书定时/分组/自动化扩展、任意 JavaScript/HTML 展示扩展和未实现宏/helper 会报告缺口。Kobold/NovelAI 专用后端以及原生 Anthropic/Gemini 协议未实现；当前运行协议为 OpenAI 兼容接口及 SillyDraft 远程执行器。不会自动采用预设中的代理地址、请求头或凭据。
+
+完整依据、映射及测试范围见 [ST 兼容说明](docs/st-preset-compatibility.md)。
+
+## 工程与验证
+
+```text
+lib/                         Flutter 界面、平台服务、Riverpod 状态
+packages/sillydraft_core/     纯 Dart：SQLite、版本/分支、ST 编译、模型、任务、资产、迁移
+server/                      可选持久化远程执行器
+test/                        界面工作流
+integration_test/            原生安全存储、SQLite、编辑阅读验证
+docs/verification/           测试与原生截图证据
+```
+
+```sh
+flutter analyze
+flutter test test --reporter expanded
+cd packages/sillydraft_core
+dart pub get --enforce-lockfile
+dart analyze
+dart test --reporter expanded
+cd ../../server
+dart pub get --enforce-lockfile
+dart analyze
+dart test --reporter expanded
+```
+
+[构建与发布说明](docs/building.md) 包含各平台命令及签名配置；[需求验收表](docs/verification/acceptance.md) 将需求映射到代码和证据；[原生验证](docs/verification/native-platforms.md) 区分已运行的平台和待验证平台。测试使用本地协议服务，不依赖付费模型。
+
+macOS、iOS 模拟器、Android 模拟器已有原生构建与操作证据。Windows/Linux 提供平台工程及 CI 构建任务，本机没有对应宿主的原生验证；CI 配置尚未在远程仓库运行。商店签名、发布和 macOS 公证由发布者配置。
+
+远程部署见 [执行器文档](server/README.md)。同步服务与模型执行器是不同接口：同步端点需要支持强 ETag 和条件 PUT，不能随意填写普通文件分享链接。
+
+## 参考
+
+- [SillyTavern 固定源码](https://github.com/SillyTavern/SillyTavern/tree/06bde939fb1e9c4c8d8641d810f0a916b5bce127)
+- [角色卡 V2](https://github.com/malfoyslastname/character-card-spec-v2)、[角色卡 V3](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md)
+- [Novelcrafter Codex](https://www.novelcrafter.com/help/docs/codex/anatomy-codex-entry)、[Sudowrite Story Bible](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/what-is-story-bible/jmWepHcQdJetNrE991fjJC)
+- [MuMuAINovel 编辑 Agent](https://github.com/xiamuceer-j/MuMuAINovel/blob/main/backend/app/services/project_agent_service.py)
+
+ST 官方测试样本的来源、哈希和上游许可证保留在核心包 fixtures 中。

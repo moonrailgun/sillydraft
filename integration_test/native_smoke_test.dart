@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 void main() {
@@ -102,6 +104,54 @@ void main() {
     expect(find.textContaining('自己的笔迹', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
     await capture('reader');
+    final preset = await repository.storeResource(
+      id: 'native-verification-preset',
+      kind: ResourceKind.preset,
+      name: '小说预设 · 本地验证',
+      filename: 'native-preset.json',
+      sourceHash: 'native-fixture-hash',
+      encryptedSource: [],
+      data: {
+        'name': '小说预设 · 本地验证',
+        'prompts': [
+          {
+            'identifier': 'main',
+            'name': '正文写作',
+            'role': 'system',
+            'content': '保持人物动机一致，只输出小说正文。',
+          },
+          {
+            'identifier': 'style',
+            'name': '雾港的叙事风格',
+            'role': 'system',
+            'content': '节制、细腻，保留悬念。',
+            'injection_position': 1,
+            'injection_depth': 2,
+            'injection_order': 100,
+          },
+        ],
+        'prompt_order': [
+          {
+            'character_id': 100001,
+            'order': [
+              {'identifier': 'main', 'enabled': true},
+              {'identifier': 'style', 'enabled': true},
+            ],
+          },
+        ],
+      },
+    );
+    unawaited(
+      Navigator.of(tester.element(find.byType(Scaffold).last)).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ResourceEditScreen(resource: preset),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await waitFor(find.byKey(const Key('prompt-edit-main')));
+    await capture('preset');
+    expect(tester.takeException(), isNull);
     binding.reportData = {
       'platform': Platform.operatingSystem,
       'captures': captures,
@@ -115,5 +165,6 @@ void main() {
       contains('自己的笔迹'),
     );
     await reopened.close();
+    await directory.delete(recursive: true);
   });
 }

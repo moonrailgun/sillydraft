@@ -1,7 +1,28 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val signingProperties = Properties()
+val signingFile = rootProject.file("key.properties")
+if (signingFile.exists()) {
+    FileInputStream(signingFile).use { signingProperties.load(it) }
+}
+fun signingValue(key: String, environment: String): String? =
+    System.getenv(environment)?.takeIf { it.isNotBlank() }
+        ?: signingProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+val releaseStore = signingValue("storeFile", "SILLYDRAFT_KEYSTORE")
+val releaseStorePassword = signingValue("storePassword", "SILLYDRAFT_STORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "SILLYDRAFT_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "SILLYDRAFT_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseStore, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { it != null }
+val developmentSigning = System.getenv("SILLYDRAFT_DEVELOPMENT_SIGNING") == "true"
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } && !hasReleaseSigning && !developmentSigning) {
+    throw GradleException("Configure android/key.properties or SILLYDRAFT signing environment variables. For local verification only, set SILLYDRAFT_DEVELOPMENT_SIGNING=true.")
 }
 
 android {
@@ -15,7 +36,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "app.sillydraft.sillydraft"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -29,11 +49,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStore!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = when {
+                hasReleaseSigning -> signingConfigs.getByName("release")
+                developmentSigning -> signingConfigs.getByName("debug")
+                else -> null
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import 'writing_profile.dart';
 import 'card_start_screen.dart';
+import 'preset_prompt_editor.dart';
 
 const resourceLabels = {
   ResourceKind.character: '角色卡',
@@ -379,6 +380,9 @@ class ResourceEditScreen extends ConsumerStatefulWidget {
 }
 
 class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
+  late bool _structured =
+      widget.resource.kind == ResourceKind.preset &&
+      PresetPromptEditor.supports(widget.resource.data);
   late final _text = TextEditingController(
     text: _jsonFormat.convert(widget.resource.data),
   );
@@ -432,18 +436,52 @@ class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
             child: Text('已有小说仍使用原版本。保存后可在写作配置里选择新版本。原文件及附件会保留在原版本中。'),
           ),
           Expanded(
-            child: TextField(
-              controller: _text,
-              maxLines: null,
-              expands: true,
-              keyboardType: TextInputType.multiline,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.all(20),
+            child: _structured
+                ? PresetPromptEditor(
+                    value: jsonDecode(_text.text) as Map<String, dynamic>,
+                    onChanged: (value) =>
+                        _text.text = _jsonFormat.convert(value),
+                  )
+                : TextField(
+                    controller: _text,
+                    maxLines: null,
+                    expands: true,
+                    keyboardType: TextInputType.multiline,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 14,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(20),
+                    ),
+                  ),
+          ),
+          if (widget.resource.kind == ResourceKind.preset)
+            SafeArea(
+              top: false,
+              child: TextButton.icon(
+                icon: Icon(_structured ? Icons.code : Icons.tune),
+                label: Text(_structured ? '编辑完整 JSON' : '使用提示词条目编辑'),
+                onPressed: () {
+                  try {
+                    if (!_structured) {
+                      final value = jsonDecode(_text.text);
+                      if (value is! Map<String, dynamic> ||
+                          !PresetPromptEditor.supports(value)) {
+                        throw const FormatException(
+                          '此配置没有 prompts 条目，请使用 JSON 编辑模板或采样参数',
+                        );
+                      }
+                      PresetImporter().decode(value);
+                    }
+                    setState(() => _structured = !_structured);
+                  } catch (e) {
+                    showError(context, e);
+                  }
+                },
               ),
             ),
-          ),
         ],
       ),
     ),
