@@ -1,0 +1,52 @@
+{
+  "verifiedAt": "2026-10-12T22:54:48.260197+00:00",
+  "implementationCommit": "0c596c5892e94618878c83c36a7882355958d5a2",
+  "toolchain": {
+    "flutter": "3.47.7",
+    "dart": "3.13.5",
+    "xcode": "26.4.1"
+  },
+  "tests": {
+    "core": 90,
+    "flutter": 33,
+    "server": 9,
+    "macosXCTest": 2
+  },
+  "analysis": {
+    "flutter": "pass",
+    "core": "pass",
+    "server": "pass"
+  },
+  "nativeSmoke": [
+    "macos",
+    "ios-simulator",
+    "android-emulator"
+  ],
+  "artifacts": {
+    "macos": {
+      "path": "build/macos/Build/Products/Release/SillyDraft.app",
+      "verified": true,
+      "distributionSigning": false
+    },
+    "android": {
+      "path": "build/app/outputs/flutter-apk/app-release.apk",
+      "verified": true,
+      "distributionSigning": false,
+      "bytes": 76217636,
+      "sha256": "f35e598235a9c67aee5b5b22f7b7473774d3996900658867262cd9ebcac17a7f"
+    },
+    "ios-simulator": {
+      "path": "build/ios/iphonesimulator/Runner.app",
+      "verified": true,
+      "distributionSigning": false
+    }
+  },
+  "notVerified": [
+    "windows-native",
+    "linux-native",
+    "remote-ci",
+    "paid-model-quality",
+    "store-distribution",
+    "ios-physical-device"
+  ]
+}

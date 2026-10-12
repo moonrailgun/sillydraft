@@ -17,3 +17,5 @@ macOS 导出的权限依据是 [Apple 的沙箱文件访问说明](https://devel
 仍需实际环境验收的项目：Windows/Linux 原生构建与运行、远程 GitHub Actions、真实模型质量与延迟、iOS 真机/商店签名、macOS 分发签名和公证。代码及 CI 已提供，未发布或调用付费模型。
 
 实施中的决定和逐任务验证记录会保存在 [实施记录](implementation-log.md)，包括所有取舍及判断错误时的成本。
+
+构建路径、测试数量与 APK SHA-256 另存于 [机器可读验证结果](results.json)，对应代码提交 `0c596c5`。
