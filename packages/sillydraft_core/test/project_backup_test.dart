@@ -8,6 +8,136 @@ import 'package:test/test.dart';
 import 'asset_library_test.dart' show testPicture;
 
 void main() {
+  test('authenticated malformed nested data cannot replace a healthy project', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'sillydraft-invalid-backup-',
+    );
+    final repo = StoryRepository.memory();
+    addTearDown(() async {
+      await repo.close();
+      await dir.delete(recursive: true);
+    });
+    final novel = await repo.createNovel(title: '不能破坏的作品');
+    final chapter = await repo.createChapter(
+      branchId: novel.activeBranchId,
+      title: '一',
+    );
+    final scene = await repo.createScene(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      content: ManuscriptContent.plainText('完整正文'),
+    );
+    final other = await repo.createScene(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      content: ManuscriptContent.plainText('第二场'),
+    );
+    await repo.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.character,
+      name: '人物',
+      content: '介绍',
+      atSceneId: scene.id,
+      provenance: {'sceneId': scene.id, 'revisionId': scene.revisionId},
+    );
+    await repo.setBranchVariables(
+      branchId: novel.activeBranchId,
+      sceneId: scene.id,
+      expectedVersion: 0,
+      local: {'name': '人物'},
+    );
+    await repo.setSetting('writing/${novel.activeBranchId}', {
+      'userName': '主角',
+    });
+    await repo.setReadingProgress(
+      branchId: novel.activeBranchId,
+      sceneId: scene.id,
+      fraction: .5,
+    );
+    final backup = ProjectBackup(
+      repository: repo,
+      assets: AssetLibrary(repository: repo, directory: dir),
+      resources: ResourceLibrary(
+        repository: repo,
+        keyProvider: () async => List.filled(32, 1),
+      ),
+    );
+    final original = await repo.exportProject(novel.id);
+    final mutations = <(String, String, Map<String, dynamic>, String?)>[
+      ('lore_versions', 'provenance_json', {'sceneId': 42}, null),
+      (
+        'lore_versions',
+        'provenance_json',
+        {'sceneId': scene.id, 'revisionId': other.revisionId},
+        null,
+      ),
+      ('lore_versions', 'data_json', {'appearance': <dynamic>[]}, null),
+      ('variable_revisions', 'local_json', {'name': 42}, null),
+      ('branch_variables', 'global_json', {'state': <dynamic>[]}, null),
+      (
+        'app_settings',
+        'value_json',
+        {'userName': <dynamic>[]},
+        'writing/${novel.activeBranchId}',
+      ),
+      (
+        'app_settings',
+        'value_json',
+        {'selectedOrderId': 'bad'},
+        'writing/${novel.activeBranchId}',
+      ),
+      (
+        'app_settings',
+        'value_json',
+        {'sceneId': scene.id, 'fraction': 'bad'},
+        'progress/${novel.activeBranchId}',
+      ),
+      (
+        'revisions',
+        'content_json',
+        {
+          'version': 1,
+          'delta': [
+            {
+              'insert': '损坏的标题\n',
+              'attributes': {'header': <dynamic>[]},
+            },
+          ],
+        },
+        null,
+      ),
+    ];
+    for (final (table, column, value, key) in mutations) {
+      final raw = original.toJson(), tables = raw['tables'] as Map;
+      final rows = tables[table] as List;
+      final row = key == null
+          ? rows.first as Map
+          : rows.singleWhere((r) => r['key'] == key) as Map;
+      row[column] = jsonEncode(value);
+      // Deliberately valid encryption/MAC and manifest: schema validation must
+      // reject the payload, rather than relying on transport authentication.
+      final bytes = await backup.createSnapshot(
+        ProjectSnapshot.fromJson(raw),
+        passphrase: 'valid test passphrase',
+      );
+      await expectLater(
+        backup.restore(
+          bytes,
+          passphrase: 'valid test passphrase',
+          asCopy: false,
+          expectedFingerprint: original.fingerprint,
+        ),
+        throwsFormatException,
+        reason: '$table.$column $value',
+      );
+      expect(
+        (await repo.exportProject(novel.id)).fingerprint,
+        original.fingerprint,
+      );
+      expect((await repo.listLore(novel.activeBranchId)).single.name, '人物');
+    }
+  });
+
   test('encrypted project restores complete branches, history, lore, assets and ST originals with a different local key', () async {
     final dir = await Directory.systemTemp.createTemp('sillydraft-backup-');
     final a = StoryRepository.open('${dir.path}/a.sqlite');

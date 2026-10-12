@@ -6,6 +6,7 @@ export 'src/transfer/project_backup.dart';
 export 'src/transfer/project_sync.dart';
 
 export 'src/model/manuscript.dart';
+export 'src/model/manuscript_presentation.dart';
 export 'src/model/story.dart';
 export 'src/storage/story_repository.dart';
 export 'src/st/card_importer.dart';

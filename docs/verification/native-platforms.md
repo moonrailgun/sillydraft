@@ -37,20 +37,21 @@ flutter drive --driver=test_driver/native_verification.dart \
   --dart-define=INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE=false -d <device-id>
 ```
 
-`native_smoke_test.dart` 使用单独临时资料库和临时密钥：验证真实平台密钥读写删除、SQLite 文件保存、编辑到阅读、关闭后重开数据库。测试代码不会打开正式作品库或发送模型请求。原生测试工具会安装及清理测试应用，应在开发模拟器上运行。`native_verification.dart` 驱动器在清理前将工作区及阅读器截图传回宿主，保存到本目录。
+`native_smoke_test.dart` 使用单独临时资料库和临时密钥：验证真实平台密钥读写删除、SQLite 文件保存、编辑到阅读、关闭后重开数据库，以及已采纳正文的标题/列表/引用和 ST 显示正则。macOS 同时验证原生原子保存通道的新建、替换及读回。测试代码不会打开正式作品库或发送模型请求。原生测试工具会安装及清理测试应用，应在开发模拟器上运行。`native_verification.dart` 驱动器在清理前将工作区、阅读器及预设编辑截图传回宿主，保存到本目录。
 
-2026-10-13 的结果：
+2026-10-13 最终审查修复后的结果：
 
-- macOS arm64 / Xcode 26.4.1：原生构建及上述集成流程通过，截图已检查。测试启动器报告无法把窗口置前，但应用内测试和截图均完成。
-- 截图驱动器通过 VM Service 收集结果；macOS 没有 `integration_test` 的 XCTest 结果上报插件，命令中关闭重复的原生测试框架上报，不影响驱动器的失败判定与截图收集。
-- iOS 26.4 / iPhone 17 模拟器：构建、系统 Keychain、SQLite、编辑与阅读流程通过；手机截图已检查。
-- Android API 36 / arm64 模拟器：APK 构建、系统安全存储、SQLite、编辑与阅读流程通过；手机截图已检查。首次运行的原生文件保存较慢，测试改为等待工作区实际出现后继续，不能仅用帧动画停止来判断 I/O 完成。
-- 界面测试：快捷保存、失败退出保护、面板宽度持久化、阅读器快捷搜索、阅读器对比度和手机大字体六项通过。
-- 完整 Flutter 界面套件 25 项通过，`flutter analyze` 无问题。macOS Release 构建为 61.6 MB；Android Release APK 构建为 75.9 MB，包含标准目标 ABI，正式 manifest 的联网和备份配置已核验。
-- Windows/Linux 需要对应宿主的构建与运行检查；本机未验证原生二进制，不能将 Windows 布局模拟当作 Windows 原生验证。
-- 本地开发构建未做商店签名、发布或 macOS 公证。
-- Android Release 当前使用开发签名，仅供本地验证。各平台 Flutter 原生构建应依次执行；集成测试与正式构建会重写共享的插件注册文件，同时运行可能把测试插件混入正式构建。
+- macOS arm64 / Xcode 26.4.1、iOS 26.4 / iPhone 17 模拟器、Android API 36 / arm64 模拟器均通过上述原生流程。三平台阅读器截图已逐张检查，标题、编号列表、引用和显示正则呈现正常；保存内容仍是原正文。
+- 每个平台都传回工作区、阅读器及 ST 提示词编辑页面截图。驱动器使用 VM Service 收集测试结果；macOS 未注册 XCTest 结果上报插件，命令中关闭重复上报，不影响失败判定与截图。
+- macOS 另有 2 项 XCTest 通过，覆盖原子导出创建、替换及失败保留已有文件。`python3 tool/verify_macos_atomic_export.py` 在仅授予单文件写权限的系统沙箱中，验证旧的同目录临时写入被拒绝、新的 Foundation 同卷临时目录写法成功；未声称自动操作过 NSSavePanel。
+- Flutter 界面套件 33 项通过；核心 90 项、服务端 9 项通过。三个分析器无问题，137 个 Dart 文件格式检查通过。
+- Android 调试模拟器在键盘动画中报告丢帧；本次未进行性能基准测试。iOS 系统分享打开有既有原生证据，系统“存储到文件”的最终点击未自动化验证。
+- Windows/Linux 平台工程及 CI 已提供，本机未验证对应原生二进制。远程 CI 尚未发布运行；本地开发包未做商店发布或 macOS 公证。
 
-截图：[Android 工作区](native-android-workspace.png)、[Android 阅读器](native-android-reader.png)、[iOS 工作区](native-ios-workspace.png)、[iOS 阅读器](native-ios-reader.png)、[macOS 工作区](native-macos-workspace.png)、[macOS 阅读器](native-macos-reader.png)。
+Android Release 需要正式签名配置，或显式设置 `SILLYDRAFT_DEVELOPMENT_SIGNING=true` 进行本地开发签名验证；未配置签名的 Release 已确认会被拒绝。正式签名和发布命令见 [构建说明](../building.md)。原生测试与生产构建必须按平台顺序运行，避免竞争共享的插件注册文件。
+
+审查修复后的生产入口构建全部通过：macOS Release 61.8 MB、Android Release 开发签名 APK 76.2 MB、iOS 模拟器 Debug 应用。安装包路径为 `build/macos/Build/Products/Release/SillyDraft.app`、`build/app/outputs/flutter-apk/app-release.apk`、`build/ios/iphonesimulator/Runner.app`。APK 签名校验通过，macOS 包的沙箱、网络客户端和用户选择文件读写权限已核验。
+
+截图：[Android 工作区](native-android-workspace.png)、[Android 阅读器](native-android-reader.png)、[Android 预设](native-android-preset.png)、[iOS 工作区](native-ios-workspace.png)、[iOS 阅读器](native-ios-reader.png)、[iOS 预设](native-ios-preset.png)、[macOS 工作区](native-macos-workspace.png)、[macOS 阅读器](native-macos-reader.png)、[macOS 预设](native-macos-preset.png)。
 
 依据：[Flutter 可取消退出](https://api.flutter.dev/flutter/widgets/AppLifecycleListener/onExitRequested.html)、[macOS 构建与沙箱](https://docs.flutter.dev/platform-integration/macos/building)、[安全存储插件平台配置](https://pub.dev/packages/flutter_secure_storage)。

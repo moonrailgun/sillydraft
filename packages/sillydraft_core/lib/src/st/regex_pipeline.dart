@@ -19,6 +19,7 @@ final class RegexPipeline {
     required MacroEngine macros,
     bool isEdit = false,
     int? depth,
+    void Function(List<({int start, int end, String text})>)? onReplacements,
   }) {
     var output = text;
     for (final source in _rules) {
@@ -55,6 +56,7 @@ final class RegexPipeline {
           throw const FormatException('正则处理大小超限');
         }
         final trims = stringList(rule['trimStrings'], 'trimStrings');
+        final replacements = <({int start, int end, String text})>[];
         String replace(Match rawMatch) {
           final match = rawMatch as RegExpMatch;
           final template = stringField(
@@ -77,12 +79,19 @@ final class RegexPipeline {
               return value;
             },
           );
-          return macros.render(captured);
+          final replacement = macros.render(captured);
+          replacements.add((
+            start: match.start,
+            end: match.end,
+            text: replacement,
+          ));
+          return replacement;
         }
 
         output = parsed.global
             ? output.replaceAllMapped(parsed.regex, replace)
             : output.replaceFirstMapped(parsed.regex, replace);
+        if (replacements.isNotEmpty) onReplacements?.call(replacements);
       } on FormatException catch (error) {
         diagnostics.add(
           CompatibilityDiagnostic(

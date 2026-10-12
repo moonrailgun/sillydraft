@@ -255,6 +255,10 @@ extension ProjectOperations on StoryRepository {
               throw const FormatException('备份结构化字段错误');
             }
             if (e.key == 'content_json') ManuscriptContent.fromJson(decoded);
+            if (['local_json', 'global_json'].contains(e.key) &&
+                decoded.values.any((value) => value is! String)) {
+              throw const FormatException('备份变量必须是字符串映射');
+            }
           }
           if (['archived', 'deleted'].contains(e.key) &&
               value != 0 &&
@@ -312,6 +316,16 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     if (!set.containsKey(id)) invalid();
   }
 
+  void stringFields(Map value, List<String> keys) {
+    if (keys.any((key) => value[key] != null && value[key] is! String)) {
+      invalid();
+    }
+  }
+
+  void boolFields(Map value, List<String> keys) {
+    if (keys.any((key) => value[key] != null && value[key] is! bool)) invalid();
+  }
+
   void cycle(Map<String, Map<String, dynamic>> rows, String parent) {
     final done = <String>{};
     for (final id in rows.keys) {
@@ -357,6 +371,22 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
   cycle(resources, 'parent_id');
   cycle(lore, 'previous_revision_id');
   cycle(tasks, 'retry_of');
+  void sceneRevision(Object? branchId, Object? sceneId, Object? revisionId) {
+    if (sceneId is! String || revisionId is! String) invalid();
+    final scene = t['branch_scenes']!
+        .where((s) => s['branch_id'] == branchId && s['scene_id'] == sceneId)
+        .firstOrNull;
+    if (scene == null || revisions[revisionId]?['scene_id'] != sceneId) {
+      invalid();
+    }
+    // A fork may share an ancestor's revision, but unrelated history is invalid.
+    String? current = scene['revision_id'] as String;
+    while (current != null && current != revisionId) {
+      current = revisions[current]?['parent_revision_id'] as String?;
+    }
+    if (current == null) invalid();
+  }
+
   for (final row in revisions.values) {
     ref(row['source_proposal_id'], proposals);
     final parent = revisions[row['parent_revision_id']];
@@ -412,6 +442,7 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     }
     if (row.containsKey('revision_id')) {
       ref(row['revision_id'], revisions, nullable: false);
+      sceneRevision(row['branch_id'], row['scene_id'], row['revision_id']);
     }
   }
   for (final row in assets.values) {
@@ -449,6 +480,18 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       invalid();
     }
     final data = jsonDecode(row['data_json'] as String) as Map<String, dynamic>;
+    stringFields(data, [
+      'appearance',
+      'goal',
+      'storyTime',
+      'status',
+      'fromId',
+      'toId',
+      'cardId',
+      'backgroundAssetId',
+    ]);
+    boolFields(data, ['directed', 'worldBookOnly']);
+    ref(data['cardId'], resources);
     if (row['kind'] == 'relationship') {
       for (final key in ['fromId', 'toId']) {
         if (!entities.containsKey('${row['branch_id']}/${data[key]}')) {
@@ -498,12 +541,27 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
             (route['pointIds'] as List).any((p) => !pointIds.contains(p))) {
           invalid();
         }
+        stringFields(route, ['label']);
       }
     }
     final provenance = jsonDecode(row['provenance_json'] as String) as Map;
+    stringFields(provenance, [
+      'type',
+      'sceneId',
+      'revisionId',
+      'resourceId',
+      'taskId',
+    ]);
     ref(provenance['revisionId'], revisions);
     ref(provenance['resourceId'], resources);
     ref(provenance['taskId'], tasks);
+    if (provenance['sceneId'] != null || provenance['revisionId'] != null) {
+      sceneRevision(
+        row['branch_id'],
+        provenance['sceneId'],
+        provenance['revisionId'],
+      );
+    }
   }
   for (final row in t['analysis_acceptances']!) {
     ref(row['task_id'], tasks, nullable: false);
@@ -520,6 +578,11 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     if (!settingKeys.contains(row['key'])) invalid();
     final value = jsonDecode(row['value_json'] as String) as Map;
     if ((row['key'] as String).startsWith('writing/')) {
+      stringFields(value, ['userName', 'persona']);
+      if (value['selectedOrderId'] != null &&
+          value['selectedOrderId'] is! int) {
+        invalid();
+      }
       for (final key in [
         'presetId',
         'cardId',
@@ -536,6 +599,23 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
           ref(id, resources, nullable: false);
         }
       }
+    } else if ((row['key'] as String).startsWith('progress/')) {
+      final branchId = (row['key'] as String).substring('progress/'.length);
+      if (value['sceneId'] is! String ||
+          !sceneKeys.contains('$branchId/${value['sceneId']}')) {
+        invalid();
+      }
+      final fraction = value['fraction'];
+      if (fraction is! num ||
+          !fraction.isFinite ||
+          fraction < 0 ||
+          fraction > 1) {
+        invalid();
+      }
+      if (value['updatedAt'] != null && value['updatedAt'] is! int) invalid();
+    } else if ((row['key'] as String).startsWith('goal/')) {
+      final words = value['words'];
+      if (words != null && (words is! int || words < 0)) invalid();
     }
   }
 }

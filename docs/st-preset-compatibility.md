@@ -4,7 +4,9 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 导入、编译、资源库、手机条目编辑与正文候选闭环已接入应用。源码基线为 ST `release` 分支的 `1.19.0`，提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`，提交日期为 2026-09-14，核查日期为 2026-10-13。后续升级按提交维护兼容记录，不把浮动分支作为测试依据。[版本依据](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/package.json)
 
-实现证据位于 `packages/sillydraft_core/test/st_import_test.dart` 与 `st_compiler_test.dart`。官方样本附有提交与 SHA-256 清单；`tool/capture_st_reference.mjs` 从固定源码运行隔离的注入及指令序列化函数，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
+实现证据位于 `packages/sillydraft_core/test/st_import_test.dart` 与 `st_compiler_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入及指令序列化函数，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
+
+显示专用正则已接入候选预览和独立阅读器，使用生成任务中冻结的规则、时钟、随机种子和宏变量；手动编辑继承此前生成的显示上下文。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
 当前受测范围包括 V1/V2/V3、PNG、CHARX 导入，完整预设与提示词包区分，100001 顺序、关闭条目、角色覆盖、深度注入、条件和变量宏、正则阶段、默认 Handlebars 模板、文本指令序列及世界书递归。宏变量只在任务副本中变化，存储提交由候选采纳流程负责。未知宏、模板 helper 与已识别的未实现世界书依赖会阻止无提示运行。
 
@@ -96,7 +98,7 @@ SillyDraft 使用独立 Dart 模块实现预设解析、模板求值、宏求值
 
 ST 对“仅提示词”“仅显示”和一般文本处理有不同执行条件。[正则阶段源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/engine.js#L334)
 
-SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则不能修改已保存正文；显示专用规则不写回正文；用于清理生成文本的规则在候选采纳前应用，原始输出仍可追溯。正文导出以用户采纳的作品为准。HTML 或依赖浏览器脚本的展示扩展单独报告，不能当作普通文本正则的兼容承诺。
+SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则不能修改已保存正文；显示专用规则不写回正文；用于清理生成文本的规则在候选采纳前应用，原始输出仍可追溯。正文导出以用户采纳的作品为准。HTML 标签在替换结果中按普通文本呈现，不运行 JavaScript 或浏览器展示扩展；文本正则支持不代表支持这类界面扩展。
 
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
 

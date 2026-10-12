@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sillydraft/app/app.dart';
@@ -35,6 +36,18 @@ void main() {
     expect(await PlatformSecrets().read(key), 'local-fixture-no-credentials');
     await secrets.delete(key);
     expect(await secrets.read(key), isNull);
+
+    if (Platform.isMacOS) {
+      final target = File('${directory.path}/atomic-export.txt');
+      for (final value in ['首次导出', '替换完成']) {
+        await const MethodChannel('app.sillydraft/files')
+            .invokeMethod<void>('saveAtomic', {
+              'path': target.path,
+              'bytes': Uint8List.fromList(utf8.encode(value)),
+            });
+        expect(await target.readAsString(), value);
+      }
+    }
 
     final repository = StoryRepository.open('${directory.path}/library.sqlite');
     final services = AppServices(
@@ -99,9 +112,75 @@ void main() {
       )).content.text,
       contains('自己的笔迹'),
     );
+    final saved = await repository.getScene(
+      branchId: scene.branchId,
+      sceneId: scene.id,
+    );
+    final manuscript = ManuscriptContent.fromDelta([
+      {'insert': '信的内容'},
+      {
+        'insert': '\n',
+        'attributes': {'header': 2},
+      },
+      {'insert': '雨落在雾港。\n'},
+      {'insert': '她认出了自己的笔迹。'},
+      {
+        'insert': '\n',
+        'attributes': {'list': 'ordered'},
+      },
+      {'insert': '暗号仍在信纸上。'},
+      {
+        'insert': '\n',
+        'attributes': {'list': 'ordered'},
+      },
+      {'insert': '别忘了回家的路。'},
+      {
+        'insert': '\n',
+        'attributes': {'blockquote': true},
+      },
+    ]);
+    final task = await repository.createTask(
+      branchId: scene.branchId,
+      sceneId: scene.id,
+      baseRevisionId: saved.revisionId,
+      kind: TaskKind.writing,
+      input: {
+        'clock': '2026-10-13T00:00:00Z',
+        'seed': 1,
+        'outputRegex': [
+          {
+            'findRegex': '/暗号/g',
+            'replaceString': '约定的记号',
+            'placement': [2],
+            'markdownOnly': true,
+          },
+        ],
+      },
+    );
+    await repository.updateTask(task.id, status: TaskStatus.running);
+    await repository.completeWritingTask(
+      task.id,
+      content: manuscript,
+      rawText: manuscript.text,
+    );
+    await repository.acceptProposal(
+      (await repository.listProposals(scene.branchId)).single.id,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('open-reader')));
     await tester.pumpAndSettle();
     expect(find.textContaining('自己的笔迹', findRichText: true), findsOneWidget);
+    expect(
+      find.textContaining('2. 约定的记号仍在信纸上。', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      (await repository.getScene(
+        branchId: scene.branchId,
+        sceneId: scene.id,
+      )).content.text,
+      contains('暗号仍在信纸上。'),
+    );
     expect(tester.takeException(), isNull);
     await capture('reader');
     final preset = await repository.storeResource(

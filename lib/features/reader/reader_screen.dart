@@ -7,10 +7,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../branches/branch_screen.dart';
+import 'reader_document.dart';
 import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+
+final _revisionPresentationProvider =
+    FutureProvider.family<ManuscriptPresentation, String>(
+      (ref, id) => ref.watch(repositoryProvider).presentRevision(id),
+    );
+final _readerStoryProvider =
+    FutureProvider.family<
+      ({StorySnapshot story, List<ManuscriptPresentation> pages}),
+      String
+    >((ref, branchId) async {
+      final story = await ref.watch(storyProvider(branchId).future);
+      final pages = await Future.wait(
+        story.scenes.map(
+          (s) => ref.watch(_revisionPresentationProvider(s.revisionId).future),
+        ),
+      );
+      return (story: story, pages: pages);
+    });
 
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({super.key, required this.branchId});
@@ -28,7 +47,9 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
   double _fontSize = 20, _lineHeight = 1.9;
   String _theme = 'paper';
   bool _initialized = false;
+  bool _displayRules = true;
   StorySnapshot? _story;
+  ReaderDocument? _document;
   @override
   void initState() {
     super.initState();
@@ -118,9 +139,10 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
     final viewport = _viewportKey.currentContext?.findRenderObject();
     if (paragraph == null || viewport is! RenderBox) return 0;
     final top = paragraph.globalToLocal(viewport.localToGlobal(Offset.zero));
-    return paragraph
+    final offset = paragraph
         .getPositionForOffset(Offset(0, top.dy.clamp(0, paragraph.size.height)))
         .offset;
+    return _document?.sourceOffset(offset) ?? offset;
   }
 
   void _go(int index, {int offset = 0}) {
@@ -135,7 +157,9 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
         if (paragraph == null || viewport is! RenderBox) return;
         final caret = paragraph.getOffsetForCaret(
           TextPosition(
-            offset: offset.clamp(0, _story!.scenes[index].content.text.length),
+            offset:
+                _document?.displayOffset(offset) ??
+                offset.clamp(0, _story!.scenes[index].content.text.length),
           ),
           Rect.zero,
         );
@@ -377,8 +401,9 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
 
   @override
   Widget build(BuildContext context) => AsyncView(
-    value: ref.watch(storyProvider(widget.branchId)),
-    builder: (story) {
+    value: ref.watch(_readerStoryProvider(widget.branchId)),
+    builder: (book) {
+      final story = book.story;
       _story = story;
       if (!_initialized) unawaited(_initialize(story));
       final background = _theme == 'night'
@@ -397,6 +422,21 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
       }
       _index = _index.clamp(0, story.scenes.length - 1);
       final scene = story.scenes[_index];
+      _document = ReaderDocument.build(
+        _displayRules
+            ? book.pages[_index]
+            : ManuscriptPresentation.identity(scene.content),
+        fontSize: _fontSize,
+        image: (uri) {
+          if (uri == null || !uri.startsWith('asset:')) {
+            return const Text('图片暂不可用');
+          }
+          return SizedBox(
+            width: (MediaQuery.sizeOf(context).width - 56).clamp(0, 704),
+            child: AssetImageView(assetId: uri.substring(6), height: 300),
+          );
+        },
+      );
       return Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.fromSeed(
@@ -448,13 +488,26 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
                       onSelected: (value) {
                         if (value == 'style') {
                           _preferences();
+                        } else if (value == 'display') {
+                          setState(() => _displayRules = !_displayRules);
                         } else {
                           _bookmarks(story);
                         }
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'style', child: Text('排版与主题')),
-                        PopupMenuItem(value: 'bookmarks', child: Text('书签')),
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'style',
+                          child: Text('排版与主题'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'bookmarks',
+                          child: Text('书签'),
+                        ),
+                        if (book.pages[_index].content != scene.content)
+                          PopupMenuItem(
+                            value: 'display',
+                            child: Text(_displayRules ? '显示原正文' : '应用显示正则'),
+                          ),
                       ],
                     ),
                   ],
@@ -490,7 +543,7 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
                             ),
                             const SizedBox(height: 36),
                             Text.rich(
-                              _manuscriptSpan(scene.content, foreground),
+                              _document!.span,
                               key: _textKey,
                               style: TextStyle(
                                 fontSize: _fontSize,
@@ -587,41 +640,5 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
         ),
       );
     },
-  );
-
-  TextSpan _manuscriptSpan(ManuscriptContent content, Color color) => TextSpan(
-    children: [
-      for (final op in content.delta)
-        if (op['insert'] is Map)
-          WidgetSpan(
-            child: Builder(
-              builder: (context) {
-                final uri = (op['insert'] as Map)['image'];
-                if (uri is! String || !uri.startsWith('asset:')) {
-                  return const Text('图片暂不可用');
-                }
-                return SizedBox(
-                  width: (MediaQuery.sizeOf(context).width - 56).clamp(0, 704),
-                  child: AssetImageView(assetId: uri.substring(6), height: 300),
-                );
-              },
-            ),
-          )
-        else if (op['insert'] is String)
-          TextSpan(
-            text: op['insert'] as String,
-            style: TextStyle(
-              fontWeight: (op['attributes'] as Map?)?['bold'] == true
-                  ? FontWeight.bold
-                  : null,
-              fontStyle: (op['attributes'] as Map?)?['italic'] == true
-                  ? FontStyle.italic
-                  : null,
-              decoration: (op['attributes'] as Map?)?['underline'] == true
-                  ? TextDecoration.underline
-                  : null,
-            ),
-          ),
-    ],
   );
 }

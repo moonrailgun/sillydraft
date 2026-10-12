@@ -132,8 +132,8 @@
 
 **Files:** end-to-end integration tests, build automation, CI, README and usage documentation.
 
-- [ ] Run full core and Flutter tests, analyzer, supported native builds and an actual end-to-end user journey.
-- [ ] Perform visual QA at phone and desktop widths with real app data; repair overflow, inaccessible controls and missing error states.
-- [ ] Request an independent whole-project review using a fresh reviewer, fix material findings with regression tests.
-- [ ] Audit every numbered product requirement and ST compatibility acceptance case against current evidence; record remaining gaps without narrowing scope.
-- [ ] Only mark the goal complete when all required work is implemented and verified to its actual scope.
+- [x] Run full core and Flutter tests, analyzer, supported native builds and an actual end-to-end user journey.
+- [x] Perform visual QA at phone and desktop widths with real app data; repair overflow, inaccessible controls and missing error states.
+- [x] Request an independent whole-project review using a fresh reviewer, fix material findings with regression tests.
+- [x] Audit every numbered product requirement and ST compatibility acceptance case against current evidence; record remaining gaps without narrowing scope.
+- [x] Only mark the goal complete when all required work is implemented and verified to its actual scope.

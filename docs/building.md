@@ -24,6 +24,8 @@ dart test --reporter expanded
 dart format --output=none --set-exit-if-changed lib test integration_test test_driver tool packages/sillydraft_core/lib packages/sillydraft_core/test server/lib server/bin server/test
 ```
 
+ST 对照数据可在核心包目录使用 Node 22 重新生成：`node tool/capture_st_reference.mjs`。该脚本只下载固定提交的 ST 源码，在空扩展环境中执行指定注入与指令格式函数。重新生成后先比较两个 reference JSON 的差异，再运行 `dart test test/st_compiler_test.dart`；不要无条件更新基准来掩盖兼容回归。
+
 `.github/workflows/verify.yml` 提供核心/界面/服务端测试、三个桌面系统构建、iOS 模拟器及 Android 构建。Actions 固定提交，Flutter 固定版本；工作流不包含上传商店步骤，不读取模型密钥。推送到用户自己的 GitHub 仓库后才会运行；工作流文件不代表 CI 已通过。
 
 ## Android
@@ -78,6 +80,15 @@ flutter drive --driver=test_driver/native_verification.dart \
 只在开发设备/模拟器上运行：Flutter 测试工具会安装和清理应用。数据和临时密钥使用单独测试范围，截图在 `docs/verification/` 中。原生构建按平台依次执行；并行构建会竞争共享插件注册文件。
 
 测试只访问本地模拟模型，不需要真实 API key。测试真实服务时，由使用者明确设置连接，并承担对应服务费用。
+
+macOS 文件保存还有独立原生检查：
+
+```sh
+xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' test
+python3 tool/verify_macos_atomic_export.py
+```
+
+后者在临时目录中验证仅授予单个文件写权限时的创建和替换，不读取或改动现有作品。
 
 ## 数据与升级
 

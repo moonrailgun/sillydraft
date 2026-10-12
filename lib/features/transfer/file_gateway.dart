@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -58,6 +58,13 @@ final class PlatformTransferFiles implements TransferFileGateway {
     }
     final location = await getSaveLocation(suggestedName: file.filename);
     if (location == null) return false;
+    if (Platform.isMacOS) {
+      await const MethodChannel('app.sillydraft/files').invokeMethod<void>(
+        'saveAtomic',
+        {'path': location.path, 'bytes': file.bytes},
+      );
+      return true;
+    }
     final target = File(location.path);
     final staging = await Directory.systemTemp.createTemp('sillydraft-export-');
     try {

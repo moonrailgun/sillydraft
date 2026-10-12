@@ -50,7 +50,7 @@ flutter run -d macos
 
 已实现两条编译路径、100001 顺序组、启停、覆盖与 `{{original}}`、深度注入、受测宏/变量、世界书触发与文本正则。手机可编辑提示词条目的开关、顺序、内容、角色、深度和覆盖规则；模板及扩展可使用完整 JSON 编辑。原资源保持不变，编辑生成新版本。
 
-token 预算采用估算；世界书定时/分组/自动化扩展、任意 JavaScript/HTML 展示扩展和未实现宏/helper 会报告缺口。Kobold/NovelAI 专用后端以及原生 Anthropic/Gemini 协议未实现；当前运行协议为 OpenAI 兼容接口及 SillyDraft 远程执行器。不会自动采用预设中的代理地址、请求头或凭据。
+token 预算采用估算；世界书定时/分组/自动化扩展和未实现宏/helper 会报告缺口。任意 JavaScript 不执行，HTML 展示扩展不渲染，正则替换结果按纯文本呈现。Kobold/NovelAI 专用后端以及原生 Anthropic/Gemini 协议未实现；当前运行协议为 OpenAI 兼容接口及 SillyDraft 远程执行器。不会自动采用预设中的代理地址、请求头或凭据。
 
 完整依据、映射及测试范围见 [ST 兼容说明](docs/st-preset-compatibility.md)。
 
@@ -92,3 +92,5 @@ macOS、iOS 模拟器、Android 模拟器已有原生构建与操作证据。Win
 - [MuMuAINovel 编辑 Agent](https://github.com/xiamuceer-j/MuMuAINovel/blob/main/backend/app/services/project_agent_service.py)
 
 ST 官方测试样本的来源、哈希和上游许可证保留在核心包 fixtures 中。
+
+独立审查的五项重要问题及修复验证见 [最终审查记录](docs/verification/final-review.md)。

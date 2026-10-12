@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../model/manuscript.dart';
+import '../model/manuscript_presentation.dart';
 import '../model/story.dart';
 import '../model/task.dart';
 import '../model/bookmark.dart';

@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 1 书架 | `bookshelf/`、`app_flow_test.dart`、`native_workflow_test.dart`：创建、属性、搜索、归档/恢复、示例 | 全文搜索最多返回 200 项 |
 | 2 正文 | Quill、不可变版本与 CAS；`story_repository_test.dart`、`editor_flow_test.dart`、`task_runner_test.dart`；原生中文拼音输入截图 | 自动保存无法拦截系统强制终止 |
-| 3 阅读器 | `reader_flow_test.dart`、`agent_flow_test.dart`、原生编辑→阅读→数据库重开 | 只展示已保存正文与资产 |
+| 3 阅读器 | `reader_flow_test.dart`、`reader_presentation_test.dart`、`agent_flow_test.dart`、原生编辑→阅读→数据库重开 | 只展示已保存正文与资产 |
 | 4 Agent 隔离 | `editor_agent_test.dart`、`proposal_flow_test.dart`、`task_runner_test.dart`：工具范围、候选采纳、并发冲突、删除会话 | 不把模型生成建议自动当事实 |
 | 5 角色卡 | `st_import_test.dart`、`resource_library_test.dart`、`card_start_flow_test.dart`：V1/V2/V3、PNG/CHARX、备用开场、身份映射、加密原文 | JSON 分享不包含卡片二进制附件 |
 | 6 ST 预设 | 下方 10 项映射；`preset_editor_test.dart` 覆盖手机完整聊天预设/提示词包的顺序、开关、深度、未知字段及旧版本不变 | 按受测能力兼容，未实现扩展明确诊断 |
@@ -27,7 +27,7 @@
 
 ## ST 兼容案例
 
-固定 ST 提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`。官方文件附有哈希与许可证；`tool/capture_st_reference.mjs` 在隔离 Node VM 中执行实际 ST 注入和指令序列化函数。其他语义使用固定输入、源码对应断言与边界样本，不把这些测试称为整个浏览器运行时的等价认证。
+固定 ST 提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`。官方文件附有哈希与许可证；`packages/sillydraft_core/tool/capture_st_reference.mjs` 在隔离 Node VM 中执行实际 ST 注入和指令序列化函数。其他语义使用固定输入、源码对应断言与边界样本，不把这些测试称为整个浏览器运行时的等价认证。
 
 | 案例 | 证据 |
 | --- | --- |
@@ -38,7 +38,7 @@
 | 5 宏与副作用 | 嵌套/条件/局部与全局变量、一次预览编译复用；候选采纳事务与历史分叉变量投影 |
 | 6 世界书/历史 | 触发/递归/预算与未来、其他分支、未采纳内容排除；资料证据时间位置检查 |
 | 7 文本模板 | Handlebars 后宏处理、指令序列、前后缀、换行、停止串与继续模式；实际 ST 默认模板夹具 |
-| 8 正则 | 来源顺序、阶段、捕获替换、深度；显示专用规则不写回正文，原始输出独立保留 |
+| 8 正则 | 来源顺序、阶段、捕获替换、深度；`manuscript_presentation_test.dart`、`reader_presentation_test.dart` 验证显示专用规则实际呈现，正文/导出不变，原始输出独立保留 |
 | 9 模型能力/凭据 | `provider_test.dart` 预填和参数诊断；资源导入不改变连接，普通导出清理已识别凭据；runner 由服务端控制上游目的地 |
 | 10 产物/版本 | 原始响应、处理后的候选和依据版本各自持久化；`story_repository_test.dart`、远程 HTTP 测试拒绝旧候选覆盖 |
 
@@ -46,6 +46,6 @@
 
 ## 本轮验证与独立审查
 
-任务 11 结束时：87 项核心测试、28 项 Flutter 测试、9 项服务端测试通过。任务 12 增加了 2 项手机预设编辑测试，已观察缺失控件失败并修复至通过；完整 Flutter 套件现为 30 项通过，分析器无问题。macOS 与 iOS 的最终原生流程和新增预设页面截图已验证；Android 最终运行及独立审查进行中。
+最终核心 90 项、Flutter 33 项、服务端 9 项测试通过，分析器均无问题。独立审查发现的 5 项重要问题已完成一次修复并通过回归测试；无延后的小问题。具体复现、修复及证据见 [最终审查](final-review.md)。原生平台与签名验证状态分别记录在平台文档中。
 
 Android Release 开发构建通过；未提供正式签名的 Release 被构建脚本明确拒绝。该验证只使用开发密钥。平台包不会自动上传或发布。

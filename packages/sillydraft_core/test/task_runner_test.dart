@@ -248,6 +248,60 @@ void main() {
     },
   );
 
+  test('failed remote recovery retains durable output and full replay does not duplicate it', () async {
+    connection = ModelConnection(
+      id: 'remote',
+      name: 'Runner',
+      baseUrl: 'http://localhost:1234',
+      model: 'fiction-model',
+      protocol: ModelProtocol.sillyDraftRunner,
+    );
+    script = (_, _) async* {
+      yield const TextDelta('已收到的正文');
+      yield const ReasoningDelta('已收到的推理');
+      throw const ProviderException('interrupted', '断线');
+    };
+    final task = await generate();
+    await runner.wait(task.id);
+    script = (request, _) async* {
+      expect(request.retrieveOnly, isTrue);
+      expect(request.executionId, task.id);
+      throw const ProviderException('offline', '离线');
+    };
+    await runner.reconnectRemote(task.id);
+    final failed = await runner.wait(task.id);
+    expect(failed.partialText, '已收到的正文');
+    expect(failed.reasoning, '已收到的推理');
+    script = (_, _) async* {
+      yield const TextDelta('已收到');
+      yield const GenerationFinished('stop');
+    };
+    await runner.reconnectRemote(task.id);
+    final shortReplay = await runner.wait(task.id);
+    expect(shortReplay.status, TaskStatus.failed);
+    expect(shortReplay.partialText, '已收到的正文');
+    expect(shortReplay.reasoning, '已收到的推理');
+    expect(await repository.listProposals(novel.activeBranchId), isEmpty);
+    script = (request, _) async* {
+      expect(request.retrieveOnly, isTrue);
+      yield const ReasoningDelta('已收到的推理');
+      yield const TextDelta('已收到的正文，继续完成。');
+      yield const GenerationFinished('stop');
+    };
+    await runner.reconnectRemote(task.id);
+    final completed = await runner.wait(task.id);
+    expect(completed.status, TaskStatus.completed);
+    expect(completed.partialText, '已收到的正文，继续完成。');
+    expect(completed.reasoning, '已收到的推理');
+    expect(
+      (await repository.listProposals(novel.activeBranchId))
+          .single
+          .content
+          .text,
+      '原文\n\n已收到的正文，继续完成。\n',
+    );
+  });
+
   test(
     'user cancellation stops generation without accepting partial prose',
     () async {

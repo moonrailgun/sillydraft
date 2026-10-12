@@ -1,6 +1,38 @@
 part of 'story_repository.dart';
 
 extension ProposalOperations on StoryRepository {
+  Future<GenerationTask?> _displayContext(DocumentRevision revision) async {
+    var current = revision;
+    while (true) {
+      if (current.sourceProposalId case final String id) {
+        final proposal = await getProposal(id);
+        return proposal.taskId == null ? null : getTask(proposal.taskId!);
+      }
+      if (current.parentRevisionId == null) return null;
+      current = await getRevision(current.parentRevisionId!);
+    }
+  }
+
+  /// Immutable task input pins display rules and macro values to this revision.
+  /// Later manual edits inherit its display context; exports use original data.
+  Future<ManuscriptPresentation> presentRevision(String id) async {
+    final revision = await getRevision(id),
+        task = await _displayContext(revision);
+    return task == null
+        ? ManuscriptPresentation.identity(revision.content)
+        : ManuscriptPresentation.fromTask(revision.content, task);
+  }
+
+  Future<ManuscriptPresentation> presentProposal(String id) async {
+    final proposal = await getProposal(id);
+    final task = proposal.taskId == null
+        ? await _displayContext(await getRevision(proposal.baseRevisionId))
+        : await getTask(proposal.taskId!);
+    return task == null
+        ? ManuscriptPresentation.identity(proposal.content)
+        : ManuscriptPresentation.fromTask(proposal.content, task);
+  }
+
   Future<ManuscriptProposal> createProposal({
     required String branchId,
     required String sceneId,

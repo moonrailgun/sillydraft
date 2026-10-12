@@ -28,6 +28,39 @@ final class ManuscriptContent {
       if (attributes != null && attributes is! Map<String, dynamic>) {
         throw const FormatException('无效的文字格式。');
       }
+      if (attributes is Map<String, dynamic>) {
+        for (final entry in attributes.entries) {
+          final value = entry.value;
+          if (value == null) continue;
+          final valid = switch (entry.key) {
+            'bold' ||
+            'italic' ||
+            'underline' ||
+            'strike' ||
+            'blockquote' => value is bool,
+            'header' => value is int && value >= 1 && value <= 6,
+            'indent' => value is int && value >= 0 && value <= 8,
+            'list' => [
+              'ordered',
+              'bullet',
+              'checked',
+              'unchecked',
+            ].contains(value),
+            'align' => ['left', 'right', 'center', 'justify'].contains(value),
+            'direction' => ['rtl', 'ltr'].contains(value),
+            'link' ||
+            'font' ||
+            'size' ||
+            'color' ||
+            'background' => value is String,
+            _ =>
+              value is String ||
+                  value is bool ||
+                  value is num && value.isFinite,
+          };
+          if (!valid) throw const FormatException('无效的文字格式属性。');
+        }
+      }
       if (insert == '') continue;
       copy.add(
         Map<String, dynamic>.from(

@@ -148,6 +148,23 @@ final class TaskRunner {
   ) async {
     ModelProvider? provider;
     final text = StringBuffer(), reasoning = StringBuffer();
+    final reconnect = task.isRemote && task.result['remoteReconnect'] == true;
+    var durableText = reconnect ? task.partialText : '';
+    var durableReasoning = reconnect ? task.reasoning : '';
+    // Recovery replays cumulative output from the beginning. Keep the last
+    // durable snapshot until the replay catches up; never prepend it to replay.
+    String snapshot(String previous, String replay) {
+      if (!reconnect) return replay;
+      if (previous.startsWith(replay)) return previous;
+      if (!replay.startsWith(previous)) {
+        throw const ProviderException(
+          'remote_mismatch',
+          '远程内容与已保存的输出不一致，原内容已保留',
+        );
+      }
+      return replay;
+    }
+
     try {
       final current = await repository.updateTask(
         task.id,
@@ -205,11 +222,13 @@ final class TaskRunner {
           case GenerationFinished():
             finish = event;
         }
+        durableText = snapshot(durableText, text.toString());
+        durableReasoning = snapshot(durableReasoning, reasoning.toString());
         await repository.updateTask(
           task.id,
           status: TaskStatus.running,
-          partialText: text.toString(),
-          reasoning: reasoning.toString(),
+          partialText: durableText,
+          reasoning: durableReasoning,
         );
       }
       cancel.check();
@@ -220,6 +239,14 @@ final class TaskRunner {
         throw ProviderException(
           'incomplete',
           '模型未完整结束（${finish.reason}），部分内容已保留',
+        );
+      }
+      if (reconnect &&
+          (text.length < durableText.length ||
+              reasoning.length < durableReasoning.length)) {
+        throw const ProviderException(
+          'remote_mismatch',
+          '远程完整结果短于已保存的输出，原内容已保留',
         );
       }
       if (text.toString().trim().isEmpty) {
@@ -268,8 +295,12 @@ final class TaskRunner {
       await repository.updateTask(
         task.id,
         status: _closing ? TaskStatus.interrupted : TaskStatus.cancelled,
-        partialText: text.toString(),
-        reasoning: reasoning.toString(),
+        partialText: task.kind == TaskKind.agent
+            ? text.toString()
+            : durableText,
+        reasoning: task.kind == TaskKind.agent
+            ? reasoning.toString()
+            : durableReasoning,
         error: _closing
             ? (task.isRemote ? '本地连接已关闭，远程任务可能仍在执行，可获取同一任务的结果。' : '应用关闭，生成已中断。')
             : '',
@@ -280,24 +311,36 @@ final class TaskRunner {
         status: error.code == 'interrupted'
             ? TaskStatus.interrupted
             : TaskStatus.failed,
-        partialText: text.toString(),
-        reasoning: reasoning.toString(),
+        partialText: task.kind == TaskKind.agent
+            ? text.toString()
+            : durableText,
+        reasoning: task.kind == TaskKind.agent
+            ? reasoning.toString()
+            : durableReasoning,
         error: error.toString(),
       );
     } on FormatException {
       await repository.updateTask(
         task.id,
         status: TaskStatus.failed,
-        partialText: text.toString(),
-        reasoning: reasoning.toString(),
+        partialText: task.kind == TaskKind.agent
+            ? text.toString()
+            : durableText,
+        reasoning: task.kind == TaskKind.agent
+            ? reasoning.toString()
+            : durableReasoning,
         error: '返回结果未满足格式要求，原始输出已保留。',
       );
     } catch (_) {
       await repository.updateTask(
         task.id,
         status: TaskStatus.failed,
-        partialText: text.toString(),
-        reasoning: reasoning.toString(),
+        partialText: task.kind == TaskKind.agent
+            ? text.toString()
+            : durableText,
+        reasoning: task.kind == TaskKind.agent
+            ? reasoning.toString()
+            : durableReasoning,
         error: '生成未完成，请检查模型配置后重试。',
       );
     } finally {

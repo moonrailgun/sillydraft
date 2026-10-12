@@ -8,15 +8,19 @@ import '../../app/widgets.dart';
 import 'agent_providers.dart';
 
 final _comparisonProvider =
-    FutureProvider.family<({DocumentRevision base, Scene current}), String>((
-      ref,
-      id,
-    ) async {
+    FutureProvider.family<
+      ({DocumentRevision base, Scene current, String before, String after}),
+      String
+    >((ref, id) async {
       ref.watch(repositoryChangesProvider);
       final repo = ref.watch(repositoryProvider),
           proposal = await ref.watch(proposalProvider(id).future);
       return (
         base: await repo.getRevision(proposal.baseRevisionId),
+        before: (await repo.presentRevision(proposal.baseRevisionId))
+            .content
+            .text,
+        after: (await repo.presentProposal(proposal.id)).content.text,
         current: await repo.getScene(
           branchId: proposal.branchId,
           sceneId: proposal.sceneId,
@@ -33,6 +37,7 @@ class ProposalScreen extends ConsumerStatefulWidget {
 
 class _ProposalState extends ConsumerState<ProposalScreen> {
   bool _busy = false;
+  bool _displayRules = true;
   Future<void> _apply(bool accept) async {
     setState(() => _busy = true);
     try {
@@ -94,6 +99,15 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (comparison.before != comparison.base.content.text ||
+                            comparison.after != proposal.content.text)
+                          SwitchListTile(
+                            title: const Text('预览显示效果'),
+                            subtitle: const Text('显示正则仅影响预览；采纳与导出保留原正文。'),
+                            value: _displayRules,
+                            onChanged: (value) =>
+                                setState(() => _displayRules = value),
+                          ),
                         if (proposal.summary.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 20),
@@ -103,14 +117,22 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                           builder: (context, size) {
                             final before = _panel(
                               '依据版本',
-                              comparison.base.content.text,
-                              proposal.content.text,
+                              _displayRules
+                                  ? comparison.before
+                                  : comparison.base.content.text,
+                              _displayRules
+                                  ? comparison.after
+                                  : proposal.content.text,
                               false,
                             );
                             final after = _panel(
                               '候选正文',
-                              comparison.base.content.text,
-                              proposal.content.text,
+                              _displayRules
+                                  ? comparison.before
+                                  : comparison.base.content.text,
+                              _displayRules
+                                  ? comparison.after
+                                  : proposal.content.text,
                               true,
                             );
                             return size.maxWidth >= 800
