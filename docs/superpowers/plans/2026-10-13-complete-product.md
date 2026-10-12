@@ -76,9 +76,9 @@
 
 **Interfaces:** Riverpod repository/provider controllers consume core records; editor stores canonical Delta content, reader derives display; settings inject securely retrieved credentials.
 
-- [ ] Write workflow tests for novel creation, editing, save/reopen, reader independence, progress and mobile/desktop navigation.
-- [ ] Implement responsive shell, library, manuscript structure, Quill editor, reader preferences, bookmarks, search and model configuration.
-- [ ] Verify keyboard/IME behavior on available native device, accessibility and layout bounds; commit.
+- [x] Write workflow tests for novel creation, editing, save/reopen, reader independence, progress and mobile/desktop navigation.
+- [x] Implement responsive shell, library, manuscript structure, Quill editor, reader preferences, bookmarks, search and model configuration.
+- [x] Verify keyboard/IME behavior on available native device, accessibility and layout bounds; commit.
 
 ## Task 6: Agent workspace and proposal review
 

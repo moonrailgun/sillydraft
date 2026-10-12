@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -24,13 +24,18 @@ final class StoryDatabase extends GeneratedDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (_) async {
-      for (final sql in [...schema, ...taskSchema]) {
+      for (final sql in [...schema, ...taskSchema, ...preferencesSchema]) {
         await customStatement(sql);
       }
     },
     onUpgrade: (_, from, to) async {
       if (from < 2) {
         for (final sql in taskSchema) {
+          await customStatement(sql);
+        }
+      }
+      if (from < 3) {
+        for (final sql in preferencesSchema) {
           await customStatement(sql);
         }
       }
@@ -120,6 +125,15 @@ final class StoryDatabase extends GeneratedDatabase {
       id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
       role TEXT NOT NULL, content TEXT NOT NULL, metadata_json TEXT NOT NULL,
       position INTEGER NOT NULL, created_at INTEGER NOT NULL
+    )''',
+  ];
+
+  static const preferencesSchema = <String>[
+    'CREATE TABLE app_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL)',
+    '''CREATE TABLE reading_bookmarks (
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, scene_id TEXT NOT NULL,
+      label TEXT NOT NULL, offset INTEGER NOT NULL, created_at INTEGER NOT NULL,
+      FOREIGN KEY(branch_id,scene_id) REFERENCES branch_scenes(branch_id,scene_id)
     )''',
   ];
 }

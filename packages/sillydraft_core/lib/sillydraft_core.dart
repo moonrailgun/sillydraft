@@ -19,3 +19,4 @@ export 'src/model/task.dart';
 export 'src/tasks/task_runner.dart';
 export 'src/agent/writing_service.dart';
 export 'src/agent/editor_agent.dart';
+export 'src/model/bookmark.dart';
