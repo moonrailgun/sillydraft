@@ -46,9 +46,9 @@
 
 **Interfaces:** `CardImporter.decode(Uint8List bytes, String filename)`, `PresetImporter.decode(Map<String,dynamic>)`, typed `CharacterCard`, `ImportedPreset`, diagnostics and raw-source export.
 
-- [ ] Write failing fixture tests for V1/V2/V3 JSON, PNG priority/metadata, CHARX assets, independent prompt packs, legacy presets and combined text templates.
-- [ ] Implement bounded parsing, retained fields, archive validation and diagnostic classifications.
-- [ ] Verify round trips, malformed inputs and ZIP traversal/expansion rejection before commit.
+- [x] Write failing fixture tests for V1/V2/V3 JSON, PNG priority/metadata, CHARX assets, independent prompt packs, legacy presets and combined text templates.
+- [x] Implement bounded parsing, retained fields, archive validation and diagnostic classifications.
+- [x] Verify round trips, malformed inputs and ZIP traversal/expansion rejection before commit.
 
 ## Task 3: ST prompt compiler, macro and lore runtime
 

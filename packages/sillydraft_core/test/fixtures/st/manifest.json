@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/SillyTavern/SillyTavern",
+  "commit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "sha256": {
+    "openai/Default.json": "a2b1bdcfd190d69b91452baff91281480c32020950092589e692ad6e2c1523bd",
+    "textgen/Default.json": "60363ca2be2216a17cea3a5a3aa7613e68cddb03e91085f27d47f499a28b5ce0",
+    "context/Default.json": "e3c31deba3ef2857c4a43e7d8f25149ca75f7ed68962a63f40f10b72d830ccc1",
+    "context/Story.json": "1a27af7873e184352a56a57de305e973128d11bbbfe2e35c88ff891881ce4bde",
+    "instruct/Story.json": "6f6f37ab66fd11ee3b9477ace44aa925a9c48e762171986073ad0cd14cde2e20",
+    "instruct/ChatML.json": "78d9b539e134364fab3c2fc99f95e09cb9d09302c36731c32d9b820f913ac97f",
+    "sysprompt/Writer - Creative.json": "e4171cec4fc86ff0dbd8707b00af1a09c672ae1960295878f9a21c7973f2e57c",
+    "reasoning/Think XML.json": "6ed9257ba60d433ddc7c393a16ff741ee53f13cee6ad4cf3fa8a511baabb2cab"
+  }
+}
