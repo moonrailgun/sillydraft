@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import '../st/import_types.dart';
 
-enum ModelProtocol { openAICompatible, anthropic, gemini }
+enum ModelProtocol { openAICompatible, anthropic, gemini, sillyDraftRunner }
 
 final class ModelConnection extends JsonSource {
   ModelConnection({
@@ -15,6 +15,7 @@ final class ModelConnection extends JsonSource {
     List<String> extraParameters = const [],
     int contextWindow = 32768,
     int maxOutputTokens = 2048,
+    bool allowInsecureHttp = false,
   }) : super({
          'id': id,
          'name': name,
@@ -25,6 +26,7 @@ final class ModelConnection extends JsonSource {
          'extraParameters': extraParameters,
          'contextWindow': contextWindow,
          'maxOutputTokens': maxOutputTokens,
+         'allowInsecureHttp': allowInsecureHttp,
        }) {
     final uri = Uri.tryParse(baseUrl);
     if (uri == null ||
@@ -37,6 +39,12 @@ final class ModelConnection extends JsonSource {
     }
     if (id.isEmpty || model.trim().isEmpty) {
       throw const FormatException('模型配置缺少标识或模型名称');
+    }
+    if (protocol == ModelProtocol.sillyDraftRunner &&
+        uri.scheme == 'http' &&
+        !['localhost', '127.0.0.1', '::1'].contains(uri.host) &&
+        !allowInsecureHttp) {
+      throw const FormatException('远程执行器需要 HTTPS；可信局域网可明确启用 HTTP');
     }
     if (![
       'max_tokens',
@@ -58,6 +66,7 @@ final class ModelConnection extends JsonSource {
     extraParameters: stringList(map['extraParameters'], 'extraParameters'),
     contextWindow: map['contextWindow'] as int? ?? 32768,
     maxOutputTokens: map['maxOutputTokens'] as int? ?? 2048,
+    allowInsecureHttp: map['allowInsecureHttp'] as bool? ?? false,
   );
   String get id => raw['id'] as String;
   String get name => raw['name'] as String;
@@ -70,6 +79,7 @@ final class ModelConnection extends JsonSource {
       (raw['extraParameters'] as List).cast<String>();
   int get contextWindow => raw['contextWindow'] as int;
   int get maxOutputTokens => raw['maxOutputTokens'] as int;
+  bool get allowInsecureHttp => raw['allowInsecureHttp'] as bool;
 }
 
 final class ProviderRequest extends JsonSource {
@@ -79,12 +89,16 @@ final class ProviderRequest extends JsonSource {
     Map<String, dynamic> parameters = const {},
     List<Map<String, dynamic>> tools = const [],
     List<String> stopStrings = const [],
+    String? executionId,
+    bool retrieveOnly = false,
   }) : super({
          'messages': messages,
          'completionText': completionText,
          'parameters': parameters,
          'tools': tools,
          'stopStrings': stopStrings,
+         'executionId': ?executionId,
+         if (retrieveOnly) 'retrieveOnly': true,
        });
   factory ProviderRequest.fromJson(Map<String, dynamic> json) =>
       ProviderRequest(
@@ -94,6 +108,8 @@ final class ProviderRequest extends JsonSource {
         parameters: json['parameters'] as Map<String, dynamic>? ?? {},
         tools: (json['tools'] as List? ?? []).cast<Map<String, dynamic>>(),
         stopStrings: stringList(json['stopStrings'], 'stopStrings'),
+        executionId: json['executionId'] as String?,
+        retrieveOnly: json['retrieveOnly'] as bool? ?? false,
       );
   List<Map<String, dynamic>> get messages =>
       (raw['messages'] as List).cast<Map<String, dynamic>>();
@@ -103,6 +119,8 @@ final class ProviderRequest extends JsonSource {
   List<Map<String, dynamic>> get tools =>
       (raw['tools'] as List).cast<Map<String, dynamic>>();
   List<String> get stopStrings => (raw['stopStrings'] as List).cast<String>();
+  String? get executionId => raw['executionId'] as String?;
+  bool get retrieveOnly => raw['retrieveOnly'] == true;
 }
 
 sealed class ProviderEvent {

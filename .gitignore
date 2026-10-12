@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+# Personal runner state and credentials/configuration.
+server/runner-data/
+server/model-profiles.json
+server/*.local.json

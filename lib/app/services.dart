@@ -131,6 +131,12 @@ final class AppServices {
   }
 
   Future<ModelProvider> provider(ModelConnection connection) async {
+    if (connection.protocol == ModelProtocol.sillyDraftRunner) {
+      return RemoteModelProvider(
+        config: connection,
+        accessToken: await secrets.read('model/${connection.id}') ?? '',
+      );
+    }
     if (connection.protocol != ModelProtocol.openAICompatible) {
       throw const FormatException('当前版本支持 OpenAI 兼容接口，请使用兼容端点');
     }
@@ -140,11 +146,13 @@ final class AppServices {
     );
   }
 
-  Future<ImageProvider> imageProvider(ModelConnection connection) async =>
-      OpenAIImageProvider(
-        config: connection,
-        apiKey: await secrets.read('model/${connection.id}') ?? '',
-      );
+  Future<ImageProvider> imageProvider(ModelConnection connection) async {
+    final key = await secrets.read('model/${connection.id}') ?? '';
+    if (connection.protocol == ModelProtocol.sillyDraftRunner) {
+      return RemoteImageProvider(config: connection, accessToken: key);
+    }
+    return OpenAIImageProvider(config: connection, apiKey: key);
+  }
 
   Future<List<ModelConnection>> connections() async {
     final setting = await repository.getSetting('connections');
@@ -176,7 +184,12 @@ final class AppServices {
   }
 
   Future<ModelConnection?> connectionFor(String role) async {
-    final all = await connections();
+    final all = (await connections())
+        .where(
+          (c) =>
+              role != 'editor' || c.protocol == ModelProtocol.openAICompatible,
+        )
+        .toList();
     if (all.isEmpty) return null;
     final roles = await repository.getSetting('modelRoles');
     return all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;

@@ -89,7 +89,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('支持 OpenAI 兼容的聊天与文本补全接口。密钥只保存在系统安全存储中。'),
+                child: Text(
+                  '支持 OpenAI 兼容接口和 SillyDraft 远程执行器。密钥只保存在系统安全存储中。编辑 Agent 的工具调用需要直连模型；正文、资料整理和插画可以交给远程执行器。',
+                ),
               ),
               AsyncView(
                 value: ref.watch(connectionsProvider),
@@ -143,36 +145,63 @@ class SettingsScreen extends ConsumerWidget {
                         'analysis': '资料整理',
                         'image': '插画生成',
                       }.entries)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              '${role.key}:${roles[role.key]}:${connections.length}',
-                            ),
-                            isExpanded: true,
-                            initialValue:
-                                connections.any((c) => c.id == roles[role.key])
-                                ? roles[role.key] as String
-                                : connections.first.id,
-                            decoration: InputDecoration(labelText: role.value),
-                            items: connections
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(
-                                      '${c.name} · ${c.model}',
-                                      overflow: TextOverflow.ellipsis,
+                        if (connections.any(
+                          (c) =>
+                              role.key != 'editor' ||
+                              c.protocol == ModelProtocol.openAICompatible,
+                        ))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                '${role.key}:${roles[role.key]}:${connections.length}',
+                              ),
+                              isExpanded: true,
+                              initialValue:
+                                  connections.any(
+                                    (c) =>
+                                        c.id == roles[role.key] &&
+                                        (role.key != 'editor' ||
+                                            c.protocol ==
+                                                ModelProtocol.openAICompatible),
+                                  )
+                                  ? roles[role.key] as String
+                                  : connections
+                                        .firstWhere(
+                                          (c) =>
+                                              role.key != 'editor' ||
+                                              c.protocol ==
+                                                  ModelProtocol
+                                                      .openAICompatible,
+                                        )
+                                        .id,
+                              decoration: InputDecoration(
+                                labelText: role.value,
+                              ),
+                              items: connections
+                                  .where(
+                                    (c) =>
+                                        role.key != 'editor' ||
+                                        c.protocol ==
+                                            ModelProtocol.openAICompatible,
+                                  )
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c.id,
+                                      child: Text(
+                                        '${c.name} · ${c.model}',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  ref.read(repositoryProvider).setSetting(
+                                    'modelRoles',
+                                    {...roles, role.key: value},
                                   ),
-                                )
-                                .toList(),
-                            onChanged: (value) =>
-                                ref.read(repositoryProvider).setSetting(
-                                  'modelRoles',
-                                  {...roles, role.key: value},
-                                ),
+                            ),
                           ),
-                        ),
                     ],
                   ],
                 ),
@@ -228,6 +257,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
   bool _busy = false, _obscure = true;
+  late ModelProtocol _protocol =
+      widget.connection?.protocol ?? ModelProtocol.openAICompatible;
+  late bool _allowInsecure = widget.connection?.allowInsecureHttp ?? false;
+  bool get _remote => _protocol == ModelProtocol.sillyDraftRunner;
   List<String> _models = [];
   String? _message;
   @override
@@ -241,6 +274,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   ModelConnection _configuration({bool listing = false}) => ModelConnection(
     id: _id,
     name: _name.text.trim(),
+    protocol: _protocol,
+    allowInsecureHttp: _allowInsecure,
     baseUrl: _url.text.trim(),
     model: _model.text.trim().isEmpty && listing
         ? 'model-list'
@@ -264,10 +299,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       final secret = _key.text.isNotEmpty
           ? _key.text
           : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
-      provider = OpenAICompatibleProvider(
-        config: _configuration(listing: true),
-        apiKey: secret,
-      );
+      final config = _configuration(listing: true);
+      provider = _remote
+          ? RemoteModelProvider(config: config, accessToken: secret)
+          : OpenAICompatibleProvider(config: config, apiKey: secret);
       final models = await provider.listModels();
       if (mounted) {
         setState(() {
@@ -287,6 +322,12 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
+      if (_remote &&
+          _key.text.isEmpty &&
+          (await ref.read(servicesProvider).secrets.read('model/$_id') ?? '')
+              .isEmpty) {
+        throw const FormatException('请填写远程执行器访问令牌');
+      }
       await ref
           .read(servicesProvider)
           .saveConnection(
@@ -316,6 +357,29 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              DropdownButtonFormField<ModelProtocol>(
+                initialValue: _protocol,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '连接方式'),
+                items: const [
+                  DropdownMenuItem(
+                    value: ModelProtocol.openAICompatible,
+                    child: Text('OpenAI 兼容接口'),
+                  ),
+                  DropdownMenuItem(
+                    value: ModelProtocol.sillyDraftRunner,
+                    child: Text('SillyDraft 远程执行器'),
+                  ),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() {
+                        _protocol = value!;
+                        _models = [];
+                        _message = null;
+                      }),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _name,
                 decoration: const InputDecoration(labelText: '连接名称'),
@@ -324,23 +388,35 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _url,
-                decoration: const InputDecoration(
-                  labelText: 'API 基础地址',
-                  helperText: '例如 https://服务地址/v1，不含 /chat/completions',
+                decoration: InputDecoration(
+                  labelText: _remote ? '远程执行器地址' : 'API 基础地址',
+                  helperText: _remote
+                      ? '例如 https://runner.example，不加 /v1'
+                      : '例如 https://服务地址/v1，不含 /chat/completions',
                 ),
                 keyboardType: TextInputType.url,
                 validator: _required,
               ),
               const SizedBox(height: 16),
+              if (_remote)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _allowInsecure,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _allowInsecure = value!),
+                  title: const Text('允许可信局域网 HTTP'),
+                  subtitle: const Text('HTTP 会明文传输访问令牌与写作内容。公网请使用 HTTPS。'),
+                ),
               TextFormField(
                 controller: _key,
                 obscureText: _obscure,
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: InputDecoration(
-                  labelText: 'API Key',
+                  labelText: _remote ? '访问令牌' : 'API Key',
                   helperText: widget.connection == null
-                      ? '本地无鉴权服务可以留空'
+                      ? (_remote ? '填写 SILLYDRAFT_RUNNER_TOKEN' : '本地无鉴权服务可以留空')
                       : '留空保留现有密钥',
                   suffixIcon: IconButton(
                     tooltip: _obscure ? '显示密钥' : '隐藏密钥',
@@ -356,9 +432,9 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _model,
-                decoration: const InputDecoration(
-                  labelText: '模型名称',
-                  hintText: '服务商提供的模型 ID',
+                decoration: InputDecoration(
+                  labelText: _remote ? '服务端模型配置 ID' : '模型名称',
+                  hintText: _remote ? '例如 writer 或 illustrator' : '服务商提供的模型 ID',
                 ),
                 validator: _required,
               ),

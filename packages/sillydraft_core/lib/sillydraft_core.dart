@@ -20,6 +20,7 @@ export 'src/st/template_engine.dart';
 export 'src/st/world_book_engine.dart';
 export 'src/providers/provider.dart';
 export 'src/providers/openai_compatible.dart';
+export 'src/providers/remote_provider.dart';
 export 'src/model/task.dart';
 export 'src/tasks/task_runner.dart';
 export 'src/agent/writing_service.dart';

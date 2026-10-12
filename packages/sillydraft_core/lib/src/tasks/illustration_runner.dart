@@ -10,9 +10,12 @@ extension _IllustrationExecution on TaskRunner {
       throw const ProviderException('image_unavailable', '生图服务或本地图片目录尚未配置');
     }
     final input = task.input,
-        request = ImageRequest.fromJson(
-          jsonObject(task.input['imageRequest'], 'imageRequest'),
-        );
+        request = ImageRequest.fromJson({
+          ...jsonObject(task.input['imageRequest'], 'imageRequest'),
+          if (task.isRemote) 'executionId': task.id,
+          if (task.isRemote)
+            'retrieveOnly': task.result['remoteReconnect'] == true,
+        });
     final connection = ModelConnection.fromJson(
       jsonObject(input['connection'], 'connection'),
     );

@@ -124,9 +124,9 @@
 
 **Files:** `server/` Dart executable, durable job store, API protocol and deployment documentation/tests.
 
-- [ ] Write failing HTTP integration tests for authenticated task submission, disconnect/reconnect, progress retrieval, cancellation and idempotency.
-- [ ] Implement runner using core providers/compiler/tasks, explicit connection configuration and persisted job snapshots.
-- [ ] Verify process restart, repeated delivery and client revision checks; commit.
+- [x] Write failing HTTP integration tests for authenticated task submission, disconnect/reconnect, progress retrieval, cancellation and idempotency.
+- [x] Implement runner using core providers/compiler/tasks, explicit connection configuration and persisted job snapshots.
+- [x] Verify process restart, repeated delivery and client revision checks; commit.
 
 ## Task 12: Product audit and delivery
 

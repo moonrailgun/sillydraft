@@ -99,6 +99,41 @@ extension TaskOperations on StoryRepository {
     return rows.length;
   });
 
+  /// Reattach only to the same immutable remote request. Historical scene bases
+  /// remain valid for retrieval; accepting the eventual proposal still uses CAS.
+  Future<GenerationTask> requeueRemoteTask(String id) => _write(() async {
+    final task = await getTask(id);
+    if (!task.isRemote ||
+        task.kind == TaskKind.agent ||
+        ![TaskStatus.failed, TaskStatus.interrupted].contains(task.status) ||
+        task.result.containsKey('proposalId') ||
+        task.result.containsKey('assetId')) {
+      throw StateError('此任务不能重新连接；已完成的结果无需再次获取');
+    }
+    await _execute(
+      "UPDATE generation_tasks SET status = 'queued', error = '', result_json = ?, updated_at = ? WHERE id = ?",
+      [
+        jsonEncode({...task.result, 'remoteReconnect': true}),
+        _now(),
+        id,
+      ],
+    );
+    return getTask(id);
+  });
+
+  /// Called only after the remote service confirms that execution has stopped.
+  Future<GenerationTask> acknowledgeRemoteCancellation(String id) =>
+      _write(() async {
+        final task = await getTask(id);
+        if (!task.isRemote) throw StateError('此任务不是远程任务');
+        if (task.status == TaskStatus.completed) return task;
+        await _execute(
+          "UPDATE generation_tasks SET status = 'cancelled', error = '', updated_at = ? WHERE id = ?",
+          [_now(), id],
+        );
+        return getTask(id);
+      });
+
   Future<GenerationTask> completeWritingTask(
     String id, {
     required ManuscriptContent content,

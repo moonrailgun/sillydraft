@@ -1,4 +1,5 @@
 import '../st/import_types.dart';
+import '../providers/provider.dart';
 
 enum TaskKind { writing, rewrite, branches, analysis, agent, illustration }
 
@@ -30,6 +31,9 @@ final class GenerationTask extends JsonSource {
   Map<String, dynamic> get input => raw;
   bool get isActive =>
       status == TaskStatus.queued || status == TaskStatus.running;
+  bool get isRemote =>
+      (input['connection'] as Map?)?['protocol'] ==
+      ModelProtocol.sillyDraftRunner.name;
 }
 
 final class BranchVariables {

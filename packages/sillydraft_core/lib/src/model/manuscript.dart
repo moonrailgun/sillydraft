@@ -152,10 +152,7 @@ final class ManuscriptContent {
         }
         // Block images occupy their own paragraph in Quill and the reader.
         if (offset > 0 && text[offset - 1] != '\n') {
-          operations.add({
-            'insert': '\n',
-            'attributes': ?paragraphAttributes,
-          });
+          operations.add({'insert': '\n', 'attributes': ?paragraphAttributes});
         }
         operations.add({
           'insert': {'image': 'asset:$assetId'},

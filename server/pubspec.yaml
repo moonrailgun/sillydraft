@@ -1,0 +1,14 @@
+name: sillydraft_server
+description: Optional durable personal execution service for SillyDraft.
+publish_to: none
+version: 0.1.0
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+dependencies:
+  sillydraft_core:
+    path: ../packages/sillydraft_core
+  sqlite3: ^3.7.0
+  crypto: ^3.0.7
+dev_dependencies:
+  test: ^1.26.3
+  lints: ^6.0.0

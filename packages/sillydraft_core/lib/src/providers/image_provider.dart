@@ -8,10 +8,14 @@ final class ImageRequest extends JsonSource {
     required String prompt,
     Map<String, dynamic> parameters = const {},
     List<String> allowedDownloadHosts = const [],
+    String? executionId,
+    bool retrieveOnly = false,
   }) : super({
          'prompt': prompt,
          'parameters': parameters,
          'allowedDownloadHosts': allowedDownloadHosts,
+         'executionId': ?executionId,
+         if (retrieveOnly) 'retrieveOnly': true,
        }) {
     if (prompt.trim().isEmpty || prompt.length > 32000) {
       throw const FormatException('图片提示词须为 1 到 32000 个字符');
@@ -22,8 +26,12 @@ final class ImageRequest extends JsonSource {
     parameters: (raw['parameters'] as Map? ?? {}).cast<String, dynamic>(),
     allowedDownloadHosts: (raw['allowedDownloadHosts'] as List? ?? [])
         .cast<String>(),
+    executionId: raw['executionId'] as String?,
+    retrieveOnly: raw['retrieveOnly'] as bool? ?? false,
   );
   String get prompt => raw['prompt'] as String;
+  String? get executionId => raw['executionId'] as String?;
+  bool get retrieveOnly => raw['retrieveOnly'] == true;
   Map<String, dynamic> get parameters =>
       raw['parameters'] as Map<String, dynamic>;
   List<String> get allowedDownloadHosts =>

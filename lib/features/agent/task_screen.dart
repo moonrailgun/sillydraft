@@ -44,7 +44,27 @@ class TaskScreen extends ConsumerWidget {
               ),
             ),
           if (task.status == TaskStatus.interrupted)
-            const Text('之前的模型连接已中断。重新生成会创建新任务并再次发起模型请求。'),
+            Text(
+              task.isRemote
+                  ? '本地连接已中断，任务可能仍在服务端执行。获取远程结果会连接同一任务；重新生成会发起新的模型请求。'
+                  : '之前的模型连接已中断。重新生成会创建新任务并再次发起模型请求。',
+            ),
+          if (task.isRemote &&
+              [TaskStatus.failed, TaskStatus.interrupted].contains(task.status))
+            FilledButton.icon(
+              onPressed: () async {
+                try {
+                  await ref
+                      .read(servicesProvider)
+                      .runner
+                      .reconnectRemote(task.id);
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
+                }
+              },
+              icon: const Icon(Icons.cloud_download_outlined),
+              label: const Text('获取远程结果'),
+            ),
           const SizedBox(height: 20),
           if (task.kind == TaskKind.illustration && task.isActive)
             Text(
@@ -98,7 +118,12 @@ class TaskScreen extends ConsumerWidget {
               ),
               child: const Text('比较候选走向'),
             ),
-          if (task.isActive)
+          if (task.isActive ||
+              (task.isRemote &&
+                  [
+                    TaskStatus.failed,
+                    TaskStatus.interrupted,
+                  ].contains(task.status)))
             OutlinedButton.icon(
               onPressed: () async {
                 try {

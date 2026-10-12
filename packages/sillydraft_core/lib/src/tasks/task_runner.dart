@@ -10,6 +10,7 @@ import '../providers/image_provider.dart';
 import '../model/manuscript.dart';
 import '../model/task.dart';
 import '../providers/provider.dart';
+import '../providers/remote_provider.dart';
 import '../st/import_types.dart';
 import '../st/card_importer.dart';
 import '../st/preset_importer.dart';
@@ -66,6 +67,11 @@ final class TaskRunner {
       baseRevisionId: baseRevisionId,
       retryOf: retryOf,
     );
+    return _launch(task);
+  }
+
+  Future<GenerationTask> _launch(GenerationTask task) async {
+    if (_closing) throw StateError('任务执行器已关闭');
     final cancel = GenerationCancellation();
     _cancellations[task.id] = cancel;
     final future = _execute(task, cancel);
@@ -85,8 +91,30 @@ final class TaskRunner {
   }
 
   Future<void> cancel(String id) async {
+    final task = await repository.getTask(id);
+    if (task.isRemote) {
+      final config = ModelConnection.fromJson(
+        jsonObject(task.input['connection'], 'connection'),
+      );
+      final provider = await providerFactory(config);
+      try {
+        if (provider is! RemoteJobControl) throw StateError('连接不支持远程取消确认');
+        await (provider as RemoteJobControl).cancelRemote(id);
+      } finally {
+        provider.close();
+      }
+      _cancellations[id]?.cancel();
+      await repository.acknowledgeRemoteCancellation(id);
+      return;
+    }
     _cancellations[id]?.cancel();
     await repository.updateTask(id, status: TaskStatus.cancelled);
+  }
+
+  Future<GenerationTask> reconnectRemote(String id) async {
+    if (_closing) throw StateError('任务执行器已关闭');
+    if (_running.containsKey(id)) return repository.getTask(id);
+    return _launch(await repository.requeueRemoteTask(id));
   }
 
   /// Retry explicitly starts a new network request and a new durable task. It
@@ -135,9 +163,12 @@ final class TaskRunner {
       final connection = ModelConnection.fromJson(
         jsonObject(input['connection'], 'connection'),
       );
-      final request = ProviderRequest.fromJson(
-        jsonObject(input['request'], 'request'),
-      );
+      final request = ProviderRequest.fromJson({
+        ...jsonObject(input['request'], 'request'),
+        if (task.isRemote) 'executionId': task.id,
+        if (task.isRemote)
+          'retrieveOnly': task.result['remoteReconnect'] == true,
+      });
       provider = await providerFactory(connection);
       final diagnostics = provider.validateParameters(request);
       await repository.updateTask(
@@ -239,7 +270,9 @@ final class TaskRunner {
         status: _closing ? TaskStatus.interrupted : TaskStatus.cancelled,
         partialText: text.toString(),
         reasoning: reasoning.toString(),
-        error: _closing ? '应用关闭，生成已中断。' : '',
+        error: _closing
+            ? (task.isRemote ? '本地连接已关闭，远程任务可能仍在执行，可获取同一任务的结果。' : '应用关闭，生成已中断。')
+            : '',
       );
     } on ProviderException catch (error) {
       await repository.updateTask(
