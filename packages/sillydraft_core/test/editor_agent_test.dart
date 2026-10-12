@@ -1,9 +1,118 @@
+import 'dart:convert';
+
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
 import 'task_runner_test.dart' show ScriptProvider;
 
 void main() {
+  test(
+    'editor tools freeze scene scope and leave lore changes for review',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '按位置编辑');
+      final chapter = await repo.createChapter(
+        branchId: novel.activeBranchId,
+        title: '一',
+      );
+      final first = await repo.createScene(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        content: ManuscriptContent.plainText('门尚未打开'),
+      );
+      final later = await repo.createScene(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        content: ManuscriptContent.plainText('门后是未来秘密'),
+      );
+      final lore = await repo.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.location,
+        name: '旧宅',
+        content: '锁住的大门',
+        atSceneId: first.id,
+      );
+      await repo.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.world,
+        name: '未来秘密',
+        content: '未来秘密',
+        atSceneId: later.id,
+      );
+      final conversation = await repo.createConversation(
+        branchId: novel.activeBranchId,
+        throughSceneId: first.id,
+      );
+      final config = ModelConnection(
+        id: 'test',
+        name: 'test',
+        baseUrl: 'http://localhost:1',
+        model: 'test',
+      );
+      var round = 0;
+      String? proposalTask;
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+          round++;
+          if (round == 1) {
+            expect(
+              request.tools.map((t) => (t['function'] as Map)['name']),
+              contains('propose_lore'),
+            );
+            yield ToolCallReady('l1', 'list_lore', {});
+          } else if (round == 2) {
+            expect(request.messages.last['content'], contains('旧宅'));
+            expect(request.messages.last['content'], isNot(contains('未来秘密')));
+            yield ToolCallReady('l2', 'read_lore', {'id': lore.id});
+          } else if (round == 3) {
+            expect(request.messages.last['content'], contains('锁住的大门'));
+            yield ToolCallReady('l3', 'read_scene', {'sceneId': later.id});
+          } else if (round == 4) {
+            expect(request.messages.last['content'], contains('error'));
+            yield ToolCallReady('l4', 'propose_lore', {
+              'kind': 'foreshadow',
+              'name': '未开启的门',
+              'content': '门后可能藏着线索',
+              'certainty': 'inference',
+              'sourceSceneId': first.id,
+            });
+          } else {
+            final result =
+                jsonDecode(request.messages.last['content'] as String) as Map;
+            proposalTask = result['taskId'] as String;
+            expect(result['accepted'], false);
+            yield const TextDelta('已提出伏笔资料建议，等待审阅。');
+            yield const GenerationFinished('stop');
+            return;
+          }
+          yield const GenerationFinished('tool_calls');
+        }),
+      );
+      addTearDown(runner.close);
+      final task = await EditorAgent(
+        repository: repo,
+        runner: runner,
+      ).send(conversationId: conversation, connection: config, message: '补充伏笔');
+      expect((await runner.wait(task.id)).status, TaskStatus.completed);
+      expect(proposalTask, isNotNull);
+      expect((await repo.listLore(novel.activeBranchId)).length, 2);
+      final accepted = await repo.acceptAnalysisEntry(
+        taskId: proposalTask!,
+        index: 0,
+      );
+      expect(accepted.certainty, LoreCertainty.inference);
+      expect(accepted.atSceneId, first.id);
+      expect(
+        (await repo.getScene(
+          branchId: novel.activeBranchId,
+          sceneId: first.id,
+        )).revisionId,
+        first.revisionId,
+      );
+    },
+  );
   test('editor completes a tool round within its branch without writing manuscript', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);

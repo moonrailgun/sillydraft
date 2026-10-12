@@ -147,21 +147,10 @@ extension TaskOperations on StoryRepository {
     return getTask(id);
   });
 
-  Future<BranchVariables> getBranchVariables(String branchId) async {
-    await getBranch(branchId);
-    final rows = await _rows(
-      'SELECT * FROM branch_variables WHERE branch_id = ?',
-      [branchId],
-    );
-    if (rows.isEmpty) return BranchVariables(version: 0);
-    return BranchVariables(
-      version: rows.single['version'] as int,
-      local: (jsonDecode(rows.single['local_json'] as String) as Map)
-          .cast<String, String>(),
-      global: (jsonDecode(rows.single['global_json'] as String) as Map)
-          .cast<String, String>(),
-    );
-  }
+  Future<BranchVariables> getBranchVariables(
+    String branchId, {
+    String? throughSceneId,
+  }) => _variablesAt(branchId, throughSceneId: throughSceneId);
 
   Future<void> _commitProposalVariables(
     ManuscriptProposal proposal,
@@ -176,28 +165,12 @@ extension TaskOperations on StoryRepository {
     if (variables.version != task.input['variableBaseVersion']) {
       throw const VariableConflict();
     }
-    final local = jsonEncode(result['local'] ?? <String, String>{});
-    final global = jsonEncode(result['global'] ?? <String, String>{});
-    final version = variables.version + 1;
-    await _execute(
-      '''INSERT INTO branch_variables (branch_id, version, local_json, global_json)
-      VALUES (?, ?, ?, ?) ON CONFLICT(branch_id) DO UPDATE SET version = excluded.version,
-      local_json = excluded.local_json, global_json = excluded.global_json''',
-      [proposal.branchId, version, local, global],
-    );
-    await _execute(
-      '''INSERT INTO variable_revisions (id, branch_id, version, scene_id, revision_id, local_json, global_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        _id(),
-        proposal.branchId,
-        version,
-        scene.id,
-        scene.revisionId,
-        local,
-        global,
-        _now(),
-      ],
+    await _setBranchVariables(
+      branchId: proposal.branchId,
+      scene: scene,
+      expectedVersion: variables.version,
+      local: (result['local'] as Map? ?? {}).cast<String, String>(),
+      global: (result['global'] as Map? ?? {}).cast<String, String>(),
     );
   }
 }

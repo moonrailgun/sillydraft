@@ -41,11 +41,17 @@ class _AgentState extends ConsumerState<AgentScreen> {
   Future<void> _initialize() async {
     try {
       final repo = ref.read(repositoryProvider),
-          all = await ref
+          conversations = await ref
               .read(repositoryProvider)
               .listConversations(widget.branchId);
+      final all = conversations
+          .where((c) => c['through_scene_id'] == widget.sceneId)
+          .toList();
       final id = all.isEmpty
-          ? await repo.createConversation(branchId: widget.branchId)
+          ? await repo.createConversation(
+              branchId: widget.branchId,
+              throughSceneId: widget.sceneId,
+            )
           : all.first['id'] as String;
       if (mounted) setState(() => _conversation = id);
     } catch (e) {
@@ -57,7 +63,10 @@ class _AgentState extends ConsumerState<AgentScreen> {
     try {
       final id = await ref
           .read(repositoryProvider)
-          .createConversation(branchId: widget.branchId);
+          .createConversation(
+            branchId: widget.branchId,
+            throughSceneId: widget.sceneId,
+          );
       if (mounted) setState(() => _conversation = id);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -244,6 +253,15 @@ class _AgentState extends ConsumerState<AgentScreen> {
               Column(
                 children: [
                   Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Text(
+                      widget.sceneId == null
+                          ? '编辑位置：当前分支末尾'
+                          : '编辑位置：${ref.watch(storyProvider(widget.branchId)).value?.scenes.where((s) => s.id == widget.sceneId).firstOrNull?.title ?? '当前场景'} · 仅参考截至此处的资料',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 6,
@@ -255,25 +273,33 @@ class _AgentState extends ConsumerState<AgentScreen> {
                             value: ref.watch(
                               conversationsProvider(widget.branchId),
                             ),
-                            builder: (all) => DropdownButton<String>(
-                              isExpanded: true,
-                              value: all.any((c) => c['id'] == _conversation)
-                                  ? _conversation
-                                  : null,
-                              hint: const Text('选择会话'),
-                              items: [
-                                for (final (i, c) in all.indexed)
-                                  DropdownMenuItem(
-                                    value: c['id'] as String,
-                                    child: Text(
-                                      '${c['title']} · ${all.length - i}',
-                                      overflow: TextOverflow.ellipsis,
+                            builder: (conversations) {
+                              final all = conversations
+                                  .where(
+                                    (c) =>
+                                        c['through_scene_id'] == widget.sceneId,
+                                  )
+                                  .toList();
+                              return DropdownButton<String>(
+                                isExpanded: true,
+                                value: all.any((c) => c['id'] == _conversation)
+                                    ? _conversation
+                                    : null,
+                                hint: const Text('选择会话'),
+                                items: [
+                                  for (final (i, c) in all.indexed)
+                                    DropdownMenuItem(
+                                      value: c['id'] as String,
+                                      child: Text(
+                                        '${c['title']} · ${all.length - i}',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                              ],
-                              onChanged: (v) =>
-                                  setState(() => _conversation = v),
-                            ),
+                                ],
+                                onChanged: (v) =>
+                                    setState(() => _conversation = v),
+                              );
+                            },
                           ),
                         ),
                         IconButton(

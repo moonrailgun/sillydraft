@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -29,6 +29,7 @@ final class StoryDatabase extends GeneratedDatabase {
         ...taskSchema,
         ...preferencesSchema,
         ...resourceSchema,
+        ...loreSchema,
       ]) {
         await customStatement(sql);
       }
@@ -46,6 +47,11 @@ final class StoryDatabase extends GeneratedDatabase {
       }
       if (from < 4) {
         for (final sql in resourceSchema) {
+          await customStatement(sql);
+        }
+      }
+      if (from < 5) {
+        for (final sql in loreSchema) {
           await customStatement(sql);
         }
       }
@@ -154,5 +160,19 @@ final class StoryDatabase extends GeneratedDatabase {
       parent_id TEXT REFERENCES library_resources(id), archived INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     )''',
+  ];
+  static const loreSchema = <String>[
+    'ALTER TABLE agent_conversations ADD COLUMN through_scene_id TEXT',
+    '''CREATE TABLE lore_versions (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT, revision_id TEXT NOT NULL UNIQUE, entity_id TEXT NOT NULL,
+      branch_id TEXT NOT NULL REFERENCES branches(id), previous_revision_id TEXT REFERENCES lore_versions(revision_id),
+      kind TEXT NOT NULL,name TEXT NOT NULL,content TEXT NOT NULL,certainty TEXT NOT NULL,
+      data_json TEXT NOT NULL,provenance_json TEXT NOT NULL,at_scene_id TEXT,deleted INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL
+    )''',
+    'CREATE INDEX lore_branch ON lore_versions(branch_id,entity_id,sequence)',
+    '''CREATE TABLE analysis_acceptances (task_id TEXT NOT NULL REFERENCES generation_tasks(id),entry_index INTEGER NOT NULL,
+      entity_id TEXT NOT NULL,revision_id TEXT NOT NULL REFERENCES lore_versions(revision_id),PRIMARY KEY(task_id,entry_index))''',
+    '''CREATE TABLE branch_candidate_selections (task_id TEXT NOT NULL REFERENCES generation_tasks(id),candidate_index INTEGER NOT NULL,
+      branch_id TEXT NOT NULL REFERENCES branches(id),PRIMARY KEY(task_id,candidate_index))''',
   ];
 }

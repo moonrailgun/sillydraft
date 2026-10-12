@@ -5,6 +5,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../branches/branch_screen.dart';
+
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 
@@ -490,6 +492,23 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
                           fontSize: 13,
                         ),
                       ),
+                      if (_index == story.scenes.length - 1)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 24),
+                          child: TextButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => BranchScreen(
+                                  novelId: story.novel.id,
+                                  sourceBranchId: story.branch.id,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.fork_right),
+                            label: const Text('探索后续走向与结局'),
+                          ),
+                        ),
                     ],
                   ),
                 ),

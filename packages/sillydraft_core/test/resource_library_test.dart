@@ -6,6 +6,80 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('starting from a card selects one greeting and seeds sourced lore and persona', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final library = ResourceLibrary(
+      repository: repo,
+      keyProvider: () async => List.filled(32, 1),
+    );
+    final resource = await library.import(
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'spec': 'chara_card_v2',
+            'data': {
+              'name': '苏雾',
+              'description': '灯塔守护人',
+              'scenario': '雾港的渡口',
+              'first_mes': '{{user}}听见钟声。',
+              'alternate_greetings': [
+                '{{setvar::route::sea}}{{char}}交给{{user}}一封信。',
+              ],
+              'character_book': {
+                'entries': [
+                  {
+                    'id': 1,
+                    'keys': ['灯塔'],
+                    'content': '灯塔只在夜间出现',
+                    'enabled': true,
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+      filename: 'card.json',
+      kind: ResourceKind.character,
+    );
+    final novel = await repo.createNovelFromCard(
+      resourceId: resource.id,
+      title: '雾港',
+      userName: '林舟',
+      greetingIndex: 1,
+    );
+    final story = await repo.getStory(novel.activeBranchId);
+    expect(story.text.trim(), '苏雾交给林舟一封信。');
+    expect(story.text, isNot(contains('听见钟声')));
+    final lore = await repo.listLore(novel.activeBranchId);
+    expect(
+      lore
+          .where((e) => e.kind == LoreKind.character)
+          .single
+          .provenance['resourceId'],
+      resource.id,
+    );
+    expect(lore.any((e) => e.data['worldBookOnly'] == true), isTrue);
+    expect(
+      (await repo.getSetting('writing/${novel.activeBranchId}'))?['userName'],
+      '林舟',
+    );
+    final edited = await repo.createNovelFromCard(
+      resourceId: resource.id,
+      title: '修改开场',
+      greetingIndex: 1,
+      openingOverride: '自行修改后的开场',
+    );
+    expect(
+      (await repo.getBranchVariables(edited.activeBranchId)).local['route'],
+      'sea',
+    );
+    expect(
+      (await repo.getStory(edited.activeBranchId)).text.trim(),
+      '自行修改后的开场',
+    );
+  });
   test('resource versions preserve unknown fields and protect original credentials across restart', () async {
     final dir = Directory.systemTemp.createTempSync('sillydraft-library-');
     addTearDown(() => dir.deleteSync(recursive: true));

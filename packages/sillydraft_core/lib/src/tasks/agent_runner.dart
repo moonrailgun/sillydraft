@@ -4,6 +4,70 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
+      'name': 'list_lore',
+      'description': '列出当前分支在编辑位置已可见的旁路资料，包括确定程度与是否待复核。',
+      'parameters': {
+        'type': 'object',
+        'properties': <String, dynamic>{},
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'read_lore',
+      'description': '按 ID 读取当前编辑位置的旁路资料。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+        },
+        'required': ['id'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'propose_lore',
+      'description': '提出一条待作者审阅的资料建议。不会直接修改资料；sourceSceneId 必须是可见场景。关系须提供已有资料的 fromId/toId。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'kind': {
+            'type': 'string',
+            'enum': [
+              'character',
+              'world',
+              'organization',
+              'item',
+              'location',
+              'event',
+              'foreshadow',
+              'relationship',
+            ],
+          },
+          'name': {'type': 'string'},
+          'content': {'type': 'string'},
+          'certainty': {
+            'type': 'string',
+            'enum': ['fact', 'plan', 'inference'],
+          },
+          'sourceSceneId': {'type': 'string'},
+          'fromId': {'type': 'string'},
+          'toId': {'type': 'string'},
+          'directed': {'type': 'boolean'},
+        },
+        'required': ['kind', 'name', 'content', 'certainty', 'sourceSceneId'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'list_scenes',
       'description': '列出当前分支的场景和版本',
       'parameters': {
@@ -182,16 +246,128 @@ extension _AgentExecution on TaskRunner {
     GenerationCancellation cancel,
   ) async {
     final args = call.arguments;
+    final scenes = (task.input['sceneSnapshot'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final lore = (task.input['loreSnapshot'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    if (call.name == 'list_lore') {
+      if (args.isNotEmpty) throw const FormatException('参数无效');
+      return {
+        'entries': [
+          for (final e in lore)
+            {
+              for (final key in [
+                'id',
+                'name',
+                'kind',
+                'certainty',
+                'sourceStale',
+              ])
+                key: e[key],
+            },
+        ],
+      };
+    }
+    if (call.name == 'read_lore') {
+      if (args.length != 1 || args['id'] is! String) {
+        throw const FormatException('参数无效');
+      }
+      return lore.firstWhere((e) => e['id'] == args['id']);
+    }
+    if (call.name == 'propose_lore') {
+      const required = [
+        'kind',
+        'name',
+        'content',
+        'certainty',
+        'sourceSceneId',
+      ];
+      if (required.any(
+            (key) =>
+                args[key] is! String || (args[key] as String).trim().isEmpty,
+          ) ||
+          args.keys.any(
+            (key) => ![...required, 'fromId', 'toId', 'directed'].contains(key),
+          ) ||
+          ![
+            'character',
+            'world',
+            'organization',
+            'item',
+            'location',
+            'event',
+            'foreshadow',
+            'relationship',
+          ].contains(args['kind']) ||
+          !['fact', 'plan', 'inference'].contains(args['certainty']) ||
+          (args['name'] as String).length > 300 ||
+          (args['content'] as String).length > 100000 ||
+          !scenes.any((s) => s['id'] == args['sourceSceneId'])) {
+        throw const FormatException('资料建议参数无效');
+      }
+      final data = <String, dynamic>{};
+      if (args['kind'] == 'relationship') {
+        final endpoints = await repository.listLore(
+          task.branchId,
+          throughSceneId: args['sourceSceneId'] as String,
+        );
+        if (args['fromId'] == args['toId'] ||
+            ['fromId', 'toId'].any(
+              (key) => !endpoints.any(
+                (e) =>
+                    e.id == args[key] &&
+                    !['relationship', 'map'].contains(e.kind.name),
+              ),
+            ) ||
+            (args.containsKey('directed') && args['directed'] is! bool)) {
+          throw const FormatException('关系端点无效');
+        }
+        data.addAll({
+          'fromId': args['fromId'],
+          'toId': args['toId'],
+          'directed': args['directed'] ?? true,
+        });
+      }
+      if (!await repository.taskSourcesCurrent(task.id)) {
+        throw const FormatException('正文已变化，请重新提出建议');
+      }
+      cancel.check();
+      final proposal = await repository.createTask(
+        branchId: task.branchId,
+        kind: TaskKind.analysis,
+        input: {
+          'sourceRevisions': task.input['sourceRevisions'],
+          'throughSceneId': task.input['throughSceneId'],
+          'parentTaskId': task.id,
+          'conversationId': task.input['conversationId'],
+          'origin': 'editorSuggestion',
+        },
+      );
+      await repository.updateTask(
+        proposal.id,
+        status: TaskStatus.completed,
+        result: {
+          'entries': [
+            {for (final key in required) key: args[key], 'data': data},
+          ],
+        },
+      );
+      return {
+        'taskId': proposal.id,
+        'accepted': false,
+        'message': '资料建议已保存，等待作者逐条审阅。',
+      };
+    }
     if (call.name == 'list_scenes') {
       if (args.isNotEmpty) throw const FormatException('list_scenes 无参数');
-      final story = await repository.getStory(task.branchId);
       return {
         'scenes': [
-          for (final scene in story.scenes)
+          for (final scene in scenes)
             {
-              'id': scene.id,
-              'title': scene.title,
-              'revisionId': scene.revisionId,
+              'id': scene['id'],
+              'title': scene['title'],
+              'revisionId': scene['revisionId'],
+              'canEdit': scene['id'] == task.input['editSceneId'],
             },
         ],
       };
@@ -200,15 +376,12 @@ extension _AgentExecution on TaskRunner {
       if (args.keys.any((k) => k != 'sceneId') || args['sceneId'] is! String) {
         throw const FormatException('参数无效');
       }
-      final scene = await repository.getScene(
-        branchId: task.branchId,
-        sceneId: args['sceneId'] as String,
-      );
+      final scene = scenes.firstWhere((s) => s['id'] == args['sceneId']);
       return {
-        'sceneId': scene.id,
-        'revisionId': scene.revisionId,
-        'title': scene.title,
-        'text': scene.content.text,
+        'sceneId': scene['id'],
+        'revisionId': scene['revisionId'],
+        'title': scene['title'],
+        'text': scene['text'],
       };
     }
     if (call.name == 'propose_scene') {
@@ -220,10 +393,10 @@ extension _AgentExecution on TaskRunner {
           args['append'] is! bool) {
         throw const FormatException('参数无效');
       }
-      await repository.getScene(
-        branchId: task.branchId,
-        sceneId: args['sceneId'] as String,
-      );
+      if (args['sceneId'] != task.input['editSceneId'] ||
+          !await repository.taskSourcesCurrent(task.id)) {
+        throw const FormatException('不属于当前编辑位置，或正文已变化');
+      }
       final input = task.input;
       final service = WritingService(repository: repository, runner: this);
       final context = input['writingContext'] as Map<String, dynamic>? ?? {};

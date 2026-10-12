@@ -21,4 +21,5 @@ export 'src/agent/writing_service.dart';
 export 'src/agent/editor_agent.dart';
 export 'src/model/bookmark.dart';
 export 'src/model/resource.dart';
+export 'src/model/lore.dart';
 export 'src/st/resource_library.dart';

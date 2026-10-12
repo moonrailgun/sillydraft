@@ -8,6 +8,8 @@ import '../bookshelf/novel_dialog.dart';
 import '../reader/reader_screen.dart';
 import 'editor_screen.dart';
 import '../agent/agent_screen.dart';
+import '../lore/lore_screen.dart';
+import '../branches/branch_screen.dart';
 
 final novelProvider = FutureProvider.family<Novel, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -217,6 +219,16 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         title: const Text('作品工作区'),
         actions: [
           IconButton(
+            tooltip: '故事资料',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => LoreScreen(branchId: story.branch.id),
+              ),
+            ),
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
+          IconButton(
             tooltip: '创作助手',
             onPressed: () => Navigator.push(
               context,
@@ -240,10 +252,24 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             ),
             icon: const Icon(Icons.chrome_reader_mode_outlined),
           ),
-          IconButton(
-            tooltip: '作品信息',
-            onPressed: () => showNovelDialog(context, novel: story.novel),
-            icon: const Icon(Icons.more_horiz_rounded),
+          PopupMenuButton<String>(
+            tooltip: '作品操作',
+            onSelected: (value) {
+              if (value == 'branches') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => BranchScreen(novelId: story.novel.id),
+                  ),
+                );
+              } else {
+                showNovelDialog(context, novel: story.novel);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'info', child: Text('作品信息')),
+              PopupMenuItem(value: 'branches', child: Text('故事分支')),
+            ],
           ),
           const SizedBox(width: 8),
         ],

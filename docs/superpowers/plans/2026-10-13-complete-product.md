@@ -92,9 +92,9 @@
 
 **Files:** core lore repository/services and Flutter `features/lore/`, `branches/`, `maps/`; domain and UI tests.
 
-- [ ] Write failing tests for CRUD/provenance, fact versus inference, extraction proposals, stale source analysis, past-position forks and relationship remapping.
-- [ ] Implement searchable dossiers, event/foreshadow timelines, interactive relationship graph, map pins/routes and branch tree/selection/comparison.
-- [ ] Verify selection of a plot candidate creates only the chosen branch facts and history; commit.
+- [x] Write failing tests for CRUD/provenance, fact versus inference, extraction proposals, stale source analysis, past-position forks and relationship remapping.
+- [x] Implement searchable dossiers, event/foreshadow timelines, interactive relationship graph, map pins/routes and branch tree/selection/comparison.
+- [x] Verify selection of a plot candidate creates only the chosen branch facts and history; commit.
 
 ## Task 8: Illustration and asset lifecycle
 

@@ -73,6 +73,55 @@ void main() {
   );
 
   test(
+    'writing at an earlier scene uses only lore and variables available there',
+    () async {
+      final later = await repository.createScene(
+        branchId: novel.activeBranchId,
+        chapterId: scene.chapterId,
+        content: ManuscriptContent.plainText('未来的揭晓'),
+      );
+      await repository.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.character,
+        name: '早期人物',
+        content: '身份未知',
+        atSceneId: scene.id,
+      );
+      await repository.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.world,
+        name: '隐藏答案',
+        content: '未来秘密答案',
+        atSceneId: later.id,
+      );
+      await repository.setBranchVariables(
+        branchId: novel.activeBranchId,
+        sceneId: scene.id,
+        expectedVersion: 0,
+        local: {'phase': '早期阶段'},
+      );
+      await repository.setBranchVariables(
+        branchId: novel.activeBranchId,
+        sceneId: later.id,
+        expectedVersion: 1,
+        local: {'phase': '未来秘密阶段'},
+      );
+      final draft = await service.prepare(
+        branchId: novel.activeBranchId,
+        sceneId: scene.id,
+        connection: connection,
+        brief: '继续',
+      );
+      final request = draft.input['request'].toString();
+      expect(request, contains('早期人物'));
+      expect(request, isNot(contains('未来秘密答案')));
+      expect((draft.input['variableResult'] as Map)['local'], {
+        'phase': '早期阶段',
+      });
+    },
+  );
+
+  test(
     'preview is frozen and selection rewrite preserves surrounding formatting',
     () async {
       scene = await repository.saveScene(

@@ -11,6 +11,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import 'writing_profile.dart';
+import 'card_start_screen.dart';
 
 const resourceLabels = {
   ResourceKind.character: '角色卡',
@@ -303,6 +304,18 @@ class ResourceDetailScreen extends ConsumerWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
+                if (resource.kind == ResourceKind.character)
+                  FilledButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            CardStartScreen(resourceId: resource.id),
+                      ),
+                    ),
+                    icon: const Icon(Icons.auto_stories_outlined),
+                    label: const Text('从角色卡新建小说'),
+                  ),
                 FilledButton.icon(
                   onPressed: () => Navigator.push(
                     context,

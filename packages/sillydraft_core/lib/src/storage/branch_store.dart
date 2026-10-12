@@ -83,6 +83,7 @@ extension BranchOperations on StoryRepository {
         ],
       );
     }
+    await _forkSideData(source, id, selectedScenes);
     await _touchNovel(source.novel.id);
     return getBranch(id);
   });

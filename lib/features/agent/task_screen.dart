@@ -8,6 +8,8 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import 'agent_providers.dart';
 import 'proposal_screen.dart';
+import '../lore/analysis_review_screen.dart';
+import '../branches/candidate_screen.dart';
 
 final taskProvider = FutureProvider.family<GenerationTask, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -51,6 +53,28 @@ class TaskScreen extends ConsumerWidget {
                 ),
               ),
               child: const Text('审阅正文候选'),
+            ),
+          if (task.kind == TaskKind.analysis &&
+              task.status == TaskStatus.completed)
+            FilledButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => AnalysisReviewScreen(taskId: task.id),
+                ),
+              ),
+              child: const Text('审阅资料提取'),
+            ),
+          if (task.kind == TaskKind.branches &&
+              task.status == TaskStatus.completed)
+            FilledButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => CandidateScreen(taskId: task.id),
+                ),
+              ),
+              child: const Text('比较候选走向'),
             ),
           if (task.isActive)
             OutlinedButton.icon(
