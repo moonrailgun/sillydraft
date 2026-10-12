@@ -62,6 +62,12 @@ dart analyze
 
 核心包不依赖 Flutter。正文、分支和修改提案使用 SQLite 事务及不可变版本存储，平台工程覆盖 Android、iOS、macOS、Windows 和 Linux。
 
+目前已实现的核心模块包括正文版本、分支、ST 导入与编译、OpenAI 兼容的聊天/文本补全接口、流式工具调用、持久化生成任务和编辑 Agent。应用界面及平台体验仍在实现中，不能将当前工程视为完整可用版本。
+
+任务保存输入快照、部分输出与错误。失败后重新生成会创建新任务，不会自动重复网络请求。编辑 Agent 的工具限定在当前分支，正文候选需要作者采纳；预设中暂不支持的预填行为会给出明确诊断。
+
+网络协议参考 [OpenAI 流式事件](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events) 与 [工具调用文档](https://developers.openai.com/api/docs/guides/function-calling)。测试使用本地 HTTP 服务，不需要模型密钥或付费请求。
+
 参考资料：
 
 - [ST 预设兼容方案与固定源码依据](docs/st-preset-compatibility.md)

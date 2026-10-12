@@ -66,9 +66,9 @@
 
 **Interfaces:** `ModelProvider` text/tool/image capabilities; `TaskRunner.start/cancel/resume`; `WritingService.generate/rewrite/suggestBranches/analyze`; all tasks refer to persisted source revisions and preset versions.
 
-- [ ] Write failing tests using local protocol endpoints for fragmented streams, tool rounds, cancellation, errors and persisted partial results.
-- [ ] Implement provider adapters, scoped tools, prompt compilation, task records and proposal creation without automatic manuscript mutation.
-- [ ] Verify restart recovery, bounded retries, stale acceptance and deterministic artifact separation; commit.
+- [x] Write failing tests using local protocol endpoints for fragmented streams, tool rounds, cancellation, errors and persisted partial results.
+- [x] Implement provider adapters, scoped tools, prompt compilation, task records and proposal creation without automatic manuscript mutation.
+- [x] Verify restart recovery, bounded retries, stale acceptance and deterministic artifact separation; commit.
 
 ## Task 5: Adaptive bookshelf, reader and editor
 

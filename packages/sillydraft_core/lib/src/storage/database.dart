@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -24,8 +24,15 @@ final class StoryDatabase extends GeneratedDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (_) async {
-      for (final sql in schema) {
+      for (final sql in [...schema, ...taskSchema]) {
         await customStatement(sql);
+      }
+    },
+    onUpgrade: (_, from, to) async {
+      if (from < 2) {
+        for (final sql in taskSchema) {
+          await customStatement(sql);
+        }
       }
     },
     beforeOpen: (_) async {
@@ -82,5 +89,37 @@ final class StoryDatabase extends GeneratedDatabase {
     'CREATE INDEX scenes_order ON branch_scenes(branch_id, chapter_id, position)',
     'CREATE INDEX revisions_scene ON revisions(scene_id)',
     'CREATE INDEX proposals_branch ON proposals(branch_id, status)',
+  ];
+
+  static const taskSchema = <String>[
+    '''CREATE TABLE generation_tasks (
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id),
+      kind TEXT NOT NULL, status TEXT NOT NULL,
+      scene_id TEXT, base_revision_id TEXT REFERENCES revisions(id),
+      input_json TEXT NOT NULL, partial_text TEXT NOT NULL DEFAULT '',
+      reasoning TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+      result_json TEXT NOT NULL DEFAULT '{}', retry_of TEXT REFERENCES generation_tasks(id),
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    )''',
+    'CREATE INDEX tasks_branch ON generation_tasks(branch_id, created_at)',
+    '''CREATE TABLE branch_variables (
+      branch_id TEXT PRIMARY KEY REFERENCES branches(id), version INTEGER NOT NULL,
+      local_json TEXT NOT NULL, global_json TEXT NOT NULL
+    )''',
+    '''CREATE TABLE variable_revisions (
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id),
+      version INTEGER NOT NULL, scene_id TEXT NOT NULL,
+      revision_id TEXT NOT NULL REFERENCES revisions(id),
+      local_json TEXT NOT NULL, global_json TEXT NOT NULL, created_at INTEGER NOT NULL
+    )''',
+    '''CREATE TABLE agent_conversations (
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id),
+      title TEXT NOT NULL, created_at INTEGER NOT NULL
+    )''',
+    '''CREATE TABLE agent_messages (
+      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL, content TEXT NOT NULL, metadata_json TEXT NOT NULL,
+      position INTEGER NOT NULL, created_at INTEGER NOT NULL
+    )''',
   ];
 }

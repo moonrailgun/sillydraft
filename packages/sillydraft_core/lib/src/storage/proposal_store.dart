@@ -64,6 +64,7 @@ extension ProposalOperations on StoryRepository {
       reason: 'accept',
       sourceProposalId: proposal.id,
     );
+    await _commitProposalVariables(proposal, scene);
     await _execute(
       "UPDATE proposals SET status = 'accepted', accepted_revision_id = ? WHERE id = ?",
       [scene.revisionId, proposal.id],
