@@ -8,6 +8,7 @@ import '../model/manuscript.dart';
 import '../model/story.dart';
 import '../model/task.dart';
 import '../model/bookmark.dart';
+import '../model/resource.dart';
 import '../st/import_types.dart';
 import 'database.dart';
 
@@ -18,6 +19,7 @@ part 'story_mappers.dart';
 part 'task_store.dart';
 part 'agent_store.dart';
 part 'preferences_store.dart';
+part 'resource_store.dart';
 
 /// All writable story state is committed here, independently of widget lifetime.
 final class StoryRepository {

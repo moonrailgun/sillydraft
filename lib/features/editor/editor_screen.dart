@@ -7,6 +7,8 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../agent/writing_request_screen.dart';
+import '../agent/task_screen.dart';
 
 class EditorScreen extends ConsumerStatefulWidget {
   const EditorScreen({super.key, required this.scene});
@@ -190,6 +192,47 @@ class _EditorState extends ConsumerState<EditorScreen> {
     }
   }
 
+  Future<void> _generate() async {
+    final selection = _controller.selection;
+    try {
+      await _flush();
+      if (!mounted) return;
+      final end = selection.end.clamp(0, _scene.content.text.length - 1);
+      final start = selection.start.clamp(0, end);
+      final task = await Navigator.push<GenerationTask>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WritingRequestScreen(
+            scene: _scene,
+            rangeStart: end > start ? start : null,
+            rangeEnd: end > start ? end : null,
+          ),
+        ),
+      );
+      if (task != null && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => TaskScreen(taskId: task.id)),
+        );
+        // A proposal may have been accepted while this editor was covered.
+        final latest = await _services.repository.getScene(
+          branchId: _scene.branchId,
+          sceneId: _scene.id,
+        );
+        if (mounted &&
+            latest.revisionId != _scene.revisionId &&
+            _content.encoded == _saved) {
+          _scene = latest;
+          _controller.document = Document.fromJson(latest.content.delta);
+          _saved = _content.encoded;
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -236,6 +279,11 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ],
           ),
           actions: [
+            IconButton(
+              tooltip: '生成或改写选区',
+              onPressed: _generate,
+              icon: const Icon(Icons.auto_awesome_outlined),
+            ),
             IconButton(
               tooltip: '正文版本',
               onPressed: _history,

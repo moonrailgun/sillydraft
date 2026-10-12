@@ -73,6 +73,66 @@ void main() {
   );
 
   test(
+    'preview is frozen and selection rewrite preserves surrounding formatting',
+    () async {
+      scene = await repository.saveScene(
+        branchId: novel.activeBranchId,
+        sceneId: scene.id,
+        expectedRevisionId: scene.revisionId,
+        content: ManuscriptContent.fromDelta([
+          {
+            'insert': '前文',
+            'attributes': {'bold': true},
+          },
+          {'insert': '旧句。'},
+          {
+            'insert': '后文\n',
+            'attributes': {'italic': true},
+          },
+        ]),
+      );
+      script = (request, _) async* {
+        expect(request.messages.last['content'], contains('旧句。'));
+        yield const TextDelta('新句。');
+        yield const GenerationFinished('stop');
+      };
+      final prepared = await service.prepare(
+        branchId: novel.activeBranchId,
+        sceneId: scene.id,
+        connection: connection,
+        brief: '改写选中片段',
+        rangeStart: 2,
+        rangeEnd: 5,
+        rewrite: true,
+      );
+      expect(
+        await repository.listTasks(branchId: novel.activeBranchId),
+        isEmpty,
+      );
+      final task = await service.startPrepared(prepared);
+      expect(task.input['request'], prepared.input['request']);
+      await runner.wait(task.id);
+      final proposal = (await repository.listProposals(novel.activeBranchId))
+          .single;
+      expect(proposal.content.text, '前文新句。后文\n');
+      expect(proposal.content.delta.first['attributes'], {'bold': true});
+      expect(proposal.content.delta.last['attributes'], {'italic': true});
+      expect(
+        (await repository.getScene(
+          branchId: novel.activeBranchId,
+          sceneId: scene.id,
+        )).content.text,
+        '前文旧句。后文\n',
+      );
+      await repository.acceptProposal(proposal.id);
+      await expectLater(
+        service.startPrepared(prepared),
+        throwsA(isA<RevisionConflict>()),
+      );
+    },
+  );
+
+  test(
     'writing uses only accepted story and returns an append proposal',
     () async {
       script = (request, _) async* {

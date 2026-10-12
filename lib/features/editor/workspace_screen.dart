@@ -7,6 +7,7 @@ import '../../app/widgets.dart';
 import '../bookshelf/novel_dialog.dart';
 import '../reader/reader_screen.dart';
 import 'editor_screen.dart';
+import '../agent/agent_screen.dart';
 
 final novelProvider = FutureProvider.family<Novel, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -215,6 +216,19 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       appBar: AppBar(
         title: const Text('作品工作区'),
         actions: [
+          IconButton(
+            tooltip: '创作助手',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => AgentScreen(
+                  branchId: story.branch.id,
+                  sceneId: selected?.id,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.auto_awesome_outlined),
+          ),
           IconButton(
             key: const Key('open-reader'),
             tooltip: '阅读',

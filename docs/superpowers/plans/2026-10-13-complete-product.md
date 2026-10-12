@@ -84,9 +84,9 @@
 
 **Files:** Flutter `features/agent/`, proposal comparison widgets; core integration/controller tests.
 
-- [ ] Write failing flows for stream display, cancellation, selecting source text, diff acceptance/rejection and revision conflicts.
-- [ ] Wire real task runner, scoped conversations and artifact cards into creation workspace; add task recovery controls.
-- [ ] Verify deletion of agent conversations leaves manuscripts readable; commit.
+- [x] Write failing flows for stream display, cancellation, selecting source text, diff acceptance/rejection and revision conflicts.
+- [x] Wire real task runner, scoped conversations and artifact cards into creation workspace; add task recovery controls.
+- [x] Verify deletion of agent conversations leaves manuscripts readable; commit.
 
 ## Task 7: Lore, relationships, maps and branch management
 

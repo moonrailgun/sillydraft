@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -24,7 +24,12 @@ final class StoryDatabase extends GeneratedDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (_) async {
-      for (final sql in [...schema, ...taskSchema, ...preferencesSchema]) {
+      for (final sql in [
+        ...schema,
+        ...taskSchema,
+        ...preferencesSchema,
+        ...resourceSchema,
+      ]) {
         await customStatement(sql);
       }
     },
@@ -36,6 +41,11 @@ final class StoryDatabase extends GeneratedDatabase {
       }
       if (from < 3) {
         for (final sql in preferencesSchema) {
+          await customStatement(sql);
+        }
+      }
+      if (from < 4) {
+        for (final sql in resourceSchema) {
           await customStatement(sql);
         }
       }
@@ -134,6 +144,15 @@ final class StoryDatabase extends GeneratedDatabase {
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, scene_id TEXT NOT NULL,
       label TEXT NOT NULL, offset INTEGER NOT NULL, created_at INTEGER NOT NULL,
       FOREIGN KEY(branch_id,scene_id) REFERENCES branch_scenes(branch_id,scene_id)
+    )''',
+  ];
+
+  static const resourceSchema = <String>[
+    '''CREATE TABLE library_resources (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, filename TEXT NOT NULL,
+      source_hash TEXT NOT NULL, data_json TEXT NOT NULL, encrypted_source BLOB NOT NULL,
+      parent_id TEXT REFERENCES library_resources(id), archived INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
     )''',
   ];
 }

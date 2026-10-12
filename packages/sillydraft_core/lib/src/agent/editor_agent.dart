@@ -2,6 +2,7 @@ import '../model/task.dart';
 import '../providers/provider.dart';
 import '../st/card_importer.dart';
 import '../st/preset_importer.dart';
+import '../st/world_book_engine.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
 
@@ -17,6 +18,11 @@ final class EditorAgent {
     ModelConnection? writingConnection,
     ImportedPreset? writingPreset,
     CharacterCard? card,
+    String userName = '主角',
+    String persona = '',
+    int? selectedOrderId,
+    List<ScopedWorldBook> worldBooks = const [],
+    List<Map<String, dynamic>> globalRegex = const [],
   }) async {
     if (message.trim().isEmpty) throw ArgumentError('请输入创作要求');
     final branchId = await repository.conversationBranch(conversationId);
@@ -47,6 +53,20 @@ final class EditorAgent {
         'writingConnection': (writingConnection ?? connection).raw,
         if (writingPreset != null) 'writingPreset': writingPreset.exportJson(),
         if (card != null) 'card': card.exportJson(),
+        'writingContext': {
+          'userName': userName,
+          'persona': persona,
+          'selectedOrderId': selectedOrderId,
+          'worldBooks': [
+            for (final book in worldBooks)
+              {
+                'data': book.book.exportJson(),
+                'branchId': book.branchId,
+                'availableFromPosition': book.availableFromPosition,
+              },
+          ],
+          'globalRegex': globalRegex,
+        },
       },
     );
   }

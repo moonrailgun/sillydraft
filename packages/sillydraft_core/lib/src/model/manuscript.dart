@@ -75,6 +75,51 @@ final class ManuscriptContent {
     return insert is String ? insert : '\uFFFC';
   }).join();
 
+  void validateRange(int start, int end) {
+    final value = text;
+    if (start < 0 || end < start || end > value.length - 1) {
+      throw RangeError('选区超出正文范围');
+    }
+    for (final index in [start, end]) {
+      if (index > 0 &&
+          index < value.length &&
+          value.codeUnitAt(index) >= 0xdc00 &&
+          value.codeUnitAt(index) <= 0xdfff &&
+          value.codeUnitAt(index - 1) >= 0xd800 &&
+          value.codeUnitAt(index - 1) <= 0xdbff) {
+        throw ArgumentError('选区不能拆分完整字符');
+      }
+    }
+  }
+
+  ManuscriptContent replaceRange(int start, int end, String replacement) {
+    validateRange(start, end);
+    List<Map<String, dynamic>> slice(int from, int to) {
+      final result = <Map<String, dynamic>>[];
+      var position = 0;
+      for (final op in delta) {
+        final insert = op['insert'];
+        final length = insert is String ? insert.length : 1;
+        final a = (from - position).clamp(0, length),
+            b = (to - position).clamp(0, length);
+        if (b > a) {
+          result.add({
+            ...op,
+            'insert': insert is String ? insert.substring(a, b) : insert,
+          });
+        }
+        position += length;
+      }
+      return result;
+    }
+
+    return ManuscriptContent.fromDelta([
+      ...slice(0, start),
+      if (replacement.isNotEmpty) {'insert': replacement},
+      ...slice(end, text.length),
+    ]);
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ManuscriptContent && other._encoded == _encoded;

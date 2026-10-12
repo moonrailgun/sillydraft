@@ -1,0 +1,126 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sillydraft_core/sillydraft_core.dart';
+
+import '../../app/services.dart';
+import '../../app/widgets.dart';
+import 'agent_providers.dart';
+import 'proposal_screen.dart';
+
+final taskProvider = FutureProvider.family<GenerationTask, String>((ref, id) {
+  ref.watch(repositoryChangesProvider);
+  return ref.watch(repositoryProvider).getTask(id);
+});
+
+class TaskScreen extends ConsumerWidget {
+  const TaskScreen({super.key, required this.taskId});
+  final String taskId;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+    appBar: AppBar(title: const Text('生成任务')),
+    body: AsyncView(
+      value: ref.watch(taskProvider(taskId)),
+      builder: (task) => ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            '${taskKindLabels[task.kind]} · ${taskStatusLabels[task.status]}',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 12),
+          if (task.isActive) const LinearProgressIndicator(),
+          if (task.error.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                task.error,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (task.status == TaskStatus.interrupted)
+            const Text('之前的模型连接已中断。重新生成会创建新任务并再次发起模型请求。'),
+          const SizedBox(height: 20),
+          if (task.result['proposalId'] case final String id)
+            FilledButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => ProposalScreen(proposalId: id),
+                ),
+              ),
+              child: const Text('审阅正文候选'),
+            ),
+          if (task.isActive)
+            OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  await ref.read(servicesProvider).runner.cancel(task.id);
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
+                }
+              },
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: const Text('取消生成'),
+            ),
+          if (!task.isActive && task.status != TaskStatus.completed)
+            OutlinedButton(
+              onPressed: () async {
+                try {
+                  final next = await ref
+                      .read(servicesProvider)
+                      .runner
+                      .resume(task.id);
+                  if (context.mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => TaskScreen(taskId: next.id),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
+                }
+              },
+              child: const Text('重新生成（新任务）'),
+            ),
+          const SizedBox(height: 24),
+          Text(
+            task.kind == TaskKind.agent ? '编辑回复' : '模型输出',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            task.partialText.isEmpty ? '尚未收到内容' : task.partialText,
+            style: const TextStyle(height: 1.7),
+          ),
+          if (task.reasoning.isNotEmpty)
+            ExpansionTile(
+              title: const Text('模型返回的推理摘要'),
+              children: [SelectableText(task.reasoning)],
+            ),
+          if (task.result.isNotEmpty)
+            ExpansionTile(
+              title: const Text('结果记录'),
+              children: [
+                SelectableText(
+                  const JsonEncoder.withIndent('  ').convert(task.result),
+                ),
+              ],
+            ),
+          ExpansionTile(
+            title: const Text('本次输入快照'),
+            subtitle: const Text('提示词、版本依据与参数'),
+            children: [
+              SelectableText(
+                const JsonEncoder.withIndent('  ').convert(task.input),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}

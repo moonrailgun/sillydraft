@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -45,10 +47,18 @@ final class AppServices {
     required this.repository,
     required this.secrets,
     this.dataDirectory,
+    ProviderFactory? modelProviderFactory,
   }) {
-    runner = TaskRunner(repository: repository, providerFactory: provider);
+    runner = TaskRunner(
+      repository: repository,
+      providerFactory: modelProviderFactory ?? provider,
+    );
     writing = WritingService(repository: repository, runner: runner);
     editor = EditorAgent(repository: repository, runner: runner);
+    library = ResourceLibrary(
+      repository: repository,
+      keyProvider: _resourceKey,
+    );
   }
   final StoryRepository repository;
   final SecretStore secrets;
@@ -56,6 +66,23 @@ final class AppServices {
   late final TaskRunner runner;
   late final WritingService writing;
   late final EditorAgent editor;
+  late final ResourceLibrary library;
+  Future<List<int>>? _keyFuture;
+  Future<List<int>> _resourceKey() => _keyFuture ??= _loadResourceKey();
+  Future<List<int>> _loadResourceKey() async {
+    try {
+      final existing = await secrets.read('resources/aes256');
+      if (existing != null) return base64Decode(existing);
+      final random = Random.secure();
+      final key = List.generate(32, (_) => random.nextInt(256));
+      await secrets.write('resources/aes256', base64Encode(key));
+      return key;
+    } catch (_) {
+      _keyFuture = null;
+      rethrow;
+    }
+  }
+
   final _drafts = <Object, Future<void> Function()>{};
 
   static Future<AppServices> open() async {

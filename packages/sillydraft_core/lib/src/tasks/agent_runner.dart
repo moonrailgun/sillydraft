@@ -226,6 +226,7 @@ extension _AgentExecution on TaskRunner {
       );
       final input = task.input;
       final service = WritingService(repository: repository, runner: this);
+      final context = input['writingContext'] as Map<String, dynamic>? ?? {};
       final child = await service.generate(
         branchId: task.branchId,
         sceneId: args['sceneId'] as String,
@@ -234,6 +235,19 @@ extension _AgentExecution on TaskRunner {
         ),
         brief: args['instructions'] as String,
         append: args['append'] as bool,
+        userName: context['userName'] as String? ?? '主角',
+        persona: context['persona'] as String? ?? '',
+        selectedOrderId: context['selectedOrderId'] as int?,
+        worldBooks: [
+          for (final book in (context['worldBooks'] as List? ?? []))
+            ScopedWorldBook(
+              WorldBook.fromJson(jsonObject(book['data'], '世界书')),
+              branchId: book['branchId'] as String?,
+              availableFromPosition: book['availableFromPosition'] as int? ?? 0,
+            ),
+        ],
+        globalRegex: (context['globalRegex'] as List? ?? [])
+            .cast<Map<String, dynamic>>(),
         preset: input['writingPreset'] is Map<String, dynamic>
             ? PresetImporter().decode(
                 input['writingPreset'] as Map<String, dynamic>,

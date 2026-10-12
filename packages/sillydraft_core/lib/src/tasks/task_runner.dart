@@ -13,6 +13,7 @@ import '../st/preset_importer.dart';
 import '../st/macro_engine.dart';
 import '../st/regex_pipeline.dart';
 import '../st/world_book_engine.dart';
+import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 
 part 'agent_runner.dart';
@@ -183,8 +184,14 @@ final class TaskRunner {
             : ManuscriptContent.fromJson(
                 jsonObject(input['originalContent'], 'originalContent'),
               );
-        final content =
-            input['append'] == true && original.text.trim().isNotEmpty
+        final range = input['replacementRange'] as Map<String, dynamic>?;
+        final content = range != null
+            ? original.replaceRange(
+                range['start'] as int,
+                range['end'] as int,
+                processed.text,
+              )
+            : input['append'] == true && original.text.trim().isNotEmpty
             ? ManuscriptContent.fromDelta([
                 ...original.delta,
                 {'insert': '\n${processed.text}\n'},

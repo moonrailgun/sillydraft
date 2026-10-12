@@ -8,6 +8,7 @@ import '../../app/widgets.dart';
 import '../editor/workspace_screen.dart';
 import '../settings/settings_screen.dart';
 import 'novel_dialog.dart';
+import '../resources/resource_library_screen.dart';
 
 class BookshelfScreen extends ConsumerStatefulWidget {
   const BookshelfScreen({super.key});
@@ -30,6 +31,10 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
   void _settings() => Navigator.push(
     context,
     MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+  );
+  void _resources() => Navigator.push(
+    context,
+    MaterialPageRoute<void>(builder: (_) => const ResourceLibraryScreen()),
   );
   Future<void> _sample() async {
     try {
@@ -209,13 +214,21 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
           children: [
             Icon(Icons.auto_stories_rounded, color: scheme.primary),
             const SizedBox(width: 12),
-            const Text(
-              'SillyDraft',
-              style: TextStyle(fontWeight: FontWeight.w700),
+            const Flexible(
+              child: Text(
+                'SillyDraft',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: _resources,
+            tooltip: '创作资源库',
+            icon: const Icon(Icons.folder_open_outlined),
+          ),
           IconButton(
             onPressed: _settings,
             tooltip: '设置',
@@ -233,13 +246,18 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                     selectedIndex: 0,
                     labelType: NavigationRailLabelType.all,
                     onDestinationSelected: (i) {
-                      if (i == 1) _settings();
+                      if (i == 1) _resources();
+                      if (i == 2) _settings();
                     },
                     destinations: const [
                       NavigationRailDestination(
                         icon: Icon(Icons.library_books_outlined),
                         selectedIcon: Icon(Icons.library_books_rounded),
                         label: Text('作品'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.folder_open_outlined),
+                        label: Text('资源'),
                       ),
                       NavigationRailDestination(
                         icon: Icon(Icons.settings_outlined),
