@@ -94,7 +94,32 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
             openingOverride: _edited ? _opening.text : null,
             openingClock: _openingClock,
           );
+      final services = ref.read(servicesProvider);
+      String? artworkWarning;
+      if (services.assets != null) {
+        try {
+          final resource = await services.repository.getResource(
+            widget.resourceId,
+          );
+          if (!resource.filename.toLowerCase().endsWith('.json')) {
+            final result = await services.assets!.importCardArtwork(
+              branchId: novel.activeBranchId,
+              resourceId: widget.resourceId,
+              resources: services.library,
+            );
+            if (result.warnings.isNotEmpty) {
+              artworkWarning = result.warnings.join('；');
+            }
+          }
+        } catch (_) {
+          artworkWarning = '小说已建立，卡片图片尚未导入。可在插图与素材中重新提取。';
+        }
+      }
       if (mounted) {
+        if (artworkWarning != null) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(artworkWarning)));
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute<void>(

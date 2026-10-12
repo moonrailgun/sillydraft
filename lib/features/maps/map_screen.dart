@@ -6,6 +6,8 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../illustrations/illustration_gallery.dart';
+import '../illustrations/asset_image.dart';
 
 class StoryMapScreen extends ConsumerStatefulWidget {
   const StoryMapScreen({super.key, required this.entry, this.atSceneId});
@@ -25,6 +27,37 @@ class _MapState extends ConsumerState<StoryMapScreen> {
       .toList();
   bool _dirty = false, _busy = false, _allowPop = false;
   String? _selected;
+  late String? _background = widget.entry.data['backgroundAssetId'] as String?;
+  late double? _backgroundAspect =
+      (widget.entry.data['backgroundAspect'] as num?)?.toDouble();
+  Future<void> _chooseBackground() async {
+    final asset = await Navigator.push<StoryAsset>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => IllustrationGallery(
+          branchId: _entry.branchId,
+          picker: true,
+          purpose: AssetPurpose.map,
+        ),
+      ),
+    );
+    if (asset != null && mounted) {
+      setState(() {
+        _background = asset.id;
+        _backgroundAspect = asset.width / asset.height;
+        _dirty = true;
+      });
+    }
+  }
+
+  Widget _mapFrame(Widget child) =>
+      _backgroundAspect == null ||
+          !_backgroundAspect!.isFinite ||
+          _backgroundAspect! <= 0
+      ? child
+      : Center(
+          child: AspectRatio(aspectRatio: _backgroundAspect!, child: child),
+        );
   String _id() =>
       DateTime.now().microsecondsSinceEpoch.toRadixString(36) +
       Random.secure().nextInt(1 << 32).toRadixString(36);
@@ -42,7 +75,13 @@ class _MapState extends ConsumerState<StoryMapScreen> {
             content: _entry.content,
             certainty: _entry.certainty,
             atSceneId: widget.atSceneId,
-            data: {..._entry.data, 'points': _points, 'routes': _routes},
+            data: {
+              ..._entry.data,
+              'points': _points,
+              'routes': _routes,
+              'backgroundAssetId': _background,
+              'backgroundAspect': _backgroundAspect,
+            },
             provenance: _entry.provenance,
           );
       if (mounted) {
@@ -250,6 +289,21 @@ class _MapState extends ConsumerState<StoryMapScreen> {
           title: Text(_entry.name),
           actions: [
             IconButton(
+              tooltip: '选择地图底图',
+              onPressed: _busy ? null : _chooseBackground,
+              icon: const Icon(Icons.image_outlined),
+            ),
+            if (_background != null)
+              IconButton(
+                tooltip: '移除地图底图',
+                onPressed: () => setState(() {
+                  _background = null;
+                  _backgroundAspect = null;
+                  _dirty = true;
+                }),
+                icon: const Icon(Icons.hide_image_outlined),
+              ),
+            IconButton(
               tooltip: '保存地图',
               onPressed: _busy ? null : _save,
               icon: Icon(_dirty ? Icons.save_outlined : Icons.check),
@@ -268,80 +322,94 @@ class _MapState extends ConsumerState<StoryMapScreen> {
                 ),
               ),
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, bounds) => InteractiveViewer(
-                    minScale: .5,
-                    maxScale: 4,
-                    boundaryMargin: const EdgeInsets.all(100),
-                    child: GestureDetector(
-                      onLongPressStart: (d) => _point(
-                        position: Offset(
-                          (d.localPosition.dx / bounds.maxWidth).clamp(0, 1),
-                          (d.localPosition.dy / bounds.maxHeight).clamp(0, 1),
+                child: _mapFrame(
+                  LayoutBuilder(
+                    builder: (context, bounds) => InteractiveViewer(
+                      minScale: .5,
+                      maxScale: 4,
+                      boundaryMargin: const EdgeInsets.all(100),
+                      child: GestureDetector(
+                        onLongPressStart: (d) => _point(
+                          position: Offset(
+                            (d.localPosition.dx / bounds.maxWidth).clamp(0, 1),
+                            (d.localPosition.dy / bounds.maxHeight).clamp(0, 1),
+                          ),
                         ),
-                      ),
-                      child: SizedBox(
-                        width: bounds.maxWidth,
-                        height: bounds.maxHeight,
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: _MapPainter(
-                                  _points,
-                                  _routes,
-                                  Theme.of(context).colorScheme,
+                        child: SizedBox(
+                          width: bounds.maxWidth,
+                          height: bounds.maxHeight,
+                          child: Stack(
+                            children: [
+                              if (_background != null)
+                                Positioned.fill(
+                                  child: AssetImageView(
+                                    assetId: _background!,
+                                    fit: BoxFit.fill,
+                                  ),
+                                ),
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: _MapPainter(
+                                    _points,
+                                    _routes,
+                                    Theme.of(context).colorScheme,
+                                    background: _background == null,
+                                  ),
                                 ),
                               ),
-                            ),
-                            for (final p in _points)
-                              Positioned(
-                                left: ((p['x'] as num) * bounds.maxWidth - 22)
-                                    .clamp(0, bounds.maxWidth - 44),
-                                top: ((p['y'] as num) * bounds.maxHeight - 22)
-                                    .clamp(0, bounds.maxHeight - 44),
-                                child: Semantics(
-                                  button: true,
-                                  label: '地点 ${p['label']}',
-                                  child: GestureDetector(
-                                    onTap: () => setState(
-                                      () => _selected = p['id'] as String,
-                                    ),
-                                    onPanUpdate: (d) => setState(() {
-                                      p['x'] =
-                                          ((p['x'] as num) +
-                                                  d.delta.dx / bounds.maxWidth)
-                                              .clamp(0, 1);
-                                      p['y'] =
-                                          ((p['y'] as num) +
-                                                  d.delta.dy / bounds.maxHeight)
-                                              .clamp(0, 1);
-                                      _dirty = true;
-                                      _selected = p['id'] as String;
-                                    }),
-                                    child: Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(
-                                        color: p['id'] == _selected
-                                            ? Theme.of(context)
-                                                  .colorScheme
-                                                  .primary
-                                            : Theme.of(context)
-                                                  .colorScheme
-                                                  .secondary,
-                                        borderRadius: BorderRadius.circular(22),
+                              for (final p in _points)
+                                Positioned(
+                                  left: ((p['x'] as num) * bounds.maxWidth - 22)
+                                      .clamp(0, bounds.maxWidth - 44),
+                                  top: ((p['y'] as num) * bounds.maxHeight - 22)
+                                      .clamp(0, bounds.maxHeight - 44),
+                                  child: Semantics(
+                                    button: true,
+                                    label: '地点 ${p['label']}',
+                                    child: GestureDetector(
+                                      onTap: () => setState(
+                                        () => _selected = p['id'] as String,
                                       ),
-                                      child: const Icon(
-                                        Icons.place,
-                                        color: Colors.white,
-                                        size: 25,
+                                      onPanUpdate: (d) => setState(() {
+                                        p['x'] =
+                                            ((p['x'] as num) +
+                                                    d.delta.dx /
+                                                        bounds.maxWidth)
+                                                .clamp(0, 1);
+                                        p['y'] =
+                                            ((p['y'] as num) +
+                                                    d.delta.dy /
+                                                        bounds.maxHeight)
+                                                .clamp(0, 1);
+                                        _dirty = true;
+                                        _selected = p['id'] as String;
+                                      }),
+                                      child: Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: p['id'] == _selected
+                                              ? Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .secondary,
+                                          borderRadius: BorderRadius.circular(
+                                            22,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.place,
+                                          color: Colors.white,
+                                          size: 25,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -464,22 +532,25 @@ class _PointState extends State<_PointDialog> {
 }
 
 class _MapPainter extends CustomPainter {
-  _MapPainter(this.points, this.routes, this.colors);
+  _MapPainter(this.points, this.routes, this.colors, {this.background = true});
+  final bool background;
   final List<Map<String, dynamic>> points, routes;
   final ColorScheme colors;
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = colors.surfaceContainerLow,
-    );
+    if (background) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = colors.surfaceContainerLow,
+      );
+    }
     final grid = Paint()
       ..color = colors.outlineVariant.withValues(alpha: .4)
       ..strokeWidth = .5;
-    for (var x = 0.0; x < size.width; x += 32) {
+    for (var x = 0.0; background && x < size.width; x += 32) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
     }
-    for (var y = 0.0; y < size.height; y += 32) {
+    for (var y = 0.0; background && y < size.height; y += 32) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
     final locations = {

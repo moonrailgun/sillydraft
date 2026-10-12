@@ -48,13 +48,23 @@ final class AppServices {
     required this.secrets,
     this.dataDirectory,
     ProviderFactory? modelProviderFactory,
+    ImageProviderFactory? imageProviderFactory,
   }) {
+    assets = dataDirectory == null
+        ? null
+        : AssetLibrary(
+            repository: repository,
+            directory: Directory('${dataDirectory!.path}/assets'),
+          );
     runner = TaskRunner(
       repository: repository,
       providerFactory: modelProviderFactory ?? provider,
+      imageProviderFactory: imageProviderFactory ?? imageProvider,
+      assetLibrary: assets,
     );
     writing = WritingService(repository: repository, runner: runner);
     editor = EditorAgent(repository: repository, runner: runner);
+    illustrations = IllustrationService(repository: repository, runner: runner);
     library = ResourceLibrary(
       repository: repository,
       keyProvider: _resourceKey,
@@ -67,6 +77,8 @@ final class AppServices {
   late final WritingService writing;
   late final EditorAgent editor;
   late final ResourceLibrary library;
+  late final AssetLibrary? assets;
+  late final IllustrationService illustrations;
   Future<List<int>>? _keyFuture;
   Future<List<int>> _resourceKey() => _keyFuture ??= _loadResourceKey();
   Future<List<int>> _loadResourceKey() async {
@@ -94,6 +106,14 @@ final class AppServices {
       dataDirectory: dir,
     );
     await services.runner.recoverInterrupted();
+    try {
+      await services.assets?.pruneOrphans();
+    } on FileSystemException {
+      // Maintenance failure must not prevent access to saved manuscripts.
+      stderr.writeln(
+        'SillyDraft: unused asset cleanup failed; will retry on next launch.',
+      );
+    }
     return services;
   }
 
@@ -106,6 +126,12 @@ final class AppServices {
       apiKey: await secrets.read('model/${connection.id}') ?? '',
     );
   }
+
+  Future<ImageProvider> imageProvider(ModelConnection connection) async =>
+      OpenAIImageProvider(
+        config: connection,
+        apiKey: await secrets.read('model/${connection.id}') ?? '',
+      );
 
   Future<List<ModelConnection>> connections() async {
     final setting = await repository.getSetting('connections');

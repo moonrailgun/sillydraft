@@ -147,6 +147,7 @@ extension ManuscriptOperations on StoryRepository {
     String? sourceProposalId,
   }) async {
     final id = _id();
+    await _validateManuscriptAssets(novelId, content);
     await _execute(
       '''INSERT INTO revisions
       (id, novel_id, scene_id, origin_branch_id, parent_revision_id, content_json,

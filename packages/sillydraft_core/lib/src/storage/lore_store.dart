@@ -198,6 +198,13 @@ extension LoreOperations on StoryRepository {
       }
     }
     if (kind == LoreKind.map) {
+      if (data['backgroundAssetId'] case final String assetId) {
+        final asset = await getAsset(assetId),
+            branch = await getBranch(branchId);
+        if (asset.novelId != branch.novelId) {
+          throw const StoryNotFound('本作品的地图底图');
+        }
+      }
       final points = data['points'] as List? ?? [],
           routes = data['routes'] as List? ?? [];
       if (points.length > 2000 || routes.length > 500) {

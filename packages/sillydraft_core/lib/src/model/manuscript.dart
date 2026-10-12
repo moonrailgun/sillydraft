@@ -120,6 +120,44 @@ final class ManuscriptContent {
     ]);
   }
 
+  ManuscriptContent insertImage(int offset, String assetId) {
+    validateRange(offset, offset);
+    final operations = <Map<String, dynamic>>[];
+    var position = 0, inserted = false;
+    for (final op in delta) {
+      final value = op['insert'],
+          length = op['insert'] is String ? (op['insert'] as String).length : 1;
+      if (!inserted && offset >= position && offset <= position + length) {
+        final cut = offset - position;
+        if (cut > 0) {
+          operations.add({
+            ...op,
+            'insert': value is String ? value.substring(0, cut) : value,
+          });
+        }
+        // Block images occupy their own paragraph in Quill and the reader.
+        if (offset > 0 && text[offset - 1] != '\n') {
+          operations.add({'insert': '\n'});
+        }
+        operations.add({
+          'insert': {'image': 'asset:$assetId'},
+        });
+        operations.add({'insert': '\n'});
+        if (cut < length) {
+          operations.add({
+            ...op,
+            'insert': value is String ? value.substring(cut) : value,
+          });
+        }
+        inserted = true;
+      } else {
+        operations.add(op);
+      }
+      position += length;
+    }
+    return ManuscriptContent.fromDelta(operations);
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ManuscriptContent && other._encoded == _encoded;

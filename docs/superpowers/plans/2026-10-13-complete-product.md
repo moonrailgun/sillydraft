@@ -100,9 +100,9 @@
 
 **Files:** core asset/image services; Flutter `features/illustrations/`; provider/asset tests.
 
-- [ ] Write failing tests for image job completion/failure, source revision binding, safe local assets and retry job IDs.
-- [ ] Implement image generation/edit configuration, reference assets, gallery, covers, maps and manuscript insertion.
-- [ ] Verify image errors do not mutate prose and stale images remain traceable; commit.
+- [x] Write failing tests for image job completion/failure, source revision binding, safe local assets and retry job IDs.
+- [x] Implement image generation/edit configuration, reference assets, gallery, covers, maps and manuscript insertion.
+- [x] Verify image errors do not mutate prose and stale images remain traceable; commit.
 
 ## Task 9: Backup, publication formats and synchronization
 

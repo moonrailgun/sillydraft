@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../branches/branch_screen.dart';
+import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
@@ -562,7 +563,22 @@ class _ReaderState extends ConsumerState<ReaderScreen> {
   TextSpan _manuscriptSpan(ManuscriptContent content, Color color) => TextSpan(
     children: [
       for (final op in content.delta)
-        if (op['insert'] is String)
+        if (op['insert'] is Map)
+          WidgetSpan(
+            child: Builder(
+              builder: (context) {
+                final uri = (op['insert'] as Map)['image'];
+                if (uri is! String || !uri.startsWith('asset:')) {
+                  return const Text('图片暂不可用');
+                }
+                return SizedBox(
+                  width: (MediaQuery.sizeOf(context).width - 56).clamp(0, 704),
+                  child: AssetImageView(assetId: uri.substring(6), height: 300),
+                );
+              },
+            ),
+          )
+        else if (op['insert'] is String)
           TextSpan(
             text: op['insert'] as String,
             style: TextStyle(

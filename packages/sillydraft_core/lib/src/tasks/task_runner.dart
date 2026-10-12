@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../agent/writing_service.dart';
+import '../assets/asset_library.dart';
+import '../model/asset.dart';
+import '../providers/image_provider.dart';
 
 import '../model/manuscript.dart';
 import '../model/task.dart';
@@ -17,15 +20,26 @@ import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 
 part 'agent_runner.dart';
+part 'illustration_runner.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
   ModelConnection connection,
 );
+typedef ImageProviderFactory = Future<ImageProvider> Function(
+  ModelConnection connection,
+);
 
 final class TaskRunner {
-  TaskRunner({required this.repository, required this.providerFactory});
+  TaskRunner({
+    required this.repository,
+    required this.providerFactory,
+    this.imageProviderFactory,
+    this.assetLibrary,
+  });
   final StoryRepository repository;
   final ProviderFactory providerFactory;
+  final ImageProviderFactory? imageProviderFactory;
+  final AssetLibrary? assetLibrary;
   final _running = <String, Future<void>>{};
   final _cancellations = <String, GenerationCancellation>{};
   bool _closing = false;
@@ -113,6 +127,10 @@ final class TaskRunner {
       );
       if (current.status != TaskStatus.running) return;
       cancel.check();
+      if (task.kind == TaskKind.illustration) {
+        await _executeIllustration(task, cancel);
+        return;
+      }
       final input = task.input;
       final connection = ModelConnection.fromJson(
         jsonObject(input['connection'], 'connection'),

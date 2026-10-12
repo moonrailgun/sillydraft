@@ -5,6 +5,9 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../illustrations/illustration_gallery.dart';
+import '../illustrations/asset_image.dart';
+
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../agent/writing_request_screen.dart';
@@ -244,6 +247,40 @@ class _EditorState extends ConsumerState<EditorScreen> {
     super.dispose();
   }
 
+  Future<void> _insertImage() async {
+    final offset = _controller.selection.extentOffset.clamp(
+      0,
+      _content.text.length - 1,
+    );
+    try {
+      await _flush();
+      if (!mounted) return;
+      final asset = await Navigator.push<StoryAsset>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              IllustrationGallery(branchId: _scene.branchId, picker: true),
+        ),
+      );
+      if (asset == null) return;
+      final scene = await _services.repository.insertIllustration(
+        branchId: _scene.branchId,
+        sceneId: _scene.id,
+        expectedRevisionId: _scene.revisionId,
+        assetId: asset.id,
+        offset: offset,
+      );
+      if (mounted) {
+        _scene = scene;
+        _controller.document = Document.fromJson(scene.content.delta);
+        _saved = _content.encoded;
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dirty = _content.encoded != _saved;
@@ -279,6 +316,11 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ],
           ),
           actions: [
+            IconButton(
+              tooltip: '插入图片',
+              onPressed: _insertImage,
+              icon: const Icon(Icons.image_outlined),
+            ),
             IconButton(
               tooltip: '生成或改写选区',
               onPressed: _generate,
@@ -331,6 +373,7 @@ class _EditorState extends ConsumerState<EditorScreen> {
                       focusNode: _focus,
                       scrollController: _scroll,
                       config: const QuillEditorConfig(
+                        embedBuilders: [LocalImageEmbedBuilder()],
                         padding: EdgeInsets.fromLTRB(24, 28, 24, 80),
                         expands: true,
                         placeholder: '从一句话开始，让故事向前走。',

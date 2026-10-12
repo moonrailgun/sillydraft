@@ -9,6 +9,7 @@ import '../editor/workspace_screen.dart';
 import '../settings/settings_screen.dart';
 import 'novel_dialog.dart';
 import '../resources/resource_library_screen.dart';
+import '../illustrations/asset_image.dart';
 
 class BookshelfScreen extends ConsumerStatefulWidget {
   const BookshelfScreen({super.key});
@@ -312,53 +313,60 @@ class _NovelCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [color, color.withValues(alpha: .5)],
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(24),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -12,
-                        bottom: -10,
-                        child: Icon(
-                          Icons.auto_stories_rounded,
-                          size: 120,
-                          color: Colors.white.withValues(alpha: .4),
+                child: novel.coverAssetId != null
+                    ? AssetImageView(
+                        assetId: novel.coverAssetId!,
+                        thumbnail: true,
+                        fit: BoxFit.cover,
+                        label: '${novel.title}的封面',
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [color, color.withValues(alpha: .5)],
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(24),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              right: -12,
+                              bottom: -10,
+                              child: Icon(
+                                Icons.auto_stories_rounded,
+                                size: 120,
+                                color: Colors.white.withValues(alpha: .4),
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  novel.genre,
+                                  style: const TextStyle(
+                                    color: Color(0xff514b65),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  novel.title,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 23,
+                                    height: 1.35,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xff343044),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            novel.genre,
-                            style: const TextStyle(
-                              color: Color(0xff514b65),
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            novel.title,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 23,
-                              height: 1.35,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xff343044),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 8, 10),

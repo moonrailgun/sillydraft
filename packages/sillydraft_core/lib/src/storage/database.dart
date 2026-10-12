@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -30,6 +30,7 @@ final class StoryDatabase extends GeneratedDatabase {
         ...preferencesSchema,
         ...resourceSchema,
         ...loreSchema,
+        ...assetSchema,
       ]) {
         await customStatement(sql);
       }
@@ -55,6 +56,11 @@ final class StoryDatabase extends GeneratedDatabase {
           await customStatement(sql);
         }
       }
+      if (from < 6) {
+        for (final sql in assetSchema) {
+          await customStatement(sql);
+        }
+      }
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -62,6 +68,19 @@ final class StoryDatabase extends GeneratedDatabase {
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
+
+  static const assetSchema = <String>[
+    '''CREATE TABLE story_assets (
+      id TEXT PRIMARY KEY, novel_id TEXT NOT NULL REFERENCES novels(id),
+      branch_id TEXT NOT NULL REFERENCES branches(id), name TEXT NOT NULL,
+      content_hash TEXT NOT NULL, thumbnail_hash TEXT NOT NULL,
+      width INTEGER NOT NULL, height INTEGER NOT NULL, byte_length INTEGER NOT NULL,
+      purpose TEXT NOT NULL, source_scene_id TEXT, source_revision_id TEXT REFERENCES revisions(id),
+      task_id TEXT REFERENCES generation_tasks(id), metadata_json TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+    )''',
+    'CREATE INDEX assets_novel ON story_assets(novel_id,created_at)',
+  ];
 
   static const schema = <String>[
     '''CREATE TABLE novels (

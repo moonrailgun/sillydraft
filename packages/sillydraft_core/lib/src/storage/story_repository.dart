@@ -10,6 +10,7 @@ import '../model/task.dart';
 import '../model/bookmark.dart';
 import '../model/resource.dart';
 import '../model/lore.dart';
+import '../model/asset.dart';
 import '../st/import_types.dart';
 import '../st/card_importer.dart';
 import '../st/macro_engine.dart';
@@ -28,6 +29,7 @@ part 'lore_store.dart';
 part 'lore_review_store.dart';
 part 'variable_store.dart';
 part 'card_start_store.dart';
+part 'asset_store.dart';
 
 /// All writable story state is committed here, independently of widget lifetime.
 final class StoryRepository {

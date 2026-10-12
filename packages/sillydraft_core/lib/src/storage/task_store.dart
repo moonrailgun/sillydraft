@@ -13,10 +13,18 @@ extension TaskOperations on StoryRepository {
     if (sceneId != null) {
       final scene = await getScene(branchId: branchId, sceneId: sceneId);
       if (baseRevisionId != null && scene.revisionId != baseRevisionId) {
-        throw RevisionConflict(
-          expected: baseRevisionId,
-          actual: scene.revisionId,
-        );
+        final historicalImage =
+            kind == TaskKind.illustration &&
+            (await listRevisions(
+              branchId: branchId,
+              sceneId: sceneId,
+            )).any((r) => r.id == baseRevisionId);
+        if (!historicalImage) {
+          throw RevisionConflict(
+            expected: baseRevisionId,
+            actual: scene.revisionId,
+          );
+        }
       }
     }
     final id = _id(), now = _now();
@@ -82,11 +90,11 @@ extension TaskOperations on StoryRepository {
 
   Future<int> recoverInterruptedTasks() => _write(() async {
     final rows = await _rows(
-      "SELECT id FROM generation_tasks WHERE status = 'running'",
+      "SELECT id FROM generation_tasks WHERE status IN ('queued','running')",
     );
     await _execute(
-      "UPDATE generation_tasks SET status = 'interrupted', error = ?, updated_at = ? WHERE status = 'running'",
-      ['应用上次退出时生成未结束，可保留部分结果或重新生成。', _now()],
+      "UPDATE generation_tasks SET status = 'interrupted', error = ?, updated_at = ? WHERE status IN ('queued','running')",
+      ['应用上次退出时任务未完成，可保留已有结果或重新生成。', _now()],
     );
     return rows.length;
   });

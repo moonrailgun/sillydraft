@@ -10,6 +10,8 @@ import 'agent_providers.dart';
 import 'proposal_screen.dart';
 import '../lore/analysis_review_screen.dart';
 import '../branches/candidate_screen.dart';
+import '../illustrations/illustration_detail.dart';
+import '../illustrations/asset_image.dart';
 
 final taskProvider = FutureProvider.family<GenerationTask, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -44,6 +46,26 @@ class TaskScreen extends ConsumerWidget {
           if (task.status == TaskStatus.interrupted)
             const Text('之前的模型连接已中断。重新生成会创建新任务并再次发起模型请求。'),
           const SizedBox(height: 20),
+          if (task.kind == TaskKind.illustration && task.isActive)
+            Text(
+              task.result['stage'] == 'saving' ? '正在保存图片到本地…' : '正在等待生图服务返回图片…',
+            ),
+          if (task.result['assetId'] case final String assetId) ...[
+            AssetImageView(assetId: assetId, height: 280),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => IllustrationDetail(
+                    assetId: assetId,
+                    branchId: task.branchId,
+                  ),
+                ),
+              ),
+              child: const Text('查看插画与使用方式'),
+            ),
+          ],
           if (task.result['proposalId'] case final String id)
             FilledButton(
               onPressed: () => Navigator.push(
