@@ -3,7 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute, SelectableText;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -33,18 +34,18 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
   bool _busy = false, _archived = false;
   String _query = '';
   Future<void> _import() async {
-    final kind = await showModalBottomSheet<ResourceKind>(
+    final kind = await showAppSheet<ResourceKind>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      title: '选择导入类型',
+      builder: (context) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: FTileGroup(
           children: [
-            const ListTile(title: Text('选择导入类型')),
             for (final e in resourceLabels.entries)
-              ListTile(
+              FTile(
                 title: Text(e.value),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.pop(context, e.key),
+                suffix: const Icon(FLucideIcons.chevronRight),
+                onPress: () => Navigator.pop(context, e.key),
               ),
           ],
         ),
@@ -72,37 +73,37 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
           library = ref.read(servicesProvider).library;
       final preview = library.inspect(bytes, filename: file.name, kind: kind);
       if (!mounted) return;
-      final confirm = await showDialog<bool>(
+      final confirm = await showAppDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
+          maxWidth: 620,
           title: Text('导入 ${preview.name}'),
-          content: SizedBox(
-            width: 620,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(resourceLabels[kind]!),
-                  const SizedBox(height: 12),
-                  for (final d in preview.diagnostics)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(d.message),
-                    ),
-                  const Text('未知字段会保留；连接凭据不会自动启用。原文件加密保存。'),
-                  const SizedBox(height: 16),
-                  SelectableText(_previewJson(preview.raw)),
-                ],
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(resourceLabels[kind]!),
+              const SizedBox(height: 12),
+              for (final d in preview.diagnostics)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(d.message),
+                ),
+              const Text('未知字段会保留；连接凭据不会自动启用。原文件加密保存。'),
+              const SizedBox(height: 16),
+              SelectableText(
+                _previewJson(preview.raw),
+                style: DefaultTextStyle.of(context).style,
               ),
-            ),
+            ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
+            FButton(
+              variant: FButtonVariant.outline,
+              onPress: () => Navigator.pop(context, false),
               child: const Text('取消'),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+            FButton(
+              onPress: () => Navigator.pop(context, true),
               child: const Text('导入资源'),
             ),
           ],
@@ -129,110 +130,144 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
     ),
   );
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('创作资源库')),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: _busy ? null : _import,
-      icon: _busy
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(),
-            )
-          : const Icon(Icons.file_open_outlined),
-      label: const Text('导入资源'),
-    ),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: '搜索角色卡、预设或世界书',
-              prefixIcon: Icon(Icons.search),
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    return PageScaffold(
+      title: '创作资源库',
+      floatingActionButton: _busy
+          ? const _BusyAction(label: '导入资源')
+          : FloatingAction(
+              icon: FLucideIcons.fileInput,
+              label: '导入资源',
+              onPress: _import,
             ),
-            onChanged: (v) => setState(() => _query = v),
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(
-            children: [
-              ChoiceChip(
-                label: const Text('全部'),
-                selected: _kind == null,
-                onSelected: (_) => setState(() => _kind = null),
-              ),
-              for (final e in resourceLabels.entries)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: ChoiceChip(
-                    label: Text(e.value),
-                    selected: _kind == e.key,
-                    onSelected: (_) => setState(() => _kind = e.key),
-                  ),
+      bottom: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+            child: FTextField(
+              hint: '搜索角色卡、预设或世界书',
+              prefixBuilder: (context, style, variants) => Padding(
+                padding: const EdgeInsetsDirectional.only(start: 10),
+                child: Icon(
+                  FLucideIcons.search,
+                  size: 16,
+                  color: theme.colors.mutedForeground,
                 ),
-              const SizedBox(width: 12),
-              FilterChip(
-                label: const Text('包含归档'),
-                selected: _archived,
-                onSelected: (v) => setState(() => _archived = v),
               ),
-            ],
+              control: FTextFieldControl.managed(
+                onChange: (value) {
+                  if (value.text != _query) {
+                    setState(() => _query = value.text);
+                  }
+                },
+              ),
+            ),
           ),
-        ),
-        Expanded(
-          child: AsyncView(
-            value: ref.watch(resourcesProvider),
-            builder: (all) {
-              final resources = all
-                  .where(
-                    (r) =>
-                        (_kind == null || r.kind == _kind) &&
-                        (_archived || !r.archived) &&
-                        r.name.toLowerCase().contains(_query.toLowerCase()),
-                  )
-                  .toList();
-              if (resources.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      '导入 ST 角色卡和预设，作为故事的起点。\n支持 JSON、PNG 和 CHARX 角色卡。',
-                      textAlign: TextAlign.center,
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                ChoicePill(
+                  label: '全部',
+                  selected: _kind == null,
+                  onPress: () => setState(() => _kind = null),
+                ),
+                for (final e in resourceLabels.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: ChoicePill(
+                      label: e.value,
+                      selected: _kind == e.key,
+                      onPress: () => setState(() => _kind = e.key),
                     ),
                   ),
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 110),
-                itemCount: resources.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, i) {
-                  final r = resources[i];
-                  return Card(
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: Icon(
-                        r.kind == ResourceKind.character
-                            ? Icons.person_outline
-                            : Icons.tune,
-                      ),
-                      title: Text(r.name),
-                      subtitle: Text(
-                        '${resourceLabels[r.kind]} · ${dateLabel(r.createdAt)}${r.parentId == null ? '' : ' · 编辑版本'}${r.archived ? ' · 已归档' : ''}',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _open(r),
-                    ),
-                  );
-                },
+                const SizedBox(width: 12),
+                ChoicePill(
+                  label: '包含归档',
+                  icon: FLucideIcons.archive,
+                  selected: _archived,
+                  onPress: () => setState(() => _archived = !_archived),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: AsyncView(
+        value: ref.watch(resourcesProvider),
+        builder: (all) {
+          final resources = all
+              .where(
+                (r) =>
+                    (_kind == null || r.kind == _kind) &&
+                    (_archived || !r.archived) &&
+                    r.name.toLowerCase().contains(_query.toLowerCase()),
+              )
+              .toList();
+          if (resources.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  '导入 ST 角色卡和预设，作为故事的起点。\n支持 JSON、PNG 和 CHARX 角色卡。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.colors.mutedForeground),
+                ),
+              ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 110),
+            itemCount: resources.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, i) {
+              final r = resources[i];
+              return FTile(
+                prefix: Icon(
+                  r.kind == ResourceKind.character
+                      ? FLucideIcons.user
+                      : FLucideIcons.slidersHorizontal,
+                ),
+                title: Text(r.name),
+                subtitle: Text(
+                  '${resourceLabels[r.kind]} · ${dateLabel(r.createdAt)}${r.parentId == null ? '' : ' · 编辑版本'}${r.archived ? ' · 已归档' : ''}',
+                ),
+                suffix: const Icon(FLucideIcons.chevronRight),
+                onPress: () => _open(r),
               );
             },
-          ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The import button while an import runs: same place and label, with a
+/// spinner and no action.
+class _BusyAction extends StatelessWidget {
+  const _BusyAction({required this.label});
+  final String label;
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      borderRadius: context.theme.style.borderRadius.md,
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x22000000),
+          blurRadius: 16,
+          offset: Offset(0, 6),
         ),
       ],
+    ),
+    child: FButton(
+      mainAxisSize: MainAxisSize.min,
+      onPress: null,
+      prefix: const FCircularProgress(),
+      child: Text(label),
     ),
   );
 }
@@ -281,11 +316,12 @@ class ResourceDetailScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('资源详情')),
+  Widget build(BuildContext context, WidgetRef ref) => PageScaffold(
+    title: '资源详情',
     body: AsyncView(
       value: ref.watch(_resourceProvider(resourceId)),
       builder: (resource) {
+        final theme = context.theme;
         final preset = resource.kind == ResourceKind.preset
             ? PresetImporter().decode(resource.data)
             : null;
@@ -294,11 +330,14 @@ class ResourceDetailScreen extends ConsumerWidget {
           children: [
             Text(
               resource.name,
-              style: Theme.of(context).textTheme.headlineSmall,
+              style: theme.typography.body.xl2.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               '${resourceLabels[resource.kind]}${preset == null ? '' : ' · ${preset.kind.name}'} · ${resource.sourceHash.substring(0, 12)}',
+              style: TextStyle(color: theme.colors.mutedForeground),
             ),
             const SizedBox(height: 20),
             Wrap(
@@ -306,34 +345,40 @@ class ResourceDetailScreen extends ConsumerWidget {
               runSpacing: 12,
               children: [
                 if (resource.kind == ResourceKind.character)
-                  FilledButton.icon(
-                    onPressed: () => Navigator.push(
+                  FButton(
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             CardStartScreen(resourceId: resource.id),
                       ),
                     ),
-                    icon: const Icon(Icons.auto_stories_outlined),
-                    label: const Text('从角色卡新建小说'),
+                    prefix: const Icon(FLucideIcons.bookOpen),
+                    child: const Text('从角色卡新建小说'),
                   ),
-                FilledButton.icon(
-                  onPressed: () => Navigator.push(
+                FButton(
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => Navigator.push(
                     context,
                     MaterialPageRoute<void>(
                       builder: (_) => ResourceEditScreen(resource: resource),
                     ),
                   ),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('编辑新版本'),
+                  prefix: const Icon(FLucideIcons.squarePen),
+                  child: const Text('编辑新版本'),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () => _export(context, resource),
-                  icon: const Icon(Icons.ios_share),
-                  label: const Text('导出 JSON'),
+                FButton(
+                  variant: FButtonVariant.outline,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => _export(context, resource),
+                  prefix: const Icon(FLucideIcons.share),
+                  child: const Text('导出 JSON'),
                 ),
-                TextButton(
-                  onPressed: () async {
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () async {
                     try {
                       await ref
                           .read(repositoryProvider)
@@ -345,26 +390,52 @@ class ResourceDetailScreen extends ConsumerWidget {
                       if (context.mounted) showError(context, e);
                     }
                   },
+                  prefix: Icon(
+                    resource.archived
+                        ? FLucideIcons.archiveRestore
+                        : FLucideIcons.archive,
+                  ),
                   child: Text(resource.archived ? '恢复到资源库' : '归档'),
                 ),
               ],
             ),
             const SizedBox(height: 24),
             if (preset != null) ...[
-              for (final d in preset.diagnostics)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(d.message),
-                  subtitle: Text('${d.severity.name} · ${d.code}'),
+              if (preset.diagnostics.isNotEmpty) ...[
+                FTileGroup(
+                  children: [
+                    for (final d in preset.diagnostics)
+                      FTile(
+                        title: Text(
+                          d.message,
+                          overflow: TextOverflow.visible,
+                          softWrap: true,
+                        ),
+                        subtitle: Text('${d.severity.name} · ${d.code}'),
+                      ),
+                  ],
                 ),
+                const SizedBox(height: 12),
+              ],
               Text(
                 '提示词 ${preset.prompts.length} 项 · 顺序组 ${preset.orderGroups.length} 组',
               ),
               const SizedBox(height: 12),
             ],
-            const Text('导出会保留未知字段并移除已识别凭据。角色卡附件保存在加密原文件中；此 JSON 导出不包含二进制附件。'),
+            Text(
+              '导出会保留未知字段并移除已识别凭据。角色卡附件保存在加密原文件中；此 JSON 导出不包含二进制附件。',
+              style: theme.typography.body.sm.copyWith(
+                color: theme.colors.mutedForeground,
+              ),
+            ),
             const SizedBox(height: 16),
-            SelectableText(_previewJson(resource.data)),
+            SelectableText(
+              _previewJson(resource.data),
+              style: theme.typography.body.sm.copyWith(
+                fontFamily: 'monospace',
+                color: theme.colors.foreground,
+              ),
+            ),
           ],
         );
       },
@@ -419,17 +490,38 @@ class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
     }
   }
 
+  void _toggleStructured() {
+    try {
+      if (!_structured) {
+        final value = jsonDecode(_text.text);
+        if (value is! Map<String, dynamic> ||
+            !PresetPromptEditor.supports(value)) {
+          throw const FormatException('此配置没有 prompts 条目，请使用 JSON 编辑模板或采样参数');
+        }
+        PresetImporter().decode(value);
+      }
+      setState(() => _structured = !_structured);
+    } catch (e) {
+      showError(context, e);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('编辑资源新版本'),
-      actions: [
-        TextButton(onPressed: _busy ? null : _save, child: const Text('保存新版本')),
-      ],
-    ),
+  Widget build(BuildContext context) => PageScaffold(
+    title: '编辑资源新版本',
+    actions: [
+      FButton(
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.min,
+        onPress: _busy ? null : _save,
+        child: const Text('保存新版本'),
+      ),
+    ],
     body: SafeArea(
       top: false,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Padding(
             padding: EdgeInsets.all(16),
@@ -442,44 +534,42 @@ class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
                     onChanged: (value) =>
                         _text.text = _jsonFormat.convert(value),
                   )
-                : TextField(
-                    controller: _text,
-                    maxLines: null,
-                    expands: true,
-                    keyboardType: TextInputType.multiline,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(20),
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: FTextField(
+                      control: FTextFieldControl.managed(controller: _text),
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      keyboardType: TextInputType.multiline,
+                      style: FTextFieldStyleDelta.delta(
+                        contentTextStyle: FVariantsDelta.delta([
+                          FVariantOperation.all(
+                            const TextStyleDelta.delta(fontFamily: 'monospace'),
+                          ),
+                        ]),
+                      ),
                     ),
                   ),
           ),
           if (widget.resource.kind == ResourceKind.preset)
             SafeArea(
               top: false,
-              child: TextButton.icon(
-                icon: Icon(_structured ? Icons.code : Icons.tune),
-                label: Text(_structured ? '编辑完整 JSON' : '使用提示词条目编辑'),
-                onPressed: () {
-                  try {
-                    if (!_structured) {
-                      final value = jsonDecode(_text.text);
-                      if (value is! Map<String, dynamic> ||
-                          !PresetPromptEditor.supports(value)) {
-                        throw const FormatException(
-                          '此配置没有 prompts 条目，请使用 JSON 编辑模板或采样参数',
-                        );
-                      }
-                      PresetImporter().decode(value);
-                    }
-                    setState(() => _structured = !_structured);
-                  } catch (e) {
-                    showError(context, e);
-                  }
-                },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Center(
+                  child: FButton(
+                    variant: FButtonVariant.ghost,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: _toggleStructured,
+                    prefix: Icon(
+                      _structured
+                          ? FLucideIcons.braces
+                          : FLucideIcons.slidersHorizontal,
+                    ),
+                    child: Text(_structured ? '编辑完整 JSON' : '使用提示词条目编辑'),
+                  ),
+                ),
               ),
             ),
         ],

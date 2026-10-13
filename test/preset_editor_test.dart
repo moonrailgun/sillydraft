@@ -5,6 +5,8 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/host.dart';
+
 void main() {
   for (final pack in [false, true]) {
     testWidgets(
@@ -71,7 +73,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [servicesProvider.overrideWithValue(services)],
-            child: MaterialApp(home: ResourceEditScreen(resource: resource)),
+            child: testHost(ResourceEditScreen(resource: resource)),
           ),
         );
         await tester.pumpAndSettle();
