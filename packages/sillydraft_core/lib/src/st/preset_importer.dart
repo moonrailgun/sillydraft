@@ -387,7 +387,9 @@ final class PresetImporter {
     return ImportedPreset._(
       raw,
       kind: kind,
-      name: stringField(raw, 'name', fallback: '导入的预设'),
+      // Exported ST presets usually carry no name: ST names them after the
+      // file, which the resource library falls back to.
+      name: stringField(raw, 'name'),
       prompts: List.unmodifiable(prompts),
       orderGroups: List.unmodifiable(groups),
       parameters: Map.unmodifiable({

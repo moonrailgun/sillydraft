@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
+import 'package:sillydraft_core/src/storage/database.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
 
 void main() {
@@ -164,5 +166,112 @@ void main() {
     await repo.archiveResource(card.id, archived: true);
     expect(await repo.listResources(), isEmpty);
     expect((await library.character(card.id)).name, '林舟');
+  });
+
+  test(
+    'files without a name are named after the file, as in SillyTavern',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final library = ResourceLibrary(
+        repository: repo,
+        keyProvider: () async => List.filled(32, 1),
+      );
+      Uint8List json(Map<String, Object?> value) =>
+          Uint8List.fromList(utf8.encode(jsonEncode(value)));
+      // An exported chat completion preset: settings and prompts, no name.
+      final preset = json({
+        'temperature': 1.08,
+        'prompts': [
+          {'identifier': 'main', 'name': 'Main Prompt', 'content': '写作'},
+        ],
+        'prompt_order': [
+          {
+            'character_id': 100001,
+            'order': [
+              {'identifier': 'main', 'enabled': true},
+            ],
+          },
+        ],
+      });
+      final reborn = await library.import(
+        preset,
+        filename: 'Reborn2.3.json',
+        kind: ResourceKind.preset,
+      );
+      expect(reborn.name, 'Reborn2.3');
+      expect(
+        library
+            .inspect(
+              preset,
+              filename: 'presets/Mine.JSON',
+              kind: ResourceKind.preset,
+            )
+            .name,
+        'Mine',
+      );
+      final named = await library.import(
+        json({
+          ...jsonDecode(utf8.decode(preset)) as Map<String, Object?>,
+          'name': '自带名字',
+        }),
+        filename: 'Reborn2.3.json',
+        kind: ResourceKind.preset,
+      );
+      expect(named.name, '自带名字');
+      final book = await library.import(
+        json({'entries': <String, Object?>{}}),
+        filename: '雾港世界书.json',
+        kind: ResourceKind.worldBook,
+      );
+      expect(book.name, '雾港世界书');
+    },
+  );
+
+  test('presets stored as 导入的预设 before v7 take their file name', () async {
+    final dir = await Directory.systemTemp.createTemp('sillydraft-presets-');
+    addTearDown(() => dir.delete(recursive: true));
+    final path = '${dir.path}/old.sqlite';
+    final old = sqlite.sqlite3.open(path);
+    for (final statement in [
+      ...StoryDatabase.schema,
+      ...StoryDatabase.taskSchema,
+      ...StoryDatabase.preferencesSchema,
+      ...StoryDatabase.resourceSchema,
+      ...StoryDatabase.loreSchema,
+      ...StoryDatabase.assetSchema,
+    ]) {
+      old.execute(statement);
+    }
+    void resource(
+      String id,
+      String name,
+      String filename, {
+      String kind = 'preset',
+      String? parent,
+    }) => old.execute(
+      'INSERT INTO library_resources '
+      '(id,kind,name,filename,source_hash,data_json,encrypted_source,parent_id,created_at) '
+      "VALUES (?,?,?,?,'h','{}',x'00',?,1)",
+      [id, kind, name, filename, parent],
+    );
+    resource('a', '导入的预设', 'Reborn2.3.json');
+    resource('a2', '导入的预设', '导入的预设.json', parent: 'a'); // saved edit
+    resource('b', '我改过的名字', 'Other.json');
+    resource('c', '导入的预设', '导入的预设.json'); // nothing better to use
+    resource('w', '导入的预设', 'book.json', kind: 'worldBook');
+    old.execute('PRAGMA user_version = 6');
+    old.close();
+
+    final repo = StoryRepository.open(path);
+    addTearDown(repo.close);
+    final names = {for (final r in await repo.listResources()) r.id: r.name};
+    expect(names, {
+      'a': 'Reborn2.3',
+      'a2': 'Reborn2.3',
+      'b': '我改过的名字',
+      'c': '导入的预设',
+      'w': '导入的预设',
+    });
   });
 }

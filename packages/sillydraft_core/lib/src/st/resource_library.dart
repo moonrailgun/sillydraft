@@ -57,7 +57,7 @@ final class ResourceLibrary {
       final card = const CardImporter().decode(bytes, filename);
       return ResourcePreview(
         kind: kind,
-        name: card.name,
+        name: _nameOr(card.name, filename),
         data: card.exportJson(),
         diagnostics: card.diagnostics,
       );
@@ -91,7 +91,7 @@ final class ResourceLibrary {
     }
     return ResourcePreview(
       kind: kind,
-      name: name.isEmpty ? filename : name,
+      name: _nameOr(name, filename),
       data: redactCredentials(raw),
       diagnostics: diagnostics,
     );
@@ -174,4 +174,12 @@ final class ResourceLibrary {
     }
     return PresetImporter().decode(resource.data);
   }
+}
+
+/// [name] when the file carries one, otherwise the file name, as SillyTavern
+/// names presets and world books after their files.
+String _nameOr(String name, String filename) {
+  if (name.trim().isNotEmpty) return name;
+  final fromFile = nameFromFilename(filename);
+  return fromFile.isEmpty ? filename : fromFile;
 }

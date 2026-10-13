@@ -72,6 +72,18 @@ Map<String, dynamic> jsonObject(Object? value, String path) {
   return value;
 }
 
+/// The name SillyTavern shows for a resource file that has no name of its
+/// own: the file name without folders or its resource extension
+/// (`Reborn2.3.json` → `Reborn2.3`).
+String nameFromFilename(String filename) {
+  final base = filename.split(RegExp(r'[/\\]')).last;
+  final extension = RegExp(
+    r'\.(json|png|charx)$',
+    caseSensitive: false,
+  ).firstMatch(base);
+  return (extension == null ? base : base.substring(0, extension.start)).trim();
+}
+
 String stringField(
   Map<String, dynamic> map,
   String key, {

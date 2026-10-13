@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
+import '../st/import_types.dart';
+
 /// Explicit migrations keep the same database usable by Flutter and the runner.
 final class StoryDatabase extends GeneratedDatabase {
   StoryDatabase(super.executor);
@@ -16,7 +18,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -61,6 +63,7 @@ final class StoryDatabase extends GeneratedDatabase {
           await customStatement(sql);
         }
       }
+      if (from < 7) await _nameUnnamedPresets();
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -68,6 +71,35 @@ final class StoryDatabase extends GeneratedDatabase {
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
+
+  /// Before v7 a preset file without a `name` (SillyTavern keeps preset
+  /// names in file names) was stored as 导入的预设. Name those after the file
+  /// they were imported from, as SillyTavern does; saved versions take the
+  /// name of their original file.
+  Future<void> _nameUnnamedPresets() async {
+    const unnamed = '导入的预设';
+    final rows = await customSelect(
+      'SELECT id, name, filename, parent_id FROM library_resources '
+      "WHERE kind = 'preset'",
+    ).get();
+    final byId = {for (final r in rows) r.read<String>('id'): r};
+    for (final row in rows) {
+      if (row.read<String>('name') != unnamed) continue;
+      var root = row;
+      final seen = {root.read<String>('id')};
+      while (true) {
+        final parent = byId[root.readNullable<String>('parent_id')];
+        if (parent == null || !seen.add(parent.read<String>('id'))) break;
+        root = parent;
+      }
+      final name = nameFromFilename(root.read<String>('filename'));
+      if (name.isEmpty || name == unnamed) continue;
+      await customStatement(
+        'UPDATE library_resources SET name = ? WHERE id = ?',
+        [name, row.read<String>('id')],
+      );
+    }
+  }
 
   static const assetSchema = <String>[
     '''CREATE TABLE story_assets (
