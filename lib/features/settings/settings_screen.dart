@@ -1,26 +1,43 @@
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute, SelectableText;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../skills/skills_screen.dart';
+import 'comfy_workflow_editor.dart';
+import 'model_select.dart';
 
 final connectionsProvider = FutureProvider<List<ModelConnection>>((ref) {
   ref.watch(repositoryChangesProvider);
   return ref.watch(servicesProvider).connections();
 });
 
+/// A long text in a tile's subtitle: wraps instead of being cut to one line.
+Text _wrapped(String text) =>
+    Text(text, overflow: TextOverflow.visible, softWrap: true);
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appearance = ref.watch(settingProvider('appearance')).value;
+    final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
-    return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
-      body: Center(
+    final theme = context.theme;
+    final heading = theme.typography.body.md.copyWith(
+      fontWeight: FontWeight.w600,
+    );
+    final renderHtml = html?['render'] != false;
+    void setHtml(bool value) =>
+        ref.read(repositoryProvider).setSetting('html', {'render': value});
+    return PageScaffold(
+      title: '设置',
+      body: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),
           child: ListView(
@@ -28,45 +45,51 @@ class SettingsScreen extends ConsumerWidget {
             children: [
               Text(
                 '让工具适合你的写作方式',
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: theme.typography.body.xl2.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 24),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '外观',
-                        style: Theme.of(context).textTheme.titleMedium,
+              Text('外观', style: heading),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in const {
+                    'system': '跟随系统',
+                    'light': '浅色',
+                    'dark': '深色',
+                  }.entries)
+                    ChoicePill(
+                      label: entry.value,
+                      icon: switch (entry.key) {
+                        'light' => FLucideIcons.sun,
+                        'dark' => FLucideIcons.moon,
+                        _ => FLucideIcons.sunMoon,
+                      },
+                      selected: (appearance?['mode'] ?? 'system') == entry.key,
+                      onPress: () => ref.read(repositoryProvider).setSetting(
+                        'appearance',
+                        {'mode': entry.key},
                       ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final entry in const {
-                            'system': '跟随系统',
-                            'light': '浅色',
-                            'dark': '深色',
-                          }.entries)
-                            ChoiceChip(
-                              label: Text(entry.value),
-                              selected:
-                                  (appearance?['mode'] ?? 'system') ==
-                                  entry.key,
-                              onSelected: (_) =>
-                                  ref.read(repositoryProvider).setSetting(
-                                    'appearance',
-                                    {'mode': entry.key},
-                                  ),
-                            ),
-                        ],
-                      ),
-                    ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              FTileGroup(
+                children: [
+                  FTile(
+                    key: const Key('settings-html'),
+                    prefix: const Icon(FLucideIcons.codeXml),
+                    title: _wrapped('渲染正文中的 HTML 界面'),
+                    subtitle: _wrapped(
+                      '角色卡开场、状态栏等 html 代码块在隔离的网页视图里显示，并提供酒馆助手风格的接口（消息、变量、/send 等）。页面只能通过 HTTPS 联网，不能跳转、读文件或触发生成。关闭后按源码显示。',
+                    ),
+                    suffix: FSwitch(value: renderHtml, onChange: setHtml),
+                    onPress: () => setHtml(!renderHtml),
                   ),
-                ),
+                ],
               ),
               const SizedBox(height: 24),
               Row(
@@ -74,23 +97,30 @@ class SettingsScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       '模型连接',
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: theme.typography.body.lg.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: () => showDialog<void>(
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => showAppDialog<void>(
                       context: context,
                       builder: (_) => const ConnectionDialog(),
                     ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('添加连接'),
+                    prefix: const Icon(FLucideIcons.plus),
+                    child: const Text('添加连接'),
                   ),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  '支持 OpenAI 兼容接口和 SillyDraft 远程执行器。密钥只保存在系统安全存储中。编辑 Agent 的工具调用需要直连模型；正文、资料整理和插画可以交给远程执行器。',
+                  '一个连接可保存多个模型。支持 OpenAI 兼容接口、ComfyUI 生图、SillyDraft 远程执行器，以及桌面端的本地订阅（Claude Code、Codex）。密钥以明文保存在本机的密钥文件里，不进入作品备份和同步。',
+                  style: theme.typography.body.sm.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
                 ),
               ),
               AsyncView(
@@ -99,45 +129,43 @@ class SettingsScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (connections.isEmpty)
-                      const Card(
+                      const FCard(
                         child: Padding(
                           padding: EdgeInsets.all(24),
                           child: Text('尚未配置模型。你仍然可以离线编辑和阅读，添加连接后即可使用 AI 创作。'),
                         ),
-                      ),
-                    for (final connection in connections)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 8,
-                            ),
-                            leading: const Icon(Icons.hub_outlined),
-                            title: Text(connection.name),
-                            subtitle: Text(
-                              '${connection.model}\n${connection.baseUrl}',
-                            ),
-                            isThreeLine: true,
-                            trailing: IconButton(
-                              tooltip: '编辑连接',
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => showDialog<void>(
-                                context: context,
-                                builder: (_) =>
-                                    ConnectionDialog(connection: connection),
+                      )
+                    else
+                      FTileGroup(
+                        children: [
+                          for (final connection in connections)
+                            FTile(
+                              prefix: Icon(
+                                connection.protocol.isLocalCli
+                                    ? FLucideIcons.squareTerminal
+                                    : FLucideIcons.network,
+                              ),
+                              title: Text(connection.name),
+                              subtitle: _wrapped(
+                                connection.protocol.isLocalCli
+                                    ? '${protocolLabels[connection.protocol]} · ${connection.model == 'default' ? '默认模型' : connection.model}\n${connection.command.isEmpty ? '自动查找命令' : connection.command}'
+                                    : '${modelKindLabels[connection.kind]} · ${connection.models.join('、')}\n${connection.baseUrl}',
+                              ),
+                              suffix: IconAction(
+                                icon: FLucideIcons.pencil,
+                                tooltip: '编辑连接',
+                                onPress: () => showAppDialog<void>(
+                                  context: context,
+                                  builder: (_) =>
+                                      ConnectionDialog(connection: connection),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
+                        ],
                       ),
                     if (connections.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '任务使用的模型',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+                      const SizedBox(height: 28),
+                      Text('任务使用的模型', style: heading),
                       const SizedBox(height: 16),
                       for (final role in {
                         'writing': '正文写作',
@@ -146,73 +174,80 @@ class SettingsScreen extends ConsumerWidget {
                         'image': '插画生成',
                       }.entries)
                         if (connections.any(
-                          (c) =>
-                              role.key != 'editor' ||
-                              c.protocol == ModelProtocol.openAICompatible,
+                          (c) => connectionServes(c, role.key),
                         ))
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
-                            child: DropdownButtonFormField<String>(
-                              key: ValueKey(
-                                '${role.key}:${roles[role.key]}:${connections.length}',
-                              ),
-                              isExpanded: true,
-                              initialValue:
-                                  connections.any(
-                                    (c) =>
-                                        c.id == roles[role.key] &&
-                                        (role.key != 'editor' ||
-                                            c.protocol ==
-                                                ModelProtocol.openAICompatible),
-                                  )
-                                  ? roles[role.key] as String
-                                  : connections
-                                        .firstWhere(
-                                          (c) =>
-                                              role.key != 'editor' ||
-                                              c.protocol ==
-                                                  ModelProtocol
-                                                      .openAICompatible,
-                                        )
-                                        .id,
-                              decoration: InputDecoration(
-                                labelText: role.value,
-                              ),
-                              items: connections
-                                  .where(
-                                    (c) =>
-                                        role.key != 'editor' ||
-                                        c.protocol ==
-                                            ModelProtocol.openAICompatible,
-                                  )
-                                  .map(
-                                    (c) => DropdownMenuItem(
-                                      value: c.id,
-                                      child: Text(
-                                        '${c.name} · ${c.model}',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) =>
-                                  ref.read(repositoryProvider).setSetting(
-                                    'modelRoles',
-                                    {...roles, role.key: value},
-                                  ),
+                            child: _roleSelect(
+                              ref,
+                              label: role.value,
+                              role: role.key,
+                              roles: roles,
+                              connections: [
+                                for (final c in connections)
+                                  if (connectionServes(c, role.key)) c,
+                              ],
                             ),
                           ),
                     ],
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
+              FTileGroup(
+                children: [
+                  FTile(
+                    key: const Key('settings-skills'),
+                    prefix: const Icon(FLucideIcons.puzzle),
+                    title: const Text('助手技能'),
+                    subtitle: _wrapped(
+                      'Agent Skills（SKILL.md）：内置写作技能、导入社区技能或自己编写',
+                    ),
+                    suffix: const Icon(FLucideIcons.chevronRight),
+                    onPress: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SkillsScreen(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 32),
-              const Divider(),
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.auto_stories_outlined),
-                title: Text('SillyDraft · 胡闹草稿'),
-                subtitle: Text('正文属于作品，Agent 是创作工具。\n本地优先，支持手机与桌面。'),
+              const FDivider(),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, right: 16),
+                    child: Icon(
+                      FLucideIcons.bookOpen,
+                      size: 20,
+                      color: theme.colors.mutedForeground,
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SillyDraft · 胡闹草稿',
+                          style: theme.typography.body.sm.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '正文属于作品，Agent 是创作工具。\n本地优先，支持手机与桌面。',
+                          style: theme.typography.body.sm.copyWith(
+                            color: theme.colors.mutedForeground,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -220,7 +255,49 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  /// Which connection a task role uses: the saved choice when that connection
+  /// still serves the role, otherwise the first one that does.
+  Widget _roleSelect(
+    WidgetRef ref, {
+    required String label,
+    required String role,
+    required Map<String, dynamic> roles,
+    required List<ModelConnection> connections,
+  }) {
+    var current =
+        connections.where((c) => c.id == roles[role]).firstOrNull ??
+        connections.first;
+    if (current.id == roles[role] &&
+        current.models.contains(roles['${role}Model'])) {
+      current = current.withModel(roles['${role}Model'] as String);
+    }
+    return ConnectionModelSelect(
+      key: Key('role-$role'),
+      label: label,
+      connections: connections,
+      value: current,
+      onChange: (value) => ref.read(repositoryProvider).setSetting(
+        'modelRoles',
+        {...roles, role: value.id, '${role}Model': value.model},
+      ),
+    );
+  }
 }
+
+const protocolLabels = {
+  ModelProtocol.openAICompatible: 'OpenAI 兼容接口',
+  ModelProtocol.comfyUI: 'ComfyUI（生图）',
+  ModelProtocol.sillyDraftRunner: 'SillyDraft 远程执行器',
+  ModelProtocol.claudeCode: 'Claude Code（本地订阅）',
+  ModelProtocol.codexCli: 'Codex（本地订阅）',
+};
+
+const modelKindLabels = {
+  ModelKind.text: '文本模型',
+  ModelKind.image: '生图模型',
+  ModelKind.both: '文本与生图',
+};
 
 class ConnectionDialog extends ConsumerStatefulWidget {
   const ConnectionDialog({super.key, this.connection});
@@ -237,8 +314,13 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late final _url = TextEditingController(
     text: widget.connection?.baseUrl ?? 'https://api.openai.com/v1',
   );
-  late final _model = TextEditingController(text: widget.connection?.model);
+  late final _model = TextEditingController(
+    text: widget.connection?.models.join('\n'),
+  );
   final _key = TextEditingController();
+  late final _command = TextEditingController(
+    text: widget.connection?.command ?? '',
+  );
   late final _context = TextEditingController(
     text: '${widget.connection?.contextWindow ?? 32768}',
   );
@@ -260,46 +342,243 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late ModelProtocol _protocol =
       widget.connection?.protocol ?? ModelProtocol.openAICompatible;
   late bool _allowInsecure = widget.connection?.allowInsecureHttp ?? false;
+  late ModelKind _kind = widget.connection?.kind ?? ModelKind.text;
+  late ComfyWorkflow? _workflow = widget.connection?.comfyWorkflow;
+  bool get _comfy => _protocol == ModelProtocol.comfyUI;
+  bool get _text => !_comfy && _kind != ModelKind.image;
   bool get _remote => _protocol == ModelProtocol.sillyDraftRunner;
+  bool get _cli => _protocol.isLocalCli;
+  String get _tool =>
+      _protocol == ModelProtocol.claudeCode ? 'claude' : 'codex';
   List<String> _models = [];
   String? _message;
+  GenerationCancellation? _testing;
+  ConnectionProbeResult? _probe;
+  List<String> get _selectedModels => _model.text
+      .split(RegExp(r'[,，\r\n]+'))
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toSet()
+      .toList();
   @override
   void dispose() {
-    for (final c in [_name, _url, _model, _key, _context, _output, _extras]) {
+    _testing?.cancel();
+    for (final c in [
+      _name,
+      _url,
+      _model,
+      _key,
+      _command,
+      _context,
+      _output,
+      _extras,
+    ]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  ModelConnection _configuration({bool listing = false}) => ModelConnection(
-    id: _id,
-    name: _name.text.trim(),
-    protocol: _protocol,
-    allowInsecureHttp: _allowInsecure,
-    baseUrl: _url.text.trim(),
-    model: _model.text.trim().isEmpty && listing
-        ? 'model-list'
-        : _model.text.trim(),
-    contextWindow: int.parse(_context.text),
-    maxOutputTokens: int.parse(_output.text),
-    outputTokenParameter: _tokenParameter,
-    extraParameters: _extras.text
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(),
-  );
+  ModelConnection _configuration({bool listing = false}) {
+    final selected = _selectedModels;
+    if (selected.isEmpty && (listing || _cli || _comfy)) {
+      selected.add(
+        _cli
+            ? 'default'
+            : _comfy
+            ? 'workflow'
+            : 'model-list',
+      );
+    }
+    return ModelConnection(
+      id: _id,
+      name: _name.text.trim(),
+      protocol: _protocol,
+      allowInsecureHttp: _allowInsecure,
+      baseUrl: _cli ? '' : _url.text.trim(),
+      command: _cli ? _command.text.trim() : '',
+      model: selected.contains(widget.connection?.model)
+          ? widget.connection!.model
+          : selected.firstOrNull ?? '',
+      models: selected,
+      kind: _comfy
+          ? ModelKind.image
+          : _cli
+          ? ModelKind.text
+          : _kind,
+      comfyWorkflow: _comfy ? _workflow : null,
+      contextWindow: int.parse(_context.text),
+      maxOutputTokens: int.parse(_output.text),
+      outputTokenParameter: _tokenParameter,
+      extraParameters: _extras.text
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(),
+    );
+  }
+
+  void _switchProtocol(ModelProtocol? value) {
+    if (value == null || value == _protocol) return;
+    setState(() {
+      final wasCli = _cli;
+      final wasComfy = _comfy;
+      _protocol = value;
+      _models = [];
+      _message = null;
+      _probe = null;
+      if (_comfy) {
+        _kind = ModelKind.image;
+        if (_url.text == 'https://api.openai.com/v1') {
+          _url.text = 'http://127.0.0.1:8188';
+        }
+        if (_name.text == '我的模型') _name.text = 'ComfyUI';
+      } else if (wasComfy) {
+        _kind = ModelKind.text;
+        if (_url.text == 'http://127.0.0.1:8188') {
+          _url.text = 'https://api.openai.com/v1';
+        }
+      }
+      if (_cli && !wasCli) {
+        _kind = ModelKind.text;
+        // Sensible defaults for a subscription; untouched values only.
+        if (_name.text == '我的模型') {
+          _name.text = protocolLabels[value]!.split('（').first;
+        }
+        if (_context.text == '32768') _context.text = '200000';
+        if (_output.text == '2048') _output.text = '8192';
+      }
+    });
+  }
+
+  /// Sends one tiny request through the connection as filled in now — the
+  /// same code path real writing uses — and shows what came back.
+  Future<void> _test() async {
+    final running = _testing;
+    if (running != null) return running.cancel();
+    if (!_form.currentState!.validate()) return;
+    final cancel = GenerationCancellation();
+    setState(() {
+      _testing = cancel;
+      _probe = null;
+    });
+    ModelProvider? provider;
+    try {
+      provider = await ref
+          .read(servicesProvider)
+          .draftProvider(
+            _configuration(),
+            secret: _key.text.isEmpty ? null : _key.text,
+          );
+      final result = await probeConnection(provider, cancellation: cancel);
+      if (mounted) setState(() => _probe = result);
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _probe = ConnectionProbeResult(
+            ok: false,
+            elapsed: Duration.zero,
+            error: '$e',
+          ),
+        );
+      }
+    } finally {
+      provider?.close();
+      if (mounted) setState(() => _testing = null);
+    }
+  }
+
+  Widget _probeResult(ConnectionProbeResult result) {
+    final colors = context.theme.colors;
+    final good = result.ok && result.warning == null;
+    final seconds = (result.elapsed.inMilliseconds / 1000).toStringAsFixed(1);
+    final tokens =
+        result.usage['total_tokens'] ?? result.usage['output_tokens'];
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 12),
+      child: FAlert(
+        key: const Key('connection-test-result'),
+        variant: result.ok ? FAlertVariant.primary : FAlertVariant.destructive,
+        icon: Icon(
+          !result.ok
+              ? FLucideIcons.circleAlert
+              : good
+              ? FLucideIcons.circleCheck
+              : FLucideIcons.info,
+        ),
+        title: Text(result.ok ? '模型正常返回 · $seconds 秒' : '测试未通过 · $seconds 秒'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (result.reply.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                '回复：${result.reply}',
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.foreground),
+              ),
+            ],
+            if (result.ok && (result.finishReason != null || tokens != null))
+              Text(
+                [
+                  if (result.finishReason != null)
+                    '结束原因 ${result.finishReason}',
+                  if (tokens != null) '用量 $tokens tokens',
+                  if (result.sawReasoning) '含推理输出',
+                ].join(' · '),
+              ),
+            if (result.warning != null) ...[
+              const SizedBox(height: 6),
+              Text(result.warning!),
+            ],
+            if (result.error != null) ...[
+              const SizedBox(height: 6),
+              SelectableText(
+                result.error!,
+                style: DefaultTextStyle.of(context).style,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _list() async {
     setState(() {
       _busy = true;
       _message = null;
     });
     ModelProvider? provider;
+    ComfyUIProvider? comfy;
     try {
+      if (_cli) {
+        final cli = LocalCliProvider(config: _configuration(listing: true));
+        final status = await cli.check();
+        final models = await cli.listModels();
+        if (mounted) {
+          setState(() {
+            _models = models;
+            _message = status;
+          });
+        }
+        return;
+      }
       final secret = _key.text.isNotEmpty
           ? _key.text
           : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
       final config = _configuration(listing: true);
+      if (_comfy) {
+        comfy = ComfyUIProvider(config: config, apiKey: secret);
+        final models = await comfy.listModels();
+        if (mounted) {
+          setState(() {
+            _models = models;
+            _message = '连接成功，发现 ${models.length} 个生图模型';
+          });
+        }
+        return;
+      }
       provider = _remote
           ? RemoteModelProvider(config: config, accessToken: secret)
           : OpenAICompatibleProvider(config: config, apiKey: secret);
@@ -314,6 +593,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       if (mounted) setState(() => _message = e.toString());
     } finally {
       provider?.close();
+      comfy?.close();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -322,6 +602,16 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
+      if (_comfy &&
+          _selectedModels.length > 1 &&
+          _workflow?.modelInput.isEmpty != false) {
+        throw const FormatException('使用多个模型时，请绑定工作流的模型输入');
+      }
+      if (_cli) {
+        await ref.read(servicesProvider).saveConnection(_configuration());
+        if (mounted) Navigator.pop(context);
+        return;
+      }
       if (_remote &&
           _key.text.isEmpty &&
           (await ref.read(servicesProvider).secrets.read('model/$_id') ?? '')
@@ -345,226 +635,338 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     }
   }
 
+  Future<void> _delete() async {
+    final yes = await confirmAction(
+      context,
+      title: '删除此连接？',
+      message: '系统中保存的密钥也会删除。已有作品与任务结果会保留。',
+      confirmLabel: '删除',
+      destructive: true,
+    );
+    if (yes) {
+      await ref.read(servicesProvider).removeConnection(_id);
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    insetPadding: const EdgeInsets.all(20),
-    title: Text(widget.connection == null ? '添加模型连接' : '编辑模型连接'),
-    content: SizedBox(
-      width: 540,
-      child: SingleChildScrollView(
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<ModelProtocol>(
-                initialValue: _protocol,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '连接方式'),
-                items: const [
-                  DropdownMenuItem(
-                    value: ModelProtocol.openAICompatible,
-                    child: Text('OpenAI 兼容接口'),
-                  ),
-                  DropdownMenuItem(
-                    value: ModelProtocol.sillyDraftRunner,
-                    child: Text('SillyDraft 远程执行器'),
-                  ),
-                ],
-                onChanged: _busy
-                    ? null
-                    : (value) => setState(() {
-                        _protocol = value!;
-                        _models = [];
-                        _message = null;
-                      }),
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    final tokenParameters = {
+      'max_tokens',
+      'max_completion_tokens',
+      _tokenParameter,
+    };
+    return AppDialog(
+      maxWidth: 540,
+      title: Text(widget.connection == null ? '添加模型连接' : '编辑模型连接'),
+      body: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FSelect<ModelProtocol>(
+              label: const Text('连接方式'),
+              enabled: !_busy && _testing == null,
+              items: {
+                for (final e in protocolLabels.entries)
+                  if (!e.key.isLocalCli ||
+                      localCliAvailable ||
+                      e.key == _protocol)
+                    e.value: e.key,
+              },
+              control: FSelectControl<ModelProtocol>.lifted(
+                value: _protocol,
+                onChange: _switchProtocol,
               ),
+            ),
+            if (!_cli && !_comfy) ...[
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: '连接名称'),
-                validator: _required,
+              FSelect<ModelKind>(
+                label: const Text('模型用途'),
+                enabled: !_busy && _testing == null,
+                items: {
+                  for (final entry in modelKindLabels.entries)
+                    entry.value: entry.key,
+                },
+                control: FSelectControl.lifted(
+                  value: _kind,
+                  onChange: (v) {
+                    if (v != null) {
+                      setState(() {
+                        _kind = v;
+                        _probe = null;
+                      });
+                    }
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _url,
-                decoration: InputDecoration(
-                  labelText: _remote ? '远程执行器地址' : 'API 基础地址',
-                  helperText: _remote
+            ],
+            if (_cli)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  '使用你在终端登录的 ${_protocol == ModelProtocol.claudeCode ? 'Claude' : 'ChatGPT'} 订阅，不需要 API Key。'
+                  '请先在终端运行 $_tool 完成登录。生成时会关闭它读写文件和执行命令的能力；不支持插画和文本补全模板，采样参数不会生效。',
+                  style: theme.typography.body.sm.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            FTextFormField(
+              control: FTextFieldControl.managed(controller: _name),
+              label: const Text('连接名称'),
+              validator: _required,
+            ),
+            const SizedBox(height: 16),
+            if (_cli)
+              FTextFormField(
+                key: const ValueKey('command'),
+                control: FTextFieldControl.managed(controller: _command),
+                label: const Text('命令路径（可选）'),
+                description: Text('留空会自动查找 $_tool；找不到时填写完整路径'),
+              )
+            else
+              FTextFormField(
+                key: const ValueKey('url'),
+                control: FTextFieldControl.managed(controller: _url),
+                label: Text(
+                  _comfy
+                      ? 'ComfyUI 服务地址'
+                      : _remote
+                      ? '远程执行器地址'
+                      : 'API 基础地址',
+                ),
+                description: Text(
+                  _comfy
+                      ? '例如 http://127.0.0.1:8188；手机连接电脑时填写电脑的局域网地址'
+                      : _remote
                       ? '例如 https://runner.example，不加 /v1'
                       : '例如 https://服务地址/v1，不含 /chat/completions',
                 ),
                 keyboardType: TextInputType.url,
                 validator: _required,
               ),
+            const SizedBox(height: 16),
+            if (_remote && !_cli) ...[
+              FCheckbox(
+                value: _allowInsecure,
+                enabled: !_busy,
+                onChange: (value) => setState(() => _allowInsecure = value),
+                label: const Text('允许可信局域网 HTTP'),
+                description: const Text('HTTP 会明文传输访问令牌与写作内容。公网请使用 HTTPS。'),
+              ),
               const SizedBox(height: 16),
-              if (_remote)
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _allowInsecure,
-                  onChanged: _busy
-                      ? null
-                      : (value) => setState(() => _allowInsecure = value!),
-                  title: const Text('允许可信局域网 HTTP'),
-                  subtitle: const Text('HTTP 会明文传输访问令牌与写作内容。公网请使用 HTTPS。'),
-                ),
-              TextFormField(
-                controller: _key,
+            ],
+            if (!_cli)
+              FTextFormField(
+                control: FTextFieldControl.managed(controller: _key),
                 obscureText: _obscure,
                 autocorrect: false,
                 enableSuggestions: false,
-                decoration: InputDecoration(
-                  labelText: _remote ? '访问令牌' : 'API Key',
-                  helperText: widget.connection == null
+                label: Text(_remote ? '访问令牌' : 'API Key'),
+                description: Text(
+                  widget.connection == null
                       ? (_remote ? '填写 SILLYDRAFT_RUNNER_TOKEN' : '本地无鉴权服务可以留空')
                       : '留空保留现有密钥',
-                  suffixIcon: IconButton(
+                ),
+                suffixBuilder: (context, _, _) => Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 4),
+                  child: IconAction(
                     tooltip: _obscure ? '显示密钥' : '隐藏密钥',
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    icon: Icon(
-                      _obscure
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
+                    onPress: () => setState(() => _obscure = !_obscure),
+                    icon: _obscure ? FLucideIcons.eye : FLucideIcons.eyeOff,
+                    size: 16,
                   ),
                 ),
               ),
+            const SizedBox(height: 16),
+            if (_comfy) ...[
+              ComfyWorkflowEditor(
+                initialValue: _workflow,
+                onChange: (workflow) {
+                  setState(() {
+                    _workflow = workflow;
+                    if (workflow != null &&
+                        _selectedModels.isEmpty &&
+                        workflow.modelInput.isNotEmpty) {
+                      final (node, input) = ComfyWorkflow.splitInput(
+                        workflow.modelInput,
+                      );
+                      _model.text =
+                          workflow.nodes[node]['inputs'][input] as String;
+                    }
+                  });
+                },
+              ),
               const SizedBox(height: 16),
-              TextFormField(
+            ],
+            FTextFormField(
+              control: FTextFieldControl.managed(
                 controller: _model,
-                decoration: InputDecoration(
-                  labelText: _remote ? '服务端模型配置 ID' : '模型名称',
-                  hintText: _remote ? '例如 writer 或 illustrator' : '服务商提供的模型 ID',
-                ),
-                validator: _required,
+                onChange: (_) => setState(() {}),
               ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _busy ? null : _list,
-                  icon: const Icon(Icons.sync),
-                  label: Text(_busy ? '连接中…' : '检查连接并获取模型'),
+              minLines: 1,
+              maxLines: 4,
+              label: Text(
+                _cli
+                    ? '模型'
+                    : _remote
+                    ? '服务端模型配置 ID'
+                    : '模型名称',
+              ),
+              hint: _cli
+                  ? '留空使用 $_tool 的默认模型'
+                  : _remote
+                  ? '例如 writer 或 illustrator'
+                  : '服务商提供的模型 ID',
+              description: Text(
+                _comfy && _workflow?.modelInput.isNotEmpty != true
+                    ? '未绑定模型输入时沿用工作流中的模型，可留空'
+                    : '可填写多个模型，每行一个或用逗号分隔；也可从下方列表多选',
+              ),
+              validator: _cli || _comfy ? null : _required,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: _busy || _testing != null ? null : _list,
+                  prefix: const Icon(FLucideIcons.refreshCw),
+                  // Wraps on a narrow dialog instead of overflowing.
+                  child: Flexible(
+                    child: Text(
+                      _busy
+                          ? '检查中…'
+                          : _cli
+                          ? '检查安装与登录'
+                          : '检查连接并获取模型',
+                    ),
+                  ),
+                ),
+                if (_text)
+                  FButton(
+                    key: const Key('connection-test'),
+                    variant: FButtonVariant.secondary,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: _busy ? null : _test,
+                    prefix: _testing == null
+                        ? const Icon(FLucideIcons.play)
+                        : const FCircularProgress(),
+                    child: Flexible(
+                      child: Text(_testing == null ? '测试连接' : '停止测试'),
+                    ),
+                  ),
+              ],
+            ),
+            if (_probe != null) _probeResult(_probe!),
+            if (_message != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 12),
+                child: Text(_message!),
+              ),
+            if (_models.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              FMultiSelect<String>(
+                // A new list gets a fresh selection.
+                key: ObjectKey(_models),
+                label: Text(_cli ? '常用模型（可多选）' : '从服务端模型列表多选'),
+                items: {
+                  for (final m in {..._models, ..._selectedModels}) m: m,
+                },
+                control: FMultiValueControl<String>.lifted(
+                  value: _selectedModels.toSet(),
+                  onChange: (v) => setState(() => _model.text = v.join('\n')),
                 ),
               ),
-              if (_message != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_message!),
-                ),
-              if (_models.isNotEmpty)
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '从服务端模型列表选择'),
-                  items: _models
-                      .map(
-                        (m) => DropdownMenuItem(
-                          value: m,
-                          child: Text(m, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => _model.text = v!,
-                ),
-              const SizedBox(height: 16),
+            ],
+            const SizedBox(height: 16),
+            if (_text)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      controller: _context,
+                    child: FTextFormField(
+                      control: FTextFieldControl.managed(controller: _context),
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: '上下文 token 上限',
-                      ),
+                      label: const Text('上下文 token 上限'),
                       validator: _positive,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: TextFormField(
-                      controller: _output,
+                    child: FTextFormField(
+                      control: FTextFieldControl.managed(controller: _output),
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: '输出 token 上限',
-                      ),
+                      label: const Text('输出 token 上限'),
                       validator: _positive,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: const Text('高级参数'),
+            const SizedBox(height: 8),
+            if (!_cli && _text)
+              FAccordion(
                 children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: _tokenParameter,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: '输出长度参数'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'max_tokens',
-                        child: Text('max_tokens'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'max_completion_tokens',
-                        child: Text('max_completion_tokens'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _tokenParameter = v!),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _extras,
-                    decoration: const InputDecoration(
-                      labelText: '后端支持的额外参数',
-                      helperText: '逗号分隔，例如 top_k, min_p',
+                  FAccordionItem(
+                    title: const Text('高级参数'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FSelect<String>(
+                          label: const Text('输出长度参数'),
+                          items: {for (final p in tokenParameters) p: p},
+                          control: FSelectControl<String>.lifted(
+                            value: _tokenParameter,
+                            onChange: (v) {
+                              if (v != null) {
+                                setState(() => _tokenParameter = v);
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        FTextFormField(
+                          control: FTextFieldControl.managed(
+                            controller: _extras,
+                          ),
+                          label: const Text('后端支持的额外参数'),
+                          description: const Text('逗号分隔，例如 top_k, min_p'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.connection != null)
+          FButton(
+            variant: FButtonVariant.ghost,
+            onPress: _busy ? null : _delete,
+            child: const Text('删除'),
           ),
+        FButton(
+          variant: FButtonVariant.outline,
+          onPress: _busy ? null : () => Navigator.pop(context),
+          child: const Text('取消'),
         ),
-      ),
-    ),
-    actions: [
-      if (widget.connection != null)
-        TextButton(
-          onPressed: _busy
-              ? null
-              : () async {
-                  final yes = await showDialog<bool>(
-                    context: context,
-                    builder: (c) => AlertDialog(
-                      title: const Text('删除此连接？'),
-                      content: const Text('系统中保存的密钥也会删除。已有作品与任务结果会保留。'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(c, false),
-                          child: const Text('取消'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(c, true),
-                          child: const Text('删除'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (yes == true) {
-                    await ref.read(servicesProvider).removeConnection(_id);
-                    if (context.mounted) Navigator.pop(context);
-                  }
-                },
-          child: const Text('删除'),
-        ),
-      TextButton(
-        onPressed: _busy ? null : () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(onPressed: _busy ? null : _save, child: const Text('保存连接')),
-    ],
-  );
+        FButton(onPress: _busy ? null : _save, child: const Text('保存连接')),
+      ],
+    );
+  }
+
   String? _required(String? value) =>
       value?.trim().isEmpty != false ? '请填写此项' : null;
   String? _positive(String? value) =>
