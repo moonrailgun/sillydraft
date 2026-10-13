@@ -60,6 +60,8 @@ flutter run -d macos
 
 本机验证为 Xcode 26.4.1 / iOS 26.4 模拟器 / macOS arm64。真机 iOS 与 `flutter build ipa --release` 需要发布者设置 Team、证书和 provisioning。macOS 对外分发还需 Developer ID 签名及公证；本地构建不等于公证包。
 
+macOS 在 `macos/Runner/Info.plist` 中设置 `FLTEnableImpeller=false`，使用 Skia（Metal），绕过 Flutter 3.47.7 下运行期间部分中文字形变成噪点或条纹的问题。这个设置需要重新构建并重启应用，热重载不生效；不影响 iOS 和 Android。升级 Flutter 后，先验证长文滚动、字体切换和反复进入阅读页，再考虑恢复 Impeller。
+
 ## Windows 和 Linux
 
 Windows 使用 Visual Studio 的 Desktop development with C++ 工具链，然后 `flutter build windows --release`。Linux 需要 Flutter 桌面工具链及 GTK、Secret Service、JSONCPP 开发库；Ubuntu 可安装 `clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev`，然后 `flutter build linux --release`。

@@ -28,5 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- shortcut: Skia avoids macOS Impeller glyph corruption; retry Impeller after an engine upgrade. -->
+	<key>FLTEnableImpeller</key>
+	<false/>
 </dict>
 </plist>
