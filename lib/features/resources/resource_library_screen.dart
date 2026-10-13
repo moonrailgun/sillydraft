@@ -323,7 +323,6 @@ class ResourceDetailScreen extends ConsumerWidget {
         final preset = resource.kind == ResourceKind.preset
             ? PresetImporter().decode(resource.data)
             : null;
-        final json = JsonTreeView(resource.data);
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -399,25 +398,21 @@ class ResourceDetailScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 24),
-            if (preset != null) ...[
-              if (preset.diagnostics.isNotEmpty) ...[
-                FTileGroup(
-                  children: [
-                    for (final d in preset.diagnostics)
-                      FTile(
-                        title: Text(
-                          d.message,
-                          overflow: TextOverflow.visible,
-                          softWrap: true,
-                        ),
-                        subtitle: Text('${d.severity.name} · ${d.code}'),
+            if (preset != null && preset.diagnostics.isNotEmpty) ...[
+              FTileGroup(
+                children: [
+                  for (final d in preset.diagnostics)
+                    FTile(
+                      title: Text(
+                        d.message,
+                        overflow: TextOverflow.visible,
+                        softWrap: true,
                       ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-              ],
-              _PresetPreview(preset),
-              const SizedBox(height: 24),
+                      subtitle: Text('${d.severity.name} · ${d.code}'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
             ],
             Text(
               '导出会保留未知字段并移除已识别凭据。角色卡附件保存在加密原文件中；此 JSON 导出不包含二进制附件。',
@@ -426,26 +421,74 @@ class ResourceDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            if (preset == null)
-              json
-            else
-              // The preview above is the readable view; the source stays one
-              // click away, open by default when there is nothing to preview.
-              FAccordion(
-                children: [
-                  FAccordionItem(
-                    title: const Text('原始 JSON'),
-                    initiallyExpanded:
-                        preset.prompts.isEmpty && _samplers(preset).isEmpty,
-                    child: json,
-                  ),
-                ],
-              ),
+            _ResourceBody(resource, preset),
           ],
         );
       },
     ),
   );
+}
+
+/// A resource read two ways: a preview of what it holds, or its raw JSON
+/// as a foldable tree. Without a preview only the JSON shows.
+class _ResourceBody extends StatefulWidget {
+  const _ResourceBody(this.resource, this.preset);
+  final LibraryResource resource;
+  final ImportedPreset? preset;
+  @override
+  State<_ResourceBody> createState() => _ResourceBodyState();
+}
+
+class _ResourceBodyState extends State<_ResourceBody> {
+  bool _raw = false;
+
+  Widget? _preview() {
+    final data = widget.resource.data, preset = widget.preset;
+    try {
+      return switch (widget.resource.kind) {
+        ResourceKind.character => CharacterPreview(data),
+        ResourceKind.preset =>
+          preset != null &&
+                  (preset.prompts.isNotEmpty || _samplers(preset).isNotEmpty)
+              ? _PresetPreview(preset)
+              : null,
+        ResourceKind.worldBook => WorldBookPreview(WorldBook.fromJson(data)),
+        ResourceKind.regex => RegexPreview(RegexPreview.rulesOf(data)),
+      };
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _preview();
+    if (preview == null) return JsonTreeView(widget.resource.data);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            ChoicePill(
+              label: '预览',
+              icon: FLucideIcons.eye,
+              selected: !_raw,
+              onPress: () => setState(() => _raw = false),
+            ),
+            const SizedBox(width: 8),
+            ChoicePill(
+              label: '原始 JSON',
+              icon: FLucideIcons.braces,
+              selected: _raw,
+              onPress: () => setState(() => _raw = true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_raw) JsonTreeView(widget.resource.data) else preview,
+      ],
+    );
+  }
 }
 
 class ResourceEditScreen extends ConsumerStatefulWidget {
@@ -602,28 +645,6 @@ class _PresetPreview extends StatefulWidget {
 class _PresetPreviewState extends State<_PresetPreview> {
   final _open = <String>{};
 
-  Widget _heading(String title, [String? note]) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text.rich(
-      TextSpan(
-        text: title,
-        style: context.theme.typography.body.md.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-        children: [
-          if (note != null)
-            TextSpan(
-              text: '  $note',
-              style: context.theme.typography.body.sm.copyWith(
-                fontWeight: FontWeight.normal,
-                color: context.theme.colors.mutedForeground,
-              ),
-            ),
-        ],
-      ),
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     final theme = context.theme;
@@ -651,7 +672,7 @@ class _PresetPreviewState extends State<_PresetPreview> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (samplers.isNotEmpty) ...[
-          _heading('采样参数'),
+          previewHeading(context, '采样参数'),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -677,7 +698,8 @@ class _PresetPreviewState extends State<_PresetPreview> {
           const SizedBox(height: 24),
         ],
         if (rows.isNotEmpty) ...[
-          _heading(
+          previewHeading(
+            context,
             '提示词',
             '启用 ${rows.where((p) => on.contains(p.identifier)).length} / '
                 '${rows.length}'

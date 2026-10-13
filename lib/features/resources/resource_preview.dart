@@ -1,7 +1,317 @@
 import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/widgets.dart';
+import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/widgets.dart';
+
+/// A section title with an optional muted note after it.
+Widget previewHeading(BuildContext context, String title, [String? note]) =>
+    Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text.rich(
+        TextSpan(
+          text: title,
+          style: context.theme.typography.body.md.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          children: [
+            if (note != null)
+              TextSpan(
+                text: '  $note',
+                style: context.theme.typography.body.sm.copyWith(
+                  fontWeight: FontWeight.normal,
+                  color: context.theme.colors.mutedForeground,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+/// One row of a [FoldGroup].
+class FoldItem {
+  const FoldItem(
+    this.id,
+    this.title,
+    this.body, {
+    this.note,
+    this.details,
+    this.enabled,
+    this.mono = false,
+  });
+  final String id, title, body;
+
+  /// A muted line above [body], such as an entry's keywords.
+  final String? note;
+  final String? details;
+
+  /// Whether the row is on; null shows no state icon.
+  final bool? enabled;
+  final bool mono;
+}
+
+/// Read-only rows whose text folds to two lines until tapped.
+class FoldGroup extends StatefulWidget {
+  const FoldGroup(this.items, {super.key});
+  final List<FoldItem> items;
+  @override
+  State<FoldGroup> createState() => _FoldGroupState();
+}
+
+class _FoldGroupState extends State<FoldGroup> {
+  final _open = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    final muted = TextStyle(color: theme.colors.mutedForeground);
+    return FTileGroup(
+      children: [
+        for (final item in widget.items)
+          () {
+            final open = _open.contains(item.id);
+            final body = item.body.trim().isEmpty ? '（空）' : item.body.trim();
+            return FTile(
+              key: ValueKey('fold-${item.id}'),
+              prefix: item.enabled == null
+                  ? null
+                  : Icon(
+                      item.enabled!
+                          ? FLucideIcons.circleCheck
+                          : FLucideIcons.circle,
+                      color: item.enabled!
+                          ? null
+                          : theme.colors.mutedForeground,
+                    ),
+              title: Text(
+                item.title,
+                style: item.enabled == false ? muted : null,
+              ),
+              subtitle: Text.rich(
+                TextSpan(
+                  children: [
+                    if (item.note != null)
+                      TextSpan(text: '${item.note}\n', style: muted),
+                    TextSpan(
+                      // Folded rows lay out a slice, not a whole HTML greeting.
+                      text: open || body.length <= 400
+                          ? body
+                          : body.substring(0, 400),
+                      style: item.mono
+                          ? const TextStyle(fontFamily: 'monospace')
+                          : null,
+                    ),
+                  ],
+                ),
+                maxLines: open ? null : 2,
+                softWrap: true,
+                overflow: open ? TextOverflow.visible : TextOverflow.ellipsis,
+              ),
+              details: item.details == null ? null : Text(item.details!),
+              onPress: () => setState(() {
+                if (!_open.remove(item.id)) _open.add(item.id);
+              }),
+            );
+          }(),
+      ],
+    );
+  }
+}
+
+const _cardFields = {
+  'description': '描述',
+  'personality': '性格',
+  'scenario': '场景',
+  'mes_example': '对话示例',
+  'system_prompt': '系统提示词',
+  'post_history_instructions': '历史后指令',
+  'creator_notes': '作者备注',
+};
+
+/// A character card read as its settings, greetings, lorebook and regex.
+class CharacterPreview extends StatelessWidget {
+  const CharacterPreview(this.raw, {super.key});
+
+  /// A V1 card root or a V2/V3 document.
+  final Map<String, dynamic> raw;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    final data = raw['spec'] != null && raw['data'] is Map<String, dynamic>
+        ? raw['data'] as Map<String, dynamic>
+        : raw;
+    String text(String key) =>
+        data[key] is String ? (data[key] as String).trim() : '';
+    final tags = [
+      if (data['tags'] is List)
+        for (final t in data['tags'] as List)
+          if (t is String && t.trim().isNotEmpty) t.trim(),
+    ];
+    final meta = [
+      if (text('creator').isNotEmpty) '作者 ${text('creator')}',
+      if (text('character_version').isNotEmpty)
+        '版本 ${text('character_version')}',
+    ];
+    final fields = [
+      for (final MapEntry(:key, :value) in _cardFields.entries)
+        if (text(key).isNotEmpty) FoldItem(key, value, text(key)),
+    ];
+    final greetings = [
+      text('first_mes'),
+      if (data['alternate_greetings'] is List)
+        for (final g in data['alternate_greetings'] as List)
+          if (g is String) g,
+    ];
+    WorldBook? book;
+    try {
+      if (data['character_book'] is Map<String, dynamic>) {
+        book = WorldBook.fromJson(
+          data['character_book'] as Map<String, dynamic>,
+        );
+      }
+    } on FormatException {
+      // Shown in the raw view; the preview leaves it out.
+    }
+    final rules = DisplayContext.regexRulesOf(data['extensions']);
+    const gap = SizedBox(height: 24);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (tags.isNotEmpty || meta.isNotEmpty) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final tag in tags)
+                FBadge(variant: FBadgeVariant.secondary, child: Text(tag)),
+              if (meta.isNotEmpty)
+                Text(
+                  meta.join(' · '),
+                  style: theme.typography.body.sm.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
+                ),
+            ],
+          ),
+          gap,
+        ],
+        if (fields.isNotEmpty) ...[
+          previewHeading(context, '设定'),
+          FoldGroup(fields),
+          gap,
+        ],
+        if (greetings.any((g) => g.trim().isNotEmpty)) ...[
+          previewHeading(context, '开场白', '共 ${greetings.length} 条'),
+          FoldGroup([
+            for (final (i, g) in greetings.indexed)
+              FoldItem('greeting-$i', i == 0 ? '开场白' : '备用开场 $i', g),
+          ]),
+          gap,
+        ],
+        if (book != null && book.entries.isNotEmpty) ...[
+          WorldBookPreview(book, title: '角色书'),
+          gap,
+        ],
+        if (rules.isNotEmpty) RegexPreview(rules),
+      ],
+    );
+  }
+}
+
+String _position(WorldBookEntry e) => switch (e.position) {
+  0 => '角色前',
+  1 => '角色后',
+  2 => '作者注前',
+  3 => '作者注后',
+  4 => '深度 ${e.depth}',
+  5 => '示例前',
+  6 => '示例后',
+  _ => '位置 ${e.position}',
+};
+
+/// A world book's entries, in file order.
+class WorldBookPreview extends StatelessWidget {
+  const WorldBookPreview(this.book, {super.key, this.title = '条目'});
+  final WorldBook book;
+  final String title;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      previewHeading(
+        context,
+        title,
+        '启用 ${book.entries.where((e) => e.enabled).length} / ${book.entries.length}',
+      ),
+      if (book.entries.isNotEmpty)
+        FoldGroup([
+          for (final (i, e) in book.entries.indexed)
+            FoldItem(
+              'entry-$i',
+              e.comment.trim().isNotEmpty
+                  ? e.comment.trim()
+                  : e.keys.isNotEmpty
+                  ? e.keys.join('、')
+                  : '条目 ${e.id}',
+              e.content,
+              note: e.keys.isEmpty ? null : '关键词：${e.keys.join('、')}',
+              details: '${e.constant ? '常驻 · ' : ''}${_position(e)}',
+              enabled: e.enabled,
+            ),
+        ]),
+    ],
+  );
+}
+
+const _placements = {1: '用户输入', 2: 'AI 输出', 3: '快捷命令', 5: '世界书', 6: '推理'};
+
+/// SillyTavern regex scripts: what each finds, what it writes, and where.
+class RegexPreview extends StatelessWidget {
+  const RegexPreview(this.rules, {super.key});
+  final List<Map<String, dynamic>> rules;
+
+  /// The rules of a regex resource: one script, or a `scripts` bundle.
+  static List<Map<String, dynamic>> rulesOf(Map<String, dynamic> raw) =>
+      raw['scripts'] is List
+      ? [
+          for (final rule in raw['scripts'] as List)
+            if (rule is Map<String, dynamic>) rule,
+        ]
+      : [raw];
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      previewHeading(
+        context,
+        '正则脚本',
+        '启用 ${rules.where((r) => r['disabled'] != true).length} / ${rules.length}',
+      ),
+      FoldGroup([
+        for (final (i, rule) in rules.indexed)
+          FoldItem(
+            'regex-$i',
+            rule['scriptName'] is String &&
+                    (rule['scriptName'] as String).trim().isNotEmpty
+                ? (rule['scriptName'] as String).trim()
+                : '正则 ${i + 1}',
+            '${rule['findRegex'] ?? ''}\n→ ${rule['replaceString'] ?? ''}',
+            details: [
+              if (rule['placement'] is List)
+                for (final p in rule['placement'] as List) ?_placements[p],
+              if (rule['markdownOnly'] == true) '仅显示',
+              if (rule['promptOnly'] == true) '仅提示词',
+            ].join('、'),
+            enabled: rule['disabled'] != true,
+            mono: true,
+          ),
+      ]),
+    ],
+  );
+}
 
 /// A foldable tree of JSON: objects and arrays open on tap, strings show
 /// their real line breaks and fold when long.
