@@ -7,6 +7,10 @@ import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/finders.dart';
+
+import 'package:sillydraft/app/widgets.dart';
+
 void main() {
   void desktop(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 900);
@@ -64,7 +68,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(f.novel.title));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('编辑正文'));
+      await tester.tap(findAction('编辑正文'));
       await tester.pumpAndSettle();
       tester.testTextInput.updateEditingValue(
         const TextEditingValue(
@@ -151,11 +155,12 @@ void main() {
           outline = find.byKey(const Key('workspace-outline'));
       expect(divider, findsOneWidget);
       final before = tester.getSize(outline).width;
-      await tester.drag(divider, const Offset(90, 0));
+      // The outline is on the right: dragging its divider left widens it.
+      await tester.drag(divider, const Offset(-90, 0));
       await tester.pumpAndSettle();
       expect(tester.getSize(outline).width, greaterThan(before + 60));
       final width = tester.getSize(outline).width;
-      await tester.tap(find.byType(BackButton));
+      await tester.tap(find.byType(AppBackButton));
       await tester.pumpAndSettle();
       await tester.tap(find.text(f.novel.title));
       await tester.pumpAndSettle();
@@ -178,12 +183,18 @@ void main() {
       await tester.pumpAndSettle();
       await shortcut(tester, LogicalKeyboardKey.keyF);
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '潮声');
+      expect(find.byType(AppDialog), findsOneWidget);
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AppDialog),
+          matching: find.byType(EditableText),
+        ),
+        '潮声',
+      );
       await tester.tap(
         find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(FilledButton),
+          of: find.byType(AppDialog),
+          matching: find.widgetWithText(FButton, '保存'),
         ),
       );
       await tester.pumpAndSettle();
@@ -203,12 +214,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('open-reader')));
       await tester.pumpAndSettle();
-      final link = find.text('探索后续走向与结局');
-      final theme = Theme.of(tester.element(link));
+      final link = find.text('分支与结局');
+      final linkColor = FTheme.of(tester.element(link)).colors.primary;
       final background = tester
-          .widget<Scaffold>(find.byType(Scaffold).last)
-          .backgroundColor!;
-      final a = theme.colorScheme.primary.computeLuminance();
+          .widget<ColoredBox>(find.byKey(const Key('reader-page')))
+          .color;
+      final a = linkColor.computeLuminance();
       final b = background.computeLuminance();
       final contrast = a > b ? (a + .05) / (b + .05) : (b + .05) / (a + .05);
       expect(contrast, greaterThanOrEqualTo(4.5));
@@ -229,7 +240,12 @@ void main() {
       await tester.pumpWidget(SillyDraftApp(services: f.services));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('设置'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AppBottomBar),
+          matching: find.text('设置'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('深色'));

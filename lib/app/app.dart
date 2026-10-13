@@ -2,19 +2,18 @@ import 'dart:async';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 
-import '../features/bookshelf/bookshelf_screen.dart';
-import '../features/bookshelf/novel_dialog.dart';
+import '../features/bookshelf/novel_start.dart';
 import '../features/bookshelf/search_screen.dart';
-import '../features/editor/workspace_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/resources/resource_library_screen.dart';
 import 'desktop_commands.dart';
+import 'home_screen.dart';
 import 'services.dart';
 import 'theme.dart';
 import 'widgets.dart' show showError;
@@ -37,6 +36,12 @@ class _App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   final _navigator = GlobalKey<NavigatorState>();
+  int _selectedDestination = 0;
+
+  void _selectDestination(int index) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _selectedDestination = index);
+  }
 
   void _error(Object error) {
     final context = _navigator.currentContext;
@@ -61,14 +66,14 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
       if (command == AppCommand.save) {
         await ref.read(servicesProvider).flushDrafts();
       } else if (command == AppCommand.create) {
-        final novel = await showNovelDialog(navigator.context);
-        if (novel != null && mounted) {
-          await navigator.push(
-            MaterialPageRoute<void>(
-              builder: (_) => NovelWorkspace(novelId: novel.id),
-            ),
-          );
-        }
+        await showNovelStart(navigator.context);
+      } else if (!navigator.canPop() &&
+          (command == AppCommand.resources || command == AppCommand.settings)) {
+        _selectDestination(
+          command == AppCommand.resources
+              ? HomeTab.resources
+              : HomeTab.settings,
+        );
       } else {
         final screen = switch (command) {
           AppCommand.search => const GlobalSearchScreen(),
@@ -144,7 +149,10 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
           : mode == 'light'
           ? ThemeMode.light
           : ThemeMode.system,
-      home: const BookshelfScreen(),
+      home: HomeScreen(
+        selectedIndex: _selectedDestination,
+        onDestinationSelected: _selectDestination,
+      ),
     );
   }
 }

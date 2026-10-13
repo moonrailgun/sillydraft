@@ -13,6 +13,10 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../test/support/finders.dart';
+
+import 'package:sillydraft/app/widgets.dart';
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('native secrets file, SQLite, editor, reader and reopen', (
@@ -92,13 +96,13 @@ void main() {
     await waitFor(find.text(novel.title));
     await tester.tap(find.text(novel.title));
     await tester.pumpAndSettle();
-    await waitFor(find.byTooltip('编辑正文'));
+    await waitFor(findAction('编辑正文'));
     if ((tester.view.physicalSize / tester.view.devicePixelRatio).width >=
         900) {
       expect(find.byKey(const Key('workspace-divider')), findsOneWidget);
     }
     await capture('workspace');
-    await tester.tap(find.byTooltip('编辑正文'));
+    await tester.tap(findAction('编辑正文'));
     await tester.pumpAndSettle();
     tester.testTextInput.updateEditingValue(
       const TextEditingValue(
@@ -107,7 +111,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.byTooltip('保存并返回'));
+    await tester.tap(findAction('保存并返回'));
     await waitFor(find.byKey(const Key('open-reader')));
     expect(
       (await repository.getScene(
@@ -225,7 +229,7 @@ void main() {
       },
     );
     unawaited(
-      Navigator.of(tester.element(find.byType(Scaffold).last)).push(
+      Navigator.of(tester.element(find.byType(AppScaffold).last)).push(
         MaterialPageRoute<void>(
           builder: (_) => ResourceEditScreen(resource: preset),
         ),

@@ -21,6 +21,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('create-novel')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('start-blank')).last);
+      await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('novel-title')), '雾港来信');
       await tester.tap(find.text('创建小说'));
       await tester.pumpAndSettle();
