@@ -226,6 +226,93 @@ void main() {
   );
 
   test(
+    'stream errors retain the message without credentials or payloads',
+    () async {
+      handler = (r) async {
+        await r.drain<void>();
+        r.response.headers.contentType = ContentType('text', 'event-stream');
+        r.response.write(
+          'data: ${jsonEncode({
+            'error': {
+              'message': 'Invalid tool response with private-key and Bearer upstream-secret',
+              'request': {'content': 'private manuscript'},
+            },
+          })}\n\n',
+        );
+        await r.response.close();
+      };
+      await expectLater(
+        provider.generate(request()).toList(),
+        throwsA(
+          isA<ProviderException>()
+              .having((e) => e.code, 'code', 'stream_error')
+              .having(
+                (e) => e.message,
+                'message',
+                contains('Invalid tool response'),
+              )
+              .having((e) => e.message, 'key', isNot(contains('private-key')))
+              .having(
+                (e) => e.message,
+                'bearer',
+                isNot(contains('upstream-secret')),
+              )
+              .having(
+                (e) => e.message,
+                'payload',
+                isNot(contains('private manuscript')),
+              ),
+        ),
+      );
+    },
+  );
+
+  test('string errors are bounded after credential redaction', () async {
+    handler = (r) async {
+      await r.drain<void>();
+      r.response.headers.contentType = ContentType('text', 'event-stream');
+      r.response.write(
+        'data: ${jsonEncode({'error': 'Quota exceeded ${'x' * 490}private-key${'x' * 500}'})}\n\n',
+      );
+      await r.response.close();
+    };
+    await expectLater(
+      provider.generate(request()).toList(),
+      throwsA(
+        isA<ProviderException>()
+            .having((e) => e.message, 'message', contains('Quota exceeded'))
+            .having((e) => e.message.length, 'length', lessThan(600))
+            .having((e) => e.message, 'key', isNot(contains('private-'))),
+      ),
+    );
+  });
+
+  test('unrecognized error objects keep a readable fallback', () async {
+    handler = (r) async {
+      await r.drain<void>();
+      r.response.headers.contentType = ContentType('text', 'event-stream');
+      r.response.write(
+        'data: ${jsonEncode({
+          'error': {
+            'message': {'api_key': 'private-key'},
+          },
+        })}\n\n',
+      );
+      await r.response.close();
+    };
+    await expectLater(
+      provider.generate(request()).toList(),
+      throwsA(
+        isA<ProviderException>().having(
+          (e) => e.message,
+          'message',
+          '模型服务在生成中返回错误',
+        ),
+      ),
+    );
+  });
+
+  test(
     'non-streaming compatible response and length stop are explicit',
     () async {
       handler = (r) async {

@@ -58,6 +58,25 @@ final class OpenAICompatibleProvider implements ModelProvider {
     if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
   };
 
+  String _streamError(Object? error) {
+    const fallback = '模型服务在生成中返回错误';
+    final detail = error is Map ? error['message'] : error;
+    if (detail is! String || detail.trim().isEmpty) return fallback;
+    // Only retain the message, never the provider's request or full payload.
+    var message = _apiKey.isEmpty
+        ? detail
+        : detail.replaceAll(_apiKey, '[已隐藏]');
+    message = message
+        .replaceAll(
+          RegExp(r'\bBearer\s+[A-Za-z0-9._~+/-]+=*', caseSensitive: false),
+          'Bearer [已隐藏]',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (message.length > 512) message = '${message.substring(0, 512)}…';
+    return '$fallback：$message';
+  }
+
   @override
   List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) {
     final diagnostics = <CompatibilityDiagnostic>[];
@@ -208,7 +227,10 @@ final class OpenAICompatibleProvider implements ModelProvider {
           throw const ProviderException('invalid_response', '模型响应不是对象');
         }
         if (decoded['error'] != null) {
-          throw const ProviderException('stream_error', '模型服务在生成中返回错误');
+          throw ProviderException(
+            'stream_error',
+            _streamError(decoded['error']),
+          );
         }
         if (decoded['usage'] is Map<String, dynamic>) {
           usage = decoded['usage'] as Map<String, dynamic>;
