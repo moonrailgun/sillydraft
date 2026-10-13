@@ -139,7 +139,7 @@ HTML 高度沿用酒馆助手 `src/iframe/adjust_iframe_height.js` 的 `body.scr
 | --- | --- |
 | 第一阶段 | Chat Completion 完整预设与独立提示词包；旧字段迁移；条目顺序、开关、标记、角色卡覆盖、注入与触发；首批样本所需的基础及变量宏；文本正则；兼容报告与正文生成隔离 |
 | 第二阶段 | Text Completion 与 Context、Instruct、System Prompt 组合；高级格式组合包；模板语法及 Reasoning Formatting；更多模型参数与正则边界 |
-| 后续补齐 | 更广泛的社区预设、Kobold/NovelAI 等专用后端、扩展宏与特殊展示；每项单独标注支持状态 |
+| 后续补齐 | 更广泛的社区预设、Kobold/NovelAI 等文本专用后端、扩展宏与特殊展示；每项单独标注支持状态 |
 
 现有验收集合包含固定 ST 官方默认文件和自行构造的边界样本；用户尚未提供特定社区预设，不能声称已验证其全部依赖。社区预设出现新的必需依赖时，将该依赖纳入对应预设的交付条件；不以“JSON 已导入”替代行为验收。
 
@@ -157,3 +157,9 @@ HTML 高度沿用酒馆助手 `src/iframe/adjust_iframe_height.js` 的 `body.scr
 10. 保存原始响应、候选正文和依据版本，保证用户编辑后的正文不会被旧结果直接覆盖。
 
 对照测试固定 ST 提交、人物卡、预设、历史、变量、时钟和随机输入；涉及预算截断时，还需固定模型和 tokenizer，或明确记录估算差异。用 ST 实际组装结果作为基准，逐项记录小说输入映射造成的差异。升级基线时先更新样本和差异说明，再扩大兼容声明。
+
+## NovelAI 生图连接
+
+NovelAI 文生图对齐固定基线 [SillyTavern 1.19.0 的 NovelAI 图片接口](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/novelai.js#L306)：Bearer 密钥、`/ai/generate-image`、`action: generate`、`params_version: 3`、单图 `n_samples: 1`、正负提示词的 V4 caption 结构，以及 ZIP 内 PNG 的返回格式。默认使用 V4.5 Full、1024×1024、28 步、引导强度 5；提示词原样发送，不隐式加入质量标签。
+
+只支持直连文生图与常用采样参数；不包含 NovelAI 文本后端、参考图编辑、Vibe Transfer、多角色定位、局部重绘、放大或 ST 生图扩展设置导入。取消仅终止等待，服务端可能继续执行和计费；不自动重试。常用模型列表为内置建议，不冒充服务端发现或连接验证。协议回归使用本地 HTTP 服务及 ZIP 图片，不调用付费模型。

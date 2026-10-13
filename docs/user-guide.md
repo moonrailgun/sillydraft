@@ -63,6 +63,15 @@
 
 在“任务使用的模型”中为正文、编辑 Agent、资料整理和插画分别选择具体模型。写作和插画生成页也可以为本次任务切换模型；切换写作模型后需要重新预览提示词。每次任务只调用一个模型。密钥以明文保存在本机的密钥文件 `secrets.json` 中，不进入作品备份、同步和导出。
 
+### 使用 NovelAI 生图
+
+1. 设置 → 添加连接，选择“NovelAI（生图）”。默认地址为 `https://image.novelai.net`，无需添加 `/v1` 或 `/ai/generate-image`。
+2. 在 API Key 中填写 NovelAI 账户设置中的 **Persistent API Token**。默认模型为 `nai-diffusion-4-5-full`；“选择常用模型”显示内置列表，不联网、不验证密钥，也可手动填写模型 ID。
+3. 在插图生成页面选中该连接，填写画面描述并选择尺寸。默认生成一张 1024×1024 图片，28 步，引导强度 5，随机种子。
+4. 高级参数示例：`{"negative_prompt":"blurry, low quality","steps":28,"scale":5,"seed":123}`。还支持 `width`、`height`（64 的倍数）、`sampler`、`noise_schedule`、`cfg_rescale`、`sm`、`sm_dyn`、`dynamic_thresholding`；具体可用值受模型限制。显式选择的尺寸优先于 JSON 中的宽高；`seed: -1` 表示随机。
+
+当前支持直连文生图，不支持参考图编辑、Vibe Transfer、角色定位、局部重绘或放大；应用会拒绝参考图及未支持的参数。提示词原样发送，不自动添加质量标签。取消或超时只停止本地等待，服务端可能继续生成并计费；不会自动重试，手动重试会新建请求。SillyDraft 远程执行器暂不支持 NovelAI 配置。
+
 ### 使用 ComfyUI 生图
 
 1. 在 ComfyUI 中运行确认可用的工作流，使用 **Export (API)** 导出 JSON。普通画布 JSON 不能直接执行。

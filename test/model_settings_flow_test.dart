@@ -39,6 +39,45 @@ Future<AppServices> openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('NovelAI connection saves image models and its access token', (
+    tester,
+  ) async {
+    final services = await openSettings(tester);
+    await tester.tap(find.text('OpenAI 兼容接口'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('NovelAI（生图）').last);
+    await tester.pumpAndSettle();
+    expect(find.text('上下文 token 上限'), findsNothing);
+    expect(find.byKey(const Key('connection-test')), findsNothing);
+    await tester.enterText(
+      find.widgetWithText(FTextFormField, 'API Key'),
+      'novelai-test-token',
+    );
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    final saved = (await services.connections()).single;
+    expect(saved.protocol.name, 'novelAI');
+    expect(saved.baseUrl, 'https://image.novelai.net');
+    expect(saved.model, 'nai-diffusion-4-5-full');
+    expect(
+      await services.secrets.read('model/${saved.id}'),
+      'novelai-test-token',
+    );
+    expect(await services.connectionFor('writing'), isNull);
+    expect((await services.connectionFor('image'))!.id, saved.id);
+    final provider = await services.imageProvider(saved);
+    addTearDown(provider.close);
+    expect(provider, isA<NovelAIImageProvider>());
+    await tester.tap(findAction('编辑连接'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    expect(
+      await services.secrets.read('model/${saved.id}'),
+      'novelai-test-token',
+    );
+  });
+
   testWidgets('save multiple models and choose a different model for writing', (
     tester,
   ) async {

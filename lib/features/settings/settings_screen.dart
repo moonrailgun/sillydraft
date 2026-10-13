@@ -117,7 +117,7 @@ class SettingsScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  '一个连接可保存多个模型。支持 OpenAI 兼容接口、ComfyUI 生图、SillyDraft 远程执行器，以及桌面端的本地订阅（Claude Code、Codex）。密钥以明文保存在本机的密钥文件里，不进入作品备份和同步。',
+                  '一个连接可保存多个模型。支持 OpenAI 兼容接口、ComfyUI 与 NovelAI 生图、SillyDraft 远程执行器，以及桌面端的本地订阅（Claude Code、Codex）。密钥以明文保存在本机的密钥文件里，不进入作品备份和同步。',
                   style: theme.typography.body.sm.copyWith(
                     color: theme.colors.mutedForeground,
                   ),
@@ -288,6 +288,7 @@ class SettingsScreen extends ConsumerWidget {
 const protocolLabels = {
   ModelProtocol.openAICompatible: 'OpenAI 兼容接口',
   ModelProtocol.comfyUI: 'ComfyUI（生图）',
+  ModelProtocol.novelAI: 'NovelAI（生图）',
   ModelProtocol.sillyDraftRunner: 'SillyDraft 远程执行器',
   ModelProtocol.claudeCode: 'Claude Code（本地订阅）',
   ModelProtocol.codexCli: 'Codex（本地订阅）',
@@ -345,7 +346,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late ModelKind _kind = widget.connection?.kind ?? ModelKind.text;
   late ComfyWorkflow? _workflow = widget.connection?.comfyWorkflow;
   bool get _comfy => _protocol == ModelProtocol.comfyUI;
-  bool get _text => !_comfy && _kind != ModelKind.image;
+  bool get _novelAI => _protocol == ModelProtocol.novelAI;
+  bool get _text => !_comfy && !_novelAI && _kind != ModelKind.image;
   bool get _remote => _protocol == ModelProtocol.sillyDraftRunner;
   bool get _cli => _protocol.isLocalCli;
   String get _tool =>
@@ -401,7 +403,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
           ? widget.connection!.model
           : selected.firstOrNull ?? '',
       models: selected,
-      kind: _comfy
+      kind: _comfy || _novelAI
           ? ModelKind.image
           : _cli
           ? ModelKind.text
@@ -423,10 +425,21 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     setState(() {
       final wasCli = _cli;
       final wasComfy = _comfy;
+      final wasNovelAI = _novelAI;
       _protocol = value;
       _models = [];
       _message = null;
       _probe = null;
+      if (wasNovelAI) {
+        _kind = ModelKind.text;
+        if (_url.text == 'https://image.novelai.net') {
+          _url.text = 'https://api.openai.com/v1';
+        }
+        if (_selectedModels.every(NovelAIImageProvider.models.contains)) {
+          _model.clear();
+        }
+        if (_name.text == 'NovelAI') _name.text = '我的模型';
+      }
       if (_comfy) {
         _kind = ModelKind.image;
         if (_url.text == 'https://api.openai.com/v1') {
@@ -437,6 +450,16 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         _kind = ModelKind.text;
         if (_url.text == 'http://127.0.0.1:8188') {
           _url.text = 'https://api.openai.com/v1';
+        }
+      }
+      if (_novelAI) {
+        _kind = ModelKind.image;
+        if (_url.text == 'https://api.openai.com/v1') {
+          _url.text = 'https://image.novelai.net';
+        }
+        if (_name.text == '我的模型') _name.text = 'NovelAI';
+        if (_selectedModels.isEmpty) {
+          _model.text = NovelAIImageProvider.models.first;
         }
       }
       if (_cli && !wasCli) {
@@ -552,6 +575,13 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     ModelProvider? provider;
     ComfyUIProvider? comfy;
     try {
+      if (_novelAI) {
+        setState(() {
+          _models = NovelAIImageProvider.models;
+          _message = '内置常用模型列表，可手动填写其他模型 ID；未发送网络请求。';
+        });
+        return;
+      }
       if (_cli) {
         final cli = LocalCliProvider(config: _configuration(listing: true));
         final status = await cli.check();
@@ -612,11 +642,13 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         if (mounted) Navigator.pop(context);
         return;
       }
-      if (_remote &&
+      if ((_remote || _novelAI) &&
           _key.text.isEmpty &&
           (await ref.read(servicesProvider).secrets.read('model/$_id') ?? '')
               .isEmpty) {
-        throw const FormatException('请填写远程执行器访问令牌');
+        throw FormatException(
+          _novelAI ? '请填写 NovelAI API Key' : '请填写远程执行器访问令牌',
+        );
       }
       await ref
           .read(servicesProvider)
@@ -681,7 +713,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                 onChange: _switchProtocol,
               ),
             ),
-            if (!_cli && !_comfy) ...[
+            if (!_cli && !_comfy && !_novelAI) ...[
               const SizedBox(height: 16),
               FSelect<ModelKind>(
                 label: const Text('模型用途'),
@@ -742,6 +774,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                 description: Text(
                   _comfy
                       ? '例如 http://127.0.0.1:8188；手机连接电脑时填写电脑的局域网地址'
+                      : _novelAI
+                      ? '默认 https://image.novelai.net，不加 /v1 或 /ai/generate-image'
                       : _remote
                       ? '例如 https://runner.example，不加 /v1'
                       : '例如 https://服务地址/v1，不含 /chat/completions',
@@ -769,7 +803,11 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                 label: Text(_remote ? '访问令牌' : 'API Key'),
                 description: Text(
                   widget.connection == null
-                      ? (_remote ? '填写 SILLYDRAFT_RUNNER_TOKEN' : '本地无鉴权服务可以留空')
+                      ? (_novelAI
+                            ? '填写 NovelAI 账户设置中的 Persistent API Token'
+                            : _remote
+                            ? '填写 SILLYDRAFT_RUNNER_TOKEN'
+                            : '本地无鉴权服务可以留空')
                       : '留空保留现有密钥',
                 ),
                 suffixBuilder: (context, _, _) => Padding(
@@ -848,6 +886,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                           ? '检查中…'
                           : _cli
                           ? '检查安装与登录'
+                          : _novelAI
+                          ? '选择常用模型'
                           : '检查连接并获取模型',
                     ),
                   ),
@@ -880,7 +920,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                 {for (final m in _modelOptions) m: m},
                 // A new list gets a fresh selection.
                 key: ObjectKey(_models),
-                label: Text(_cli ? '常用模型（可多选）' : '从服务端模型列表多选'),
+                label: Text(_cli || _novelAI ? '常用模型（可多选）' : '从服务端模型列表多选'),
                 // Model IDs carry a vendor prefix, so match anywhere.
                 filter: (query) => _modelOptions.where(
                   (m) => m.toLowerCase().contains(query.toLowerCase()),

@@ -46,9 +46,15 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   bool _loadingDefaults = false;
   Object? _error;
   bool get _comfy => _connection?.protocol == ModelProtocol.comfyUI;
-  int get _referenceLimit => _comfy ? 1 : 16;
+  bool get _novelAI => _connection?.protocol == ModelProtocol.novelAI;
+  int get _referenceLimit => _novelAI
+      ? 0
+      : _comfy
+      ? 1
+      : 16;
   bool get _canReference =>
-      !_comfy || _connection?.comfyWorkflow?.imageInput.isNotEmpty == true;
+      !_novelAI &&
+      (!_comfy || _connection?.comfyWorkflow?.imageInput.isNotEmpty == true);
   @override
   void initState() {
     super.initState();
@@ -148,7 +154,9 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
       if (_references.length > _referenceLimit ||
           (_references.isNotEmpty && !_canReference)) {
         throw FormatException(
-          _canReference
+          _novelAI
+              ? 'NovelAI 连接目前仅支持文生图，请移除参考图'
+              : _canReference
               ? '当前模型最多使用 $_referenceLimit 张参考图'
               : '请先在 ComfyUI 工作流中绑定参考图输入',
         );
@@ -171,7 +179,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
         parameters: {
           ...extras,
           if (!_comfy && _size.isNotEmpty) 'size': _size,
-          if (!_comfy && _quality.isNotEmpty) 'quality': _quality,
+          if (!_comfy && !_novelAI && _quality.isNotEmpty) 'quality': _quality,
         },
         allowedDownloadHosts: hosts,
       );
@@ -341,17 +349,24 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                   _choice(
                     label: '尺寸',
                     value: _size,
-                    options: const {
-                      '': '由模型决定',
-                      'auto': 'auto',
-                      '1024x1024': '1024x1024',
-                      '1536x1024': '1536x1024',
-                      '1024x1536': '1024x1536',
-                    },
+                    options: _novelAI
+                        ? const {
+                            '': '默认 1024x1024',
+                            '1024x1024': '1024x1024',
+                            '832x1216': '832x1216',
+                            '1216x832': '1216x832',
+                          }
+                        : const {
+                            '': '由模型决定',
+                            'auto': 'auto',
+                            '1024x1024': '1024x1024',
+                            '1536x1024': '1536x1024',
+                            '1024x1536': '1024x1536',
+                          },
                     onChange: (v) => setState(() => _size = v),
                   ),
                 const SizedBox(height: 16),
-                if (!_comfy)
+                if (!_comfy && !_novelAI)
                   _choice(
                     label: '质量',
                     value: _quality,
@@ -362,6 +377,12 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                 if (_comfy) ...[
                   const Text(
                     '尺寸与采样参数沿用 ComfyUI 工作流。每次生成使用新的随机种子，也可在高级参数中指定 seed。取消会停止等待，服务端可能继续执行。',
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_novelAI) ...[
+                  const Text(
+                    'NovelAI 目前仅支持文生图。高级参数可设置 negative_prompt、steps、scale、seed、sampler、noise_schedule。取消只停止等待，服务端可能继续生成并计费。',
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -430,7 +451,8 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                     child: const Text('选择或导入参考图'),
                   ),
                 ),
-                if (!_canReference) const Text('此工作流未绑定参考图输入，可在模型设置中配置。'),
+                if (!_canReference && !_novelAI)
+                  const Text('此工作流未绑定参考图输入，可在模型设置中配置。'),
                 if (_references.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -459,11 +481,13 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                             description: Text(
                               _comfy
                                   ? '例如 {"seed": 123}；其他参数在工作流中配置'
+                                  : _novelAI
+                                  ? '例如 {"negative_prompt": "blurry", "steps": 28, "scale": 5, "seed": 123}'
                                   : '例如 output_format、seed；支持范围由连接决定',
                             ),
                           ),
                           const SizedBox(height: 16),
-                          if (!_comfy)
+                          if (!_comfy && !_novelAI)
                             FTextField(
                               control: FTextFieldControl.managed(
                                 controller: _hosts,

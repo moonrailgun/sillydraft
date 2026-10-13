@@ -8,6 +8,7 @@ enum ModelKind { text, image, both }
 enum ModelProtocol {
   openAICompatible,
   comfyUI,
+  novelAI,
   anthropic,
   gemini,
   sillyDraftRunner,
@@ -128,7 +129,7 @@ final class ModelConnection extends JsonSource {
       raw['models'] == null ? [model] : stringList(raw['models'], 'models');
   ModelKind get kind => protocol.isLocalCli
       ? ModelKind.text
-      : protocol == ModelProtocol.comfyUI
+      : protocol == ModelProtocol.comfyUI || protocol == ModelProtocol.novelAI
       ? ModelKind.image
       : ModelKind.values.byName(raw['kind'] as String? ?? 'both');
   ComfyWorkflow? get comfyWorkflow => raw['comfyWorkflow'] == null

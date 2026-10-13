@@ -339,6 +339,9 @@ final class AppServices {
     if (connection.protocol == ModelProtocol.comfyUI) {
       return ComfyUIProvider(config: connection, apiKey: key);
     }
+    if (connection.protocol == ModelProtocol.novelAI) {
+      return NovelAIImageProvider(config: connection, apiKey: key);
+    }
     if (connection.protocol == ModelProtocol.sillyDraftRunner) {
       return RemoteImageProvider(config: connection, accessToken: key);
     }

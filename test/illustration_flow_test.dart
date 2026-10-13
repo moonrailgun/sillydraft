@@ -43,90 +43,120 @@ class _WaitingImageProvider implements ImageProvider {
 }
 
 void main() {
-  testWidgets(
-    'phone image form starts a durable job and cancellation preserves prose',
-    (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final dir = await tester.runAsync(
-        () => Directory.systemTemp.createTemp('sillydraft-image-task-ui-'),
-      );
-      final started = Completer<ImageRequest>();
-      final services = AppServices(
-        repository: StoryRepository.memory(),
-        secrets: MemorySecrets(),
-        dataDirectory: dir,
-        imageProviderFactory: (c) async => _WaitingImageProvider(c, started),
-      );
-      addTearDown(() async {
-        await services.close();
-        await dir!.delete(recursive: true);
-      });
-      await services.saveConnection(
-        ModelConnection(
-          id: 'image',
-          name: '测试生图模型',
-          baseUrl: 'http://localhost:1/v1',
-          model: 'fixture-image',
-        ),
-      );
-      final repo = services.repository,
-          novel = await services.repository.createNovel(title: '取消生图');
-      final chapter = await repo.createChapter(
-        branchId: novel.activeBranchId,
-        content: ManuscriptContent.plainText('不会被生图任务改动的正文'),
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [servicesProvider.overrideWithValue(services)],
-          child: testHost(
-            IllustrationRequestScreen(
-              branchId: chapter.branchId,
-              chapterId: chapter.id,
+  for (final protocol in [
+    ModelProtocol.openAICompatible,
+    ModelProtocol.novelAI,
+  ]) {
+    testWidgets(
+      'phone $protocol image form starts a durable job and cancellation preserves prose',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final dir = await tester.runAsync(
+          () => Directory.systemTemp.createTemp('sillydraft-image-task-ui-'),
+        );
+        final started = Completer<ImageRequest>();
+        final services = AppServices(
+          repository: StoryRepository.memory(),
+          secrets: MemorySecrets(),
+          dataDirectory: dir,
+          imageProviderFactory: (c) async => _WaitingImageProvider(c, started),
+        );
+        addTearDown(() async {
+          await services.close();
+          await dir!.delete(recursive: true);
+        });
+        await services.saveConnection(
+          ModelConnection(
+            id: 'image',
+            name: '测试生图模型',
+            baseUrl: 'http://localhost:1/v1',
+            model: 'fixture-image',
+            protocol: protocol,
+          ),
+        );
+        await services.repository.setSetting(
+          'imageDefaults/image/fixture-image',
+          {'quality': 'high', 'size': '832x1216'},
+        );
+        final repo = services.repository,
+            novel = await services.repository.createNovel(title: '取消生图');
+        final chapter = await repo.createChapter(
+          branchId: novel.activeBranchId,
+          content: ManuscriptContent.plainText('不会被生图任务改动的正文'),
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [servicesProvider.overrideWithValue(services)],
+            child: testHost(
+              IllustrationRequestScreen(
+                branchId: chapter.branchId,
+                chapterId: chapter.id,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('illustration-name')), '港口');
-      await tester.enterText(
-        find.byKey(const Key('illustration-prompt')),
-        '雾中的港口，水彩',
-      );
-      await tester.scrollUntilVisible(
-        find.text('开始生成'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text('开始生成'));
-      for (var i = 0; i < 15; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      expect((await started.future).prompt, '雾中的港口，水彩');
-      expect(
-        (await repo.listTasks(branchId: chapter.branchId)).single.kind,
-        TaskKind.illustration,
-      );
-      await tester.tap(find.text('取消生成'));
-      await tester.pumpAndSettle();
-      expect(
-        (await repo.listTasks(branchId: chapter.branchId)).single.status,
-        TaskStatus.cancelled,
-      );
-      expect(
-        (await repo.getChapter(
-          branchId: chapter.branchId,
-          chapterId: chapter.id,
-        )).revisionId,
-        chapter.revisionId,
-      );
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpAndSettle();
-    },
-  );
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('illustration-name')),
+          '港口',
+        );
+        await tester.enterText(
+          find.byKey(const Key('illustration-prompt')),
+          '雾中的港口，水彩',
+        );
+        if (protocol == ModelProtocol.novelAI) {
+          await tester.scrollUntilVisible(
+            find.text('选择或导入参考图'),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          expect(find.text('质量'), findsNothing);
+          final referenceButton = tester.widget<FButton>(
+            find.widgetWithText(FButton, '选择或导入参考图'),
+          );
+          expect(referenceButton.onPress, isNull);
+        }
+        await tester.scrollUntilVisible(
+          find.text('开始生成'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('开始生成'));
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect((await started.future).prompt, '雾中的港口，水彩');
+        expect((await started.future).parameters['size'], '832x1216');
+        expect(
+          (await started.future).parameters['quality'],
+          protocol == ModelProtocol.novelAI ? isNull : 'high',
+        );
+        expect(
+          (await repo.listTasks(branchId: chapter.branchId)).single.kind,
+          TaskKind.illustration,
+        );
+        await tester.tap(find.text('取消生成'));
+        await tester.pumpAndSettle();
+        expect(
+          (await repo.listTasks(branchId: chapter.branchId)).single.status,
+          TaskStatus.cancelled,
+        );
+        expect(
+          (await repo.getChapter(
+            branchId: chapter.branchId,
+            chapterId: chapter.id,
+          )).revisionId,
+          chapter.revisionId,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
   testWidgets(
     'local image can be selected at the cursor and read independently',
     (tester) async {
