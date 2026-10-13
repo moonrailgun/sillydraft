@@ -339,4 +339,102 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test(
+    'deleting a chapter takes what hangs on it and keeps the backup valid',
+    () async {
+      final s = await seed();
+      final branchId = s.novel.activeBranchId;
+
+      final chapter = await repository.createChapter(
+        branchId: branchId,
+        content: ManuscriptContent.plainText('雨停了。'),
+      );
+      final accepted = await repository.createProposal(
+        branchId: branchId,
+        chapterId: chapter.id,
+        baseRevisionId: chapter.revisionId,
+        content: ManuscriptContent.plainText('雨停了，信到了。'),
+      );
+      final revision = await repository.acceptProposal(accepted.id);
+      await repository.createProposal(
+        branchId: branchId,
+        chapterId: chapter.id,
+        baseRevisionId: revision.id,
+        content: ManuscriptContent.plainText('待审'),
+      );
+      await repository.addBookmark(branchId: branchId, chapterId: chapter.id);
+      await repository.setReadingProgress(
+        branchId: branchId,
+        chapterId: chapter.id,
+        fraction: .5,
+      );
+      await repository.setBranchVariables(
+        branchId: branchId,
+        chapterId: s.chapter.id,
+        expectedVersion: 0,
+        local: {'天气': '雨'},
+      );
+      await repository.setBranchVariables(
+        branchId: branchId,
+        chapterId: chapter.id,
+        expectedVersion: 1,
+        local: {'天气': '晴'},
+      );
+      final conversation = await repository.createConversation(
+        branchId: branchId,
+        throughChapterId: chapter.id,
+      );
+      await repository.appendAgentMessage(
+        conversation,
+        role: 'user',
+        content: '这一章讲了什么',
+      );
+      await repository.saveLoreEntry(
+        branchId: branchId,
+        kind: LoreKind.character,
+        name: '信使',
+        content: '雨停时来',
+        atChapterId: chapter.id,
+      );
+      final task = await repository.createTask(
+        branchId: branchId,
+        kind: TaskKind.writing,
+        input: {},
+        chapterId: chapter.id,
+        baseRevisionId: revision.id,
+      );
+
+      await expectLater(
+        repository.deleteChapter(branchId: branchId, chapterId: chapter.id),
+        throwsStateError,
+        reason: 'a running task must stop first',
+      );
+      await repository.updateTask(task.id, status: TaskStatus.completed);
+      await repository.deleteChapter(branchId: branchId, chapterId: chapter.id);
+
+      final story = await repository.getStory(branchId);
+      expect(story.chapters.map((c) => c.id), [s.chapter.id]);
+      expect(await repository.listConversations(branchId), isEmpty);
+      expect(await repository.listBookmarks(branchId), isEmpty);
+      expect(await repository.getReadingProgress(branchId), isNull);
+      expect((await repository.getTask(task.id)).chapterId, isNull);
+      expect((await repository.getBranchVariables(branchId)).local, {
+        '天气': '雨',
+      });
+      expect(
+        (await repository.listLore(
+          branchId,
+          throughChapterId: s.chapter.id,
+        )).map((e) => e.name),
+        ['信使'],
+      );
+      final snapshot = await repository.exportProject(s.novel.id);
+      await repository.restoreProject(
+        snapshot,
+        encryptedSources: {},
+        expectedFingerprint: snapshot.fingerprint,
+      );
+    },
+  );
 }
