@@ -5,11 +5,15 @@ import 'package:flutter/material.dart' hide ImageProvider;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/features/illustrations/asset_image.dart';
 import 'package:sillydraft/features/illustrations/illustration_gallery.dart';
 import 'package:sillydraft/features/illustrations/illustration_request.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/finders.dart';
+import 'support/host.dart';
 
 class _WaitingImageProvider implements ImageProvider {
   _WaitingImageProvider(this.config, this.started);
@@ -82,8 +86,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(
-            home: IllustrationRequestScreen(
+          child: testHost(
+            IllustrationRequestScreen(
               branchId: scene.branchId,
               sceneId: scene.id,
             ),
@@ -175,7 +179,7 @@ void main() {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)),
           );
-          if (find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          if (find.byType(FCircularProgress).evaluate().isEmpty &&
               find.byType(Image).evaluate().isNotEmpty) {
             break;
           }
@@ -187,9 +191,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('带插画的小说'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('编辑正文'));
+      await tester.tap(findAction('编辑正文'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('插入图片'));
+      await tester.tap(findAction('插入图片'));
       await tester.pump();
       await settleImages();
       await tester.tap(find.text('港口插画'));
@@ -204,9 +208,9 @@ void main() {
         )).content.delta.any((op) => op['insert'] is Map),
         true,
       );
-      await tester.tap(find.byTooltip('保存并返回'));
+      await tester.tap(findAction('保存并返回'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('阅读'));
+      await tester.tap(findAction('阅读'));
       await tester.pump();
       await settleImages();
       expect(find.byType(AssetImageView), findsOneWidget);
@@ -260,13 +264,13 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(home: IllustrationGallery(branchId: s.branchId)),
+          child: testHost(IllustrationGallery(branchId: s.branchId)),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('雨夜港口'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('归档图片'));
+      await tester.tap(findAction('归档图片'));
       await tester.pumpAndSettle();
       expect((await repo.getAsset(asset.id)).archived, true);
       expect(

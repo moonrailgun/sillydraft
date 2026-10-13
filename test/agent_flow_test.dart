@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/agent/agent_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/finders.dart';
+import 'support/host.dart';
 
 class _StreamingProvider implements ModelProvider {
   _StreamingProvider(this.config);
@@ -68,22 +72,24 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(home: AgentScreen(branchId: novel.activeBranchId)),
+          child: testHost(
+            AppScaffold(child: AgentPanel(branchId: novel.activeBranchId)),
+          ),
         ),
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('agent-input')), '帮我看看人物动机');
-      await tester.tap(find.byTooltip('发送给编辑助手'));
+      await tester.tap(findAction('发送给编辑助手'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.textContaining('正在检查人物动机'), findsWidgets);
-      await tester.tap(find.byTooltip('停止编辑回复'));
+      await tester.tap(findAction('停止编辑回复'));
       await tester.pumpAndSettle();
       expect(
         (await repo.listTasks(branchId: novel.activeBranchId)).single.status,
         TaskStatus.cancelled,
       );
-      await tester.tap(find.byTooltip('删除当前会话'));
+      await tester.tap(findAction('删除当前会话'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除会话'));
       await tester.pumpAndSettle();

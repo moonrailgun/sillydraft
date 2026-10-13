@@ -12,6 +12,7 @@ import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../agent/agent_screen.dart';
 import '../agent/writing_request_screen.dart';
 import '../agent/task_screen.dart';
 
@@ -32,6 +33,12 @@ class _EditorState extends ConsumerState<EditorScreen> {
   late String _saved;
   Object? _error;
   bool _allowPop = false;
+
+  /// Whether the assistant is docked beside the manuscript (wide screens).
+  bool _assistant = false;
+
+  /// Whether the assistant floats over the manuscript (phones).
+  bool _floating = false;
   late final AppServices _services;
   @override
   void initState() {
@@ -252,6 +259,29 @@ class _EditorState extends ConsumerState<EditorScreen> {
     }
   }
 
+  /// The assistant, reading the story up to this scene. Docked beside the
+  /// manuscript when there is room, otherwise a large floating window.
+  Future<void> _askAssistant(bool dock) async {
+    try {
+      await _flush();
+      if (!mounted) return;
+      if (dock) {
+        setState(() => _assistant = !_assistant);
+        return;
+      }
+      setState(() => _floating = true);
+      await showAssistantSheet(
+        context,
+        branchId: _scene.branchId,
+        sceneId: _scene.id,
+      );
+      if (mounted) setState(() => _floating = false);
+      await _reloadAccepted();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -300,6 +330,16 @@ class _EditorState extends ConsumerState<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final dirty = _content.encoded != _saved;
+    final dock = MediaQuery.sizeOf(context).width >= 1100;
+    final docked = dock && _assistant;
+    // With the assistant beside or over the manuscript, a candidate can be
+    // accepted without leaving this page.
+    if (docked || _floating) {
+      ref.listen(
+        repositoryChangesProvider,
+        (_, _) => unawaited(_reloadAccepted().catchError((Object _) {})),
+      );
+    }
     final theme = context.theme;
     return PopScope(
       canPop: _allowPop,
@@ -357,6 +397,15 @@ class _EditorState extends ConsumerState<EditorScreen> {
               tooltip: '生成或改写选区',
               onPress: _generate,
             ),
+            _HeaderToggle(
+              key: const Key('editor-assistant'),
+              icon: docked
+                  ? FLucideIcons.panelRightClose
+                  : FLucideIcons.sparkles,
+              tooltip: docked ? '收起助手' : '问助手',
+              selected: docked,
+              onPress: () => _askAssistant(dock),
+            ),
             HeaderIconAction(
               icon: FLucideIcons.history,
               tooltip: '正文版本',
@@ -375,7 +424,26 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ),
           ],
         ),
-        child: SafeArea(top: false, child: _manuscript()),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _manuscript()),
+              if (docked) ...[
+                const FDivider(axis: Axis.vertical, style: _edgeToEdge),
+                SizedBox(
+                  width: 420,
+                  child: AgentPanel(
+                    key: ValueKey('agent:${_scene.id}'),
+                    branchId: _scene.branchId,
+                    sceneId: _scene.id,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -465,6 +533,39 @@ class _EditorState extends ConsumerState<EditorScreen> {
 const _edgeToEdge = FDividerStyleDelta.delta(
   padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
 );
+
+/// A header action that stays highlighted while its panel is open.
+class _HeaderToggle extends StatelessWidget implements ActionLabel {
+  const _HeaderToggle({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.selected,
+    required this.onPress,
+  });
+  final IconData icon;
+  @override
+  final String tooltip;
+  final bool selected;
+  final VoidCallback? onPress;
+
+  @override
+  Widget build(BuildContext context) => FTooltip(
+    tipBuilder: (_, _) => Text(tooltip),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: selected ? context.theme.colors.secondary : null,
+        borderRadius: context.theme.style.borderRadius.md,
+      ),
+      child: FHeaderAction(
+        icon: Icon(icon),
+        selected: selected,
+        semanticsLabel: tooltip,
+        onPress: onPress,
+      ),
+    ),
+  );
+}
 
 /// The formatting bar under the manuscript, driven by the editor's
 /// [controller]: history, inline styles, heading level, blocks and find.
