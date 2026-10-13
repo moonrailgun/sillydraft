@@ -222,6 +222,7 @@ final class AppServices {
   late final ResourceLibrary library;
   late final AssetLibrary? assets;
   late final IllustrationService illustrations;
+  SkillLibrary get skills => SkillLibrary(repository);
   ProjectBackup get backups => ProjectBackup(
     repository: repository,
     assets: assets ?? (throw StateError('本地资源目录尚未就绪')),
