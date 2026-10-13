@@ -129,6 +129,28 @@ void main() {
     }
   });
 
+  test('tags are hidden as ST hides them, outside code and within a line', () {
+    const text =
+        '<game>四月</game>\n<!-- 注 -->a<b>粗</b>\n'
+        '`<i>`、<主角>、a < b>c\nx<y\nz>';
+    expect(marked(text, ProseMarkup.hidden), [
+      '<game>',
+      '</game>',
+      '<!-- 注 -->',
+      '<b>',
+      '</b>',
+    ]);
+    final doc = ReaderDocument.build(
+      ManuscriptPresentation.identity(
+        ManuscriptContent.plainText('<game>四月的阳光\n\n凪低笑着。</game>\n'),
+      ),
+      fontSize: 20,
+      image: (_) => const SizedBox(),
+    );
+    expect(doc.span.toPlainText(), isNot(contains('game')));
+    expect(doc.span.toPlainText(), startsWith('四月的阳光'));
+  });
+
   test('HTML blocks are left alone', () {
     const text = '"前"\n```html\n<p>"里" *面*</p>\n```\n"后"';
     final blocks = HtmlBlocks.find(text);

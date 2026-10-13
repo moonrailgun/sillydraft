@@ -11,7 +11,8 @@ import 'dart:typed_data';
 /// `*x*`; `__x__` underlines (`underline: true`) and a word wrapped in single
 /// underscores is italic (ST's underscore extension). Showdown lets emphasis
 /// run on through a paragraph; here it stays within a line, so a stray `*`
-/// never restyles the rest of the chapter.
+/// never restyles the rest of the chapter. HTML tags and comments are
+/// hidden, as ST's default (`encode_tags` off) leaves them to the browser.
 final class ProseMarkup {
   ProseMarkup._(this._flags);
 
@@ -36,6 +37,16 @@ final class ProseMarkup {
     masked = masked.replaceAllMapped(_tag, (m) => m[0]!.replaceAll('"', '￾'));
     for (final m in _quoted.allMatches(masked)) {
       flags.fillRange(m.start, m.end, m.group(1) != null ? _code : quote);
+    }
+    // ST leaves tags unencoded (`encode_tags` is off) and DOMPurify drops
+    // the ones it does not know, keeping their text: `<game>` never shows.
+    // ponytail: known inline tags are hidden too; `<b>`/`<i>` styling and
+    // `<br>` breaks would need their own pass.
+    for (final m in _htmlTag.allMatches(masked)) {
+      if (flags[m.start] == _code) continue;
+      for (var i = m.start; i < m.end; i++) {
+        flags[i] |= hidden;
+      }
     }
     final indents = <int>[];
     if (trimIndent) {
@@ -97,6 +108,13 @@ final class ProseMarkup {
     '|『.*?』|＂.*?＂',
   );
   static final _tag = RegExp('<([^>]+)>');
+
+  /// What a browser reads as a tag or comment. A tag opens with an ASCII
+  /// letter (`<主角>` and `a < b` stay text) and ends on its line, since
+  /// showdown's `simpleLineBreaks` puts a `<br />` in every newline.
+  static final _htmlTag = RegExp(
+    r'<!--[\s\S]*?-->|</?[A-Za-z][^\s/>]*(?:[ \t\f/][^>\n]*)?>',
+  );
 
   /// Whitespace that can indent a line, full-width spaces included.
   static final _blank = RegExp('[ \t\u00a0\u2000-\u200b\u202f\u3000\ufeff]');

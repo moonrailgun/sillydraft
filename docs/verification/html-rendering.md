@@ -8,6 +8,7 @@
 | --- | --- |
 | 消息中的 `<pre>` 代码块，内容含 `html>`、`<head>` 或 `<body` 时替换为 iframe | `HtmlBlocks.find`：围栏代码块（任意语言）内容含同样标记，或语言标为 `html`/`htm`/`xhtml`，成为“前端块”；与 showdown 相同，以围栏开头的行即闭合围栏，同一行余下的文字（如正则替换后紧跟的 `<game>`）仍是正文；未闭合围栏延伸到正文末尾 |
 | 其余 HTML 由 ST 的 markdown + DOMPurify 显示 | 行首的块级标签（`div`、`details`、`table`、`style`、`span` 等）到匹配闭合标签成为“片段块”，相邻片段合并；用 `package:html` 解析后删除 `script`/`iframe`/`object`/`embed`/`link`/`meta`/`base`、`on*` 属性、`srcdoc` 和 `javascript:`/非图片 `data:` 地址 |
+| ST 默认不编码标签（`encode_tags` 关闭），DOMPurify 删除未知元素、保留其文字 | 正文中的标签和注释（`<game>`、`</game>`、`<!-- -->`）隐藏，文字照常显示；代码中的标签、`<主角>`、`a < b` 这类非标签保留。行内 `<b>`/`<i>` 只隐藏、不加粗斜体，`<br>` 不换行 |
 | `srcdoc` 包裹：重置样式、`--TH-viewport-height`、`min-height: …vh` 改写、预加载 jQuery/lodash/Font Awesome/Vue/jQuery UI/Tailwind | `HtmlBlocks.document`：同样的重置样式和视口变量，`min-height` 改写逻辑逐条移植；预加载 lodash、jQuery 和 Font Awesome（jsdelivr 镜像），不预加载 Vue、jQuery UI、Tailwind |
 | `ResizeObserver` 测量 `body.scrollHeight` 设置 iframe 高度 | 页面内按 `body.scrollHeight` 增长（与酒馆助手一致，对 `top:50%` 居中布局逐步收敛到内容高度）；每次 DOM 变化后允许收缩一次到可见内容底边（按 overflow 裁剪、忽略 fixed 层），避免 `body{height:100%}` 把框架锁在动画瞬间的高度；`ResizeObserver`/`MutationObserver`/过渡结束/定时复测触发，经 `SillyDraftHeight` 通道回传（24–20000px） |
 | 渲染深度、折叠代码块、流式渲染设置 | 不提供；设置中只有整体开关“渲染正文中的 HTML 界面”，阅读器可切换“显示原正文” |
