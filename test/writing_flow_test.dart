@@ -44,6 +44,7 @@ void main() {
         modelProviderFactory: (c) async => _Writer(c),
       );
       addTearDown(services.close);
+      await repo.setSetting('reader', {'autoDirections': false});
       await services.saveConnection(
         ModelConnection(
           id: 'test',
