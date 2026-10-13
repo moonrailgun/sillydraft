@@ -12,7 +12,7 @@
 | 4 Agent 隔离 | `editor_agent_test.dart`、`proposal_flow_test.dart`、`task_runner_test.dart`：工具范围、候选采纳、并发冲突、删除会话 | 不把模型生成建议自动当事实 |
 | 5 角色卡 | `st_import_test.dart`、`resource_library_test.dart`、`card_start_flow_test.dart`：V1/V2/V3、PNG/CHARX、备用开场、身份映射、加密原文 | JSON 分享不包含卡片二进制附件 |
 | 6 ST 预设 | 下方 10 项映射；`preset_editor_test.dart` 覆盖手机完整聊天预设/提示词包的顺序、开关、深度、未知字段及旧版本不变 | 按受测能力兼容，未实现扩展明确诊断 |
-| 7 模型与示例 | 设置、安全存储、四类模型角色、`provider_test.dart`、`remote_runner_flow_test.dart`、原生系统密钥读写删除 | OpenAI 兼容及个人 runner；无真实付费模型测试 |
+| 7 模型与示例 | 设置、安全存储、四类模型角色、`provider_test.dart`、`remote_runner_flow_test.dart`、原生平台本机密钥文件读写删除 | OpenAI 兼容及个人 runner；无真实付费模型测试 |
 | 8 旁路资料 | `lore_repository_test.dart`、`lore_flow_test.dart`：资料类型、来源、计划/推测、AI 建议、过期与跨故事位置拒绝 | 作者审阅后采纳 |
 | 9 关系和地图 | `map_flow_test.dart`、关系端点/方向校验、地图坐标/路线校验；原生带底图地图截图 | 关系图布局是展示状态，资料关系本身持久化 |
 | 10 分支 | `branch_flow_test.dart`、历史分叉与变量投影、候选选择幂等、分支比较；原生较早场景分叉截图 | 不合并未选中候选；版本和分支是不同概念 |
@@ -21,6 +21,8 @@
 | 13 离线/远程 | `server/test/runner_http_test.dart`、真实 `process_restart_test.dart`：鉴权、断开继续、查询恢复、缺失不重提、旧结果 CAS、插画恢复、SIGKILL | 可选单人服务，无多租户账户；编辑工具留在客户端 |
 | 14 迁移 | `publication_export_test.dart`、`project_backup_test.dart`、`project_sync_test.dart`、`transfer_flow_test.dart`；实际 EPUB/系统分享截图 | 手动全项目同步、强 ETag、保留冲突副本；EPUB 已检查 XML/manifest，未运行独立 EPUBCheck |
 | 15 跨端 | 五套平台工程；菜单/快捷键/面板/搜索/缩放/退出保护测试；Android、iOS、macOS 原生操作截图 | Windows/Linux 原生构建与运行待对应宿主；iOS 原生分享打开已验证，系统“存储到文件”完成未自动化验证 |
+| 17 HTML 界面 | `html_blocks_test.dart`、`tavern_bridge_test.dart`、`html_block_flow_test.dart`、macOS 真实网页视图 `html_render_test.dart`；见 [HTML 界面验证](html-rendering.md) | 内置酒馆助手常用接口，不运行脚本库；Windows/Linux 显示源码 |
+| 18 MVU 变量 | `mvu_test.dart`、`macro_variable_test.dart`、`variables_flow_test.dart`；见 [MVU 验证](mvu.md) | 内置 MagVarUpdate 的初始化、命令、schema、宏与变量管理器；不运行 MVU Zod 等脚本，额外模型解析未实现 |
 | 16 交付 | 锁文件、`docs/building.md`、`docs/user-guide.md`、`server/README.md`、GitHub Actions、签名配置 | CI 尚未发布运行；没有商店发布或公证 |
 
 核心测试文件都在 `packages/sillydraft_core/test/`，界面测试在根目录 `test/`。原生证据见 [平台记录](native-platforms.md)、[编辑阅读](editor-reader.md)、[资料分支](lore-branches.md)、[插画](illustrations.md)、[迁移](transfer.md)。

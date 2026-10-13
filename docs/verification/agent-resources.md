@@ -6,7 +6,7 @@
 
 ST 资源测试覆盖加密原件的数据库重开、未知字段保留、普通数据不含凭据、错误密钥无法解密、无效导入不写入，以及归档资源仍可被已有版本绑定使用。资源库提供导入预览、JSON 编辑新版本、JSON 导出及归档；正文配置可选择角色卡、预设顺序组、Persona、文本格式组合、世界书和正则。
 
-原件采用 [cryptography 的 AES-GCM](https://pub.dev/documentation/cryptography/latest/cryptography/AesGcm-class.html)，随机 256 位密钥由系统安全存储保存。跨设备备份仍需要后续的密钥/附件迁移流程；不能复制数据库后假定原件可在另一设备解密。JSON 导出会去掉凭据，角色卡附件仍保留在本机加密原件内。
+原件采用 [cryptography 的 AES-GCM](https://pub.dev/documentation/cryptography/latest/cryptography/AesGcm-class.html)，随机 256 位密钥保存在本机密钥文件中。跨设备备份仍需要后续的密钥/附件迁移流程；不能复制数据库后假定原件可在另一设备解密。JSON 导出会去掉凭据，角色卡附件仍保留在本机加密原件内。
 
 ![iOS 模拟器中的编辑助手](ios-agent.jpg)
 

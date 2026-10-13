@@ -26,6 +26,8 @@ dart format --output=none --set-exit-if-changed lib test integration_test test_d
 
 ST 对照数据可在核心包目录使用 Node 22 重新生成：`node tool/capture_st_reference.mjs`。该脚本只下载固定提交的 ST 源码，在空扩展环境中执行指定注入与指令格式函数。重新生成后先比较两个 reference JSON 的差异，再运行 `dart test test/st_compiler_test.dart`；不要无条件更新基准来掩盖兼容回归。
 
+HTML 界面渲染依赖 `webview_flutter`（Android 需要 SDK 24+，iOS 13+，macOS 10.15+），Windows/Linux 没有对应平台实现，应用在这两个平台显示源码。真实网页视图只能在原生运行时验证：`flutter test integration_test/html_render_test.dart -d macos`。
+
 `.github/workflows/verify.yml` 提供核心/界面/服务端测试、三个桌面系统构建、iOS 模拟器及 Android 构建。Actions 固定提交，Flutter 固定版本；工作流不包含上传商店步骤，不读取模型密钥。推送到用户自己的 GitHub 仓库后才会运行；工作流文件不代表 CI 已通过。
 
 ## Android
@@ -86,17 +88,19 @@ flutter drive --driver=test_driver/native_verification.dart \
 macOS 文件保存还有独立原生检查：
 
 ```sh
-xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' test
+xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' -derivedDataPath build/macos test
 python3 tool/verify_macos_atomic_export.py
 ```
 
 后者在临时目录中验证仅授予单个文件写权限时的创建和替换，不读取或改动现有作品。
 
+原生测试与 Flutter 共用 `build/macos` 构建目录，避免切换构建方式时，生成的 `macos/Flutter/ephemeral/FlutterOutputs.xcfilelist` 在默认 `DerivedData` 和项目目录之间切换，引发 `Stale file ... outside of the allowed root paths` 警告。已有旧路径时，下一次 Flutter 构建可能仍提示一次；构建更新输出清单后再检查，无需为此修改应用权限。
+
 ## 数据与升级
 
 作品库位于系统 Application Support 目录：SQLite 保存结构和版本，图片以内容哈希管理，ST 原文件使用本地密钥加密。数据库 schema 有迁移版本。改动 schema 前添加旧版迁移测试，不删除迁移代码来规避已有作品。
 
-跨设备迁移使用加密作品备份，不能只复制数据库而遗漏图片或系统安全存储。不要在有用户作品的目录运行测试夹具脚本。
+跨设备迁移使用加密作品备份，不能只复制数据库而遗漏图片或本机密钥文件。不要在有用户作品的目录运行测试夹具脚本。
 
 ## 本地订阅（Claude Code / Codex）
 
