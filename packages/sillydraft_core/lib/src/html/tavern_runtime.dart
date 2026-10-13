@@ -43,12 +43,10 @@ const tavernRuntimeJs = r'''
   }
 
   // ---------------------------------------------------------------- height
-  // The frame follows the page the way 酒馆助手 sizes its iframe: whenever
-  // the body overflows, grow to `body.scrollHeight`, which converges for
-  // pages that centre a box with `top: 50%` transforms. Growing alone can
-  // never undo a transient tall state (a screen transition pushed off with
-  // `translateY(100vh)`), because `body { height: 100% }` ties the body to
-  // the frame; so after each DOM change the frame may also shrink once, to
+  // Follow `body.scrollHeight` in both directions, like 酒馆助手's
+  // src/iframe/adjust_iframe_height.js. For `body { height: 100% }`, the
+  // body cannot shrink below the frame after a transient tall state (such
+  // as `translateY(100vh)`); after each DOM change it may shrink once to
   // the lowest visible content edge (clipped by scrolling ancestors, fixed
   // layers ignored). One shrink per change keeps `max-height: 90vh` boxes,
   // whose content edge scales with the frame, from collapsing.
@@ -100,6 +98,10 @@ const tavernRuntimeJs = r'''
           return;
         }
         if (now - lastOverflowAt < 120) { setTimeout(postHeight, 150); return; }
+        height = overflow;
+      } else if (overflow < frame - 0.5) {
+        // Trust layout for collapsed details and each step of a transition;
+        // hidden descendants can still have nonzero bounding rectangles.
         height = overflow;
       } else {
         var content = frame;

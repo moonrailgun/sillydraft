@@ -10,7 +10,7 @@
 | 其余 HTML 由 ST 的 markdown + DOMPurify 显示 | 行首的块级标签（`div`、`details`、`table`、`style`、`span` 等）到匹配闭合标签成为“片段块”，相邻片段合并；用 `package:html` 解析后删除 `script`/`iframe`/`object`/`embed`/`link`/`meta`/`base`、`on*` 属性、`srcdoc` 和 `javascript:`/非图片 `data:` 地址 |
 | ST 默认不编码标签（`encode_tags` 关闭），DOMPurify 删除未知元素、保留其文字 | 正文中的标签和注释（`<game>`、`</game>`、`<!-- -->`）隐藏，文字照常显示；代码中的标签、`<主角>`、`a < b` 这类非标签保留。行内 `<b>`/`<i>` 只隐藏、不加粗斜体，`<br>` 不换行 |
 | `srcdoc` 包裹：重置样式、`--TH-viewport-height`、`min-height: …vh` 改写、预加载 jQuery/lodash/Font Awesome/Vue/jQuery UI/Tailwind | `HtmlBlocks.document`：同样的重置样式和视口变量，`min-height` 改写逻辑逐条移植；预加载 lodash、jQuery 和 Font Awesome（jsdelivr 镜像），不预加载 Vue、jQuery UI、Tailwind |
-| `ResizeObserver` 测量 `body.scrollHeight` 设置 iframe 高度 | 页面内按 `body.scrollHeight` 增长（与酒馆助手一致，对 `top:50%` 居中布局逐步收敛到内容高度）；每次 DOM 变化后允许收缩一次到可见内容底边（按 overflow 裁剪、忽略 fixed 层），避免 `body{height:100%}` 把框架锁在动画瞬间的高度；`ResizeObserver`/`MutationObserver`/过渡结束/定时复测触发，经 `SillyDraftHeight` 通道回传（24–20000px） |
+| `ResizeObserver` 测量 `body.scrollHeight` 设置 iframe 高度 | 页面内按 `body.scrollHeight` 增长或收缩（与酒馆助手一致，普通折叠和收缩动画持续跟随实际高度）；仅当内容高度受框架约束时，每次 DOM 变化后允许收缩一次到可见内容底边（按 overflow 裁剪、忽略 fixed 层），避免 `body{height:100%}` 把框架锁在动画瞬间的高度，也避免视口比例面板反复缩小；`ResizeObserver`/`MutationObserver`/过渡结束/定时复测触发，经 `SillyDraftHeight` 通道回传（24–20000px） |
 | 渲染深度、折叠代码块、流式渲染设置 | 不提供；设置中只有整体开关“渲染正文中的 HTML 界面”，阅读器可切换“显示原正文” |
 
 ## 接口对应
@@ -76,6 +76,7 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 | `packages/sillydraft_core/test/tavern_bridge_test.dart` | 显示上下文缓存、无任务章节的显示正则、消息快照与开场切换、变量往返、新建章节、拒绝删除、Slash 管道、桥接消息校验、预览后端、变量编解码 |
 | `test/html_block_flow_test.dart` | 阅读文档偏移、无网页视图时的源码回退、阅读器中切换开场/设置变量/发出写作要求、角色卡开始页预览与创建后写入变量、设置开关 |
 | `integration_test/html_render_test.dart`（macOS） | 真实 WKWebView：页面按视口自测高度、接口存在、按钮经桥接切换开场、第二个界面读取角色卡并写入变量、`/sys … \| /cut 0 \| /trigger` 打开整章改写请求 |
+| `integration_test/html_height_test.dart`（macOS） | 真实 WKWebView：`details` 和带过渡动画的 `max-height` 面板各反复展开、收起两轮，外层高度从 660px 回到 60px |
 
 2026-10-13 结果：核心 143 项、界面 68 项通过；macOS 真实网页视图集成测试结果见下文“运行记录”。真实角色卡《道渊》v5.4.2 的开场为完整 HTML 页面（烟花画布、`min-height: 100vh`、`getChatMessages`/`setChatMessage`/`triggerSlash` 兜底），其备用开场经角色卡正则变成角色创建界面，提交时执行 `/sys … | /cut N | /trigger`；两种结构都在上述测试中以缩减样本覆盖。该卡依赖的 MVU、ZOD、道渊工坊等酒馆助手脚本不运行，状态栏中依赖 `Mvu.parseMessage` 解析 `<UpdateVariable>` 的部分不会自动更新变量。
 
