@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart' as mui;
 
 import '../features/bookshelf/bookshelf_screen.dart';
 import '../features/bookshelf/novel_dialog.dart';
@@ -14,6 +16,8 @@ import '../features/settings/settings_screen.dart';
 import '../features/resources/resource_library_screen.dart';
 import 'desktop_commands.dart';
 import 'services.dart';
+import 'theme.dart';
+import 'widgets.dart' show showError;
 
 class SillyDraftApp extends StatelessWidget {
   const SillyDraftApp({super.key, required this.services});
@@ -33,11 +37,11 @@ class _App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   final _navigator = GlobalKey<NavigatorState>();
-  final _messenger = GlobalKey<ScaffoldMessengerState>();
 
-  void _error(Object error) => _messenger.currentState?.showSnackBar(
-    SnackBar(content: Text('保存未完成：$error')),
-  );
+  void _error(Object error) {
+    final context = _navigator.currentContext;
+    if (context != null) showError(context, '保存未完成：$error');
+  }
 
   @override
   Future<AppExitResponse> didRequestAppExit() async {
@@ -107,22 +111,34 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
     final mode = ref.watch(settingProvider('appearance')).value?['mode'];
     return MaterialApp(
       navigatorKey: _navigator,
-      scaffoldMessengerKey: _messenger,
-      builder: (context, child) => Overlay.wrap(
-        child: DesktopCommands(invoke: _command, child: child!),
+      builder: (context, child) => mui.Theme(
+        data: materialUiTheme(Theme.brightnessOf(context)),
+        child: FTheme(
+          data: appTheme(Theme.brightnessOf(context)),
+          child: FToaster(
+            child: FTooltipGroup(
+              child: Overlay.wrap(
+                child: DesktopCommands(invoke: _command, child: child!),
+              ),
+            ),
+          ),
+        ),
       ),
       title: 'SillyDraft · 胡闹草稿',
       debugShowCheckedModeBanner: false,
       locale: const Locale('zh', 'CN'),
       supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+      // The SDK Material delegates serve the editor and routes; forui's list
+      // adds its own strings plus package:material_ui's.
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
         FlutterQuillLocalizations.delegate,
+        ...FLocalizations.localizationsDelegates,
       ],
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
+      theme: sdkMaterialTheme(Brightness.light),
+      darkTheme: sdkMaterialTheme(Brightness.dark),
       themeMode: mode == 'dark'
           ? ThemeMode.dark
           : mode == 'light'
@@ -131,53 +147,4 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
       home: const BookshelfScreen(),
     );
   }
-}
-
-ThemeData _theme(Brightness brightness) {
-  final dark = brightness == Brightness.dark;
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xff7060ad),
-    brightness: brightness,
-    surface: dark ? const Color(0xff1b1b24) : const Color(0xfffaf9f6),
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
-    scaffoldBackgroundColor: scheme.surface,
-    appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
-      surfaceTintColor: Colors.transparent,
-      centerTitle: false,
-    ),
-    cardTheme: CardThemeData(
-      elevation: 0,
-      color: dark ? const Color(0xff24242e) : Colors.white,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: scheme.surfaceContainerLow,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
-      ),
-    ),
-    textTheme: Typography.material2021().black.apply(
-      bodyColor: scheme.onSurface,
-      displayColor: scheme.onSurface,
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-      ),
-    ),
-    dividerTheme: DividerThemeData(
-      color: scheme.outlineVariant.withValues(alpha: .6),
-      thickness: .7,
-    ),
-  );
 }
