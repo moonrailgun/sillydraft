@@ -216,6 +216,7 @@ Map<String, List<Map<String, dynamic>>> fixture() => {
       'at_scene_id': 's2',
       'revision_id': 'l2',
       'sequence': 1,
+      'data_json': '{"name":"behind_scene_label"}',
       'provenance_json': jsonEncode({'sceneId': 's2', 'revisionId': 'r2'}),
     },
     {
@@ -332,6 +333,10 @@ void main() {
       );
       expect(migrated['lore_versions']!.first['sequence'], 2);
       expect(migrated['lore_versions']!.first['revision_id'], 'l2');
+      expect(
+        migrated['lore_versions']!.first['data_json'],
+        '{"name":"behind_scene_label"}',
+      );
       final provenance = jsonDecode(
         migrated['lore_versions']!.first['provenance_json'] as String,
       ) as Map;

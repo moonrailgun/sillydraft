@@ -169,7 +169,10 @@ Map<String, List<Map<String, dynamic>>> migrateLegacyChapters(
       if (key.endsWith('RevisionId') || key == 'revisionId') {
         return mapRevision(value, branch, current: true);
       }
-      if (['name', 'tool', 'toolName'].contains(key)) return _rename(value);
+      if (['name', 'tool', 'toolName'].contains(key) &&
+          ['read_scene', 'list_scenes', 'propose_scene'].contains(value)) {
+        return _rename(value);
+      }
       if (['arguments', 'result'].contains(key)) {
         try {
           final decoded = jsonDecode(value);
