@@ -175,8 +175,7 @@ class _PresetPromptState extends State<PresetPromptEditor> {
       }
     });
     final theme = context.theme;
-    return Padding(
-      key: ValueKey('prompt-$id'),
+    final tile = Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: FCard(
         child: Padding(
@@ -287,6 +286,11 @@ class _PresetPromptState extends State<PresetPromptEditor> {
           ),
         ),
       ),
+    );
+    return Opacity(
+      key: ValueKey('prompt-$id'),
+      opacity: enabled ? 1 : theme.colors.disabledOpacity,
+      child: tile,
     );
   }
 
