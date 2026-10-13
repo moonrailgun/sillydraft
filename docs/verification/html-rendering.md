@@ -31,7 +31,8 @@
 | `triggerSlash` | 见下表 |
 | `toastr.*` | 提示条；`alert`/`confirm`/`prompt` 由网页视图回调弹出对话框 |
 | `getCharData` | 角色卡字段（不含 `tavern_helper` 和 `regex_scripts` 扩展） |
-| `SillyTavern.getContext()` | 只读子集：`chat`、`name1`、`name2`、`chatId`、`characters`、`eventSource`、`substituteParams` |
+| `SillyTavern.getContext()` | `chat`、`name1`、`name2`、`chatId`、`characters`、`eventSource`、`substituteParams`；`generate()` 提交输入框中的续写要求 |
+| `#send_textarea` / `#send_but` | 隐藏的兼容输入框与发送按钮；赋值、`input`/`change`、点击发送直接续写下一章，同轮事件合并，空白不触发 |
 | `Mvu` | 最小数据层：`getMvuData`/`replaceMvuData`/`getMvuVariable`/`setMvuVariable` 读写该章变量；不解析 `<UpdateVariable>`，`parseMessage` 原样返回旧数据 |
 | `generate`/`generateRaw`、世界书、预设、正则、音频、脚本库接口 | 不支持；`generate` 返回拒绝的 Promise，其他为未定义 |
 | 提示词中的 `{{get_message_variable::路径}}`、`{{get_chat_variable}}`、`{{get_global_variable}}`、`{{format_*_variable}}`、`{{format_*_variable_quoted}}`（酒馆助手的助手宏，MVU 卡片用它把状态写进提示词） | `MacroEngine` 内置：`message`/`chat` 读任务局部变量，`global` 读全局变量，`character`/`preset` 为空；忽略 `$` 开头的键；`format` 输出按行首缩进的 YAML |
@@ -40,7 +41,8 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 
 | 命令 | 行为 |
 | --- | --- |
-| `/send`、`/sys`、`/sendas name=`、`/comment`、`/impersonate`、`/setinput` | 累积为写作要求 |
+| `/send`、`/sys`、`/sendas name=`、`/comment`、`/impersonate` | 累积为写作要求 |
+| `/setinput` | 直接续写下一章并返回文本作为管道值；与 `/cut` 合用仍确认改写 |
 | `/trigger`、`/continue` | 标记触发 |
 | `/cut N` | 标记第 N 章改写 |
 | `/echo [severity=] [title=]`、`/pass` | 提示条 / 管道值 |
@@ -49,7 +51,7 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 | `/delay`、`/sleep`、`/hide`、`/unhide` 等 | 空操作 |
 | `/gen`、`/genraw`、`/run`、`/qr` 及未知命令 | 抛出错误（与酒馆助手 `triggerSlash` 抛错一致） |
 
-管道结束时若有写作要求、触发或改写标记，宿主打开写作请求页：追加模式或对 `/cut` 的那一章整章改写，写作要求预填；作者确认后才生成。角色卡开始页上的界面以预览模式运行：开场切换直接改选项，变量在创建小说时写入第一章，`/send` 记下文本并在创建后打开写作请求。
+除上述输入框适配及不含 `/cut` 的 `/setinput` 管道外，管道结束时若有写作要求、触发或改写标记，宿主打开写作请求页：追加模式或对 `/cut` 的那一章整章改写，写作要求预填；作者确认后才生成。角色卡开始页上的界面以预览模式运行：开场切换直接改选项，变量在创建小说时写入第一章，`/send` 记下文本并在创建后打开写作请求。
 
 ## 沙箱
 
@@ -62,7 +64,11 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 - 测量调度同时用 `requestAnimationFrame` 和 `setTimeout`：macOS 的 WKWebView 在窗口被遮挡或视图不可见时不触发动画帧，只靠 rAF 会让首次测量永远不发生（集成测试在模拟器窗口盖住应用时复现，页面已加载、`scrollHeight` 正确但框架停在 160px）。被遮挡时 CSS 淡入动画也不推进，所以可见内容扫描可能暂时看不到 `opacity: 0` 的元素；框架以 `scrollHeight` 增长为准，不受影响。
 - 高度策略的依据：对《道渊》创建页实测，`body { height: 100% }` 加 `top:50% + translate(-50%,-50%)` 居中、`max-height: 90vh` 可滚动面板；只按 `scrollHeight` 会在过渡动画后留下空白，只按内容底边会让 90vh 面板无限缩小，混合策略在 macOS 和 iOS 模拟器上分别收敛到 1547px（开场页）和 741px（创建页起始屏，面板 742px）。
 
+输入框适配沿用阅读器现有的下一章生成、实时正文和自动采纳流程，不把选项写进已有正文。缺少写作连接时不创建章节；任务正在写作时拒绝重复请求；启动失败通过提示条反馈且保留输入文本。此适配只在前端代码块启用，普通片段没有接口。
+
 ## 验证
+
+`integration_test/tavern_input_test.dart` 在 macOS WKWebView 验证原生 value setter、输入事件、发送、直接赋值合并、失败重试和片段隔离；`test/story_directions_test.dart` 验证输入要求进入模型并自动保存到下一章，以及忙碌和缺失模型时不重复建章。测试不调用付费模型。
 
 | 证据 | 内容 |
 | --- | --- |

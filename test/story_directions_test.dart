@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/features/html/html_block_view.dart';
 import 'package:sillydraft/features/reader/next_chapter.dart';
 import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -73,6 +74,7 @@ Future<_Open> _open(
   int contextWindow = 200000,
   String text = '风暴要来了。',
   Map<String, Object>? reader,
+  Widget Function(HtmlBlockRequest)? htmlBuilder,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -106,7 +108,11 @@ Future<_Open> _open(
   );
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [servicesProvider.overrideWithValue(services)],
+      overrides: [
+        servicesProvider.overrideWithValue(services),
+        if (htmlBuilder != null)
+          htmlBlockBuilderProvider.overrideWithValue(htmlBuilder),
+      ],
       child: testHost(ReaderScreen(branchId: novel.activeBranchId)),
     ),
   );
@@ -302,6 +308,105 @@ void main() {
       ProposalStatus.pending,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  const inputPage = '```html\n<html><body>选择下一步</body></html>\n```';
+
+  testWidgets('preset input writes one next chapter and keeps the original', (
+    tester,
+  ) async {
+    final requests = <ProviderRequest>[];
+    final gate = Completer<void>();
+    late TavernBridge bridge;
+    final book = await _open(
+      tester,
+      requests: requests,
+      gate: gate.future,
+      text: inputPage,
+      reader: {'autoDirections': false},
+      htmlBuilder: (request) {
+        bridge = request.bridge!;
+        return const Text('预设选项');
+      },
+    );
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    const brief = '走进山洞 | 保留 /cut 原文';
+    final first = bridge.handleMessage(
+      jsonEncode({
+        'id': 1,
+        'method': 'continueWriting',
+        'args': [brief],
+      }),
+    );
+    for (
+      var i = 0;
+      i < 100 && find.byKey(const Key('chapter-draft')).evaluate().isEmpty;
+      i++
+    ) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(requests, hasLength(1));
+    expect((await first).ok, isTrue);
+    expect(jsonEncode(requests.single.messages), contains(brief));
+    expect(find.text('生成正文候选'), findsNothing);
+    expect(find.byKey(const Key('chapter-draft')), findsOneWidget);
+    final duplicate = await bridge.handleMessage(
+      jsonEncode({
+        'id': 2,
+        'method': 'continueWriting',
+        'args': [brief],
+      }),
+    );
+    expect(duplicate.ok, isFalse);
+    expect(requests, hasLength(1));
+    gate.complete();
+    await tester.pumpAndSettle();
+    final story = await book.services.repository.getStory(book.branchId);
+    expect(story.chapters, hasLength(2));
+    expect(story.chapters.first.content.text.trim(), inputPage);
+    expect(story.chapters.last.content.text, contains('她推开门。她守在灯下。'));
+    expect(
+      await book.services.repository.listProposals(
+        book.branchId,
+        status: ProposalStatus.pending,
+      ),
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('preset input without a writing model leaves the story intact', (
+    tester,
+  ) async {
+    late TavernBridge bridge;
+    final book = await _open(
+      tester,
+      model: false,
+      text: inputPage,
+      reader: {'autoDirections': false},
+      htmlBuilder: (request) {
+        bridge = request.bridge!;
+        return const Text('预设选项');
+      },
+    );
+    Object? error;
+    bridge
+        .handleMessage(
+          jsonEncode({
+            'id': 1,
+            'method': 'continueWriting',
+            'args': ['走进山洞'],
+          }),
+        )
+        .then((result) => error = result.ok ? null : result.payload);
+    await tester.pumpAndSettle();
+    expect(error, contains('写作模型连接'));
+    expect(
+      (await book.services.repository.getStory(book.branchId)).chapters,
+      hasLength(1),
+    );
   });
 
   test(

@@ -48,13 +48,13 @@ abstract interface class TavernChatBackend {
   Future<Map<String, dynamic>?> mvuReloadInitVar(Map<String, dynamic> data);
 }
 
-/// What a page asked the author to do next. Nothing generates by itself:
-/// the host opens the writing request for the author to confirm.
+/// What a page asked the author to do next.
 final class TavernWritingRequest {
   const TavernWritingRequest({
     required this.brief,
     this.rewriteMessageId,
     this.triggered = false,
+    this.continueNextChapter = false,
   });
 
   /// Text from `/send`, `/sys`, `/sendas` and the like.
@@ -66,6 +66,9 @@ final class TavernWritingRequest {
 
   /// Whether `/trigger` or `/continue` asked for generation.
   final bool triggered;
+
+  /// Composer input maps to the reader's direct next-chapter workflow.
+  final bool continueNextChapter;
 }
 
 /// Effects a page cannot have by itself.
@@ -157,6 +160,15 @@ final class TavernBridge {
         return null;
       case 'triggerSlash':
         return runSlash(_string(args.elementAtOrNull(0)));
+      case 'continueWriting':
+        final text = args.elementAtOrNull(0);
+        if (text is! String) throw ArgumentError('续写要求必须是文本');
+        if (text.trim().isNotEmpty) {
+          await actions.requestWriting(
+            TavernWritingRequest(brief: text, continueNextChapter: true),
+          );
+        }
+        return null;
       case 'toast':
         actions.toast(
           _string(args.elementAtOrNull(0), fallback: 'info'),
@@ -199,7 +211,7 @@ final class TavernBridge {
   Future<String> runSlash(String command) async {
     final brief = <String>[];
     int? rewrite;
-    var triggered = false, aborted = false;
+    var triggered = false, aborted = false, input = false;
     var pipe = '';
     for (final segment in _splitPipeline(command)) {
       if (aborted) break;
@@ -214,7 +226,6 @@ final class TavernBridge {
             'sendas' ||
             'comment' ||
             'impersonate' ||
-            'setinput' ||
             'sendsystem':
           if (text.isNotEmpty) {
             brief.add(
@@ -224,6 +235,12 @@ final class TavernBridge {
             );
           }
           pipe = '';
+        case 'setinput':
+          // ST 1.19.0 setInputCallback fills #send_textarea and returns text.
+          // SillyDraft maps that composer operation to writing the next chapter.
+          input = true;
+          if (text.isNotEmpty) brief.add(text);
+          pipe = text;
         case 'trigger' || 'continue':
           triggered = true;
           pipe = '';
@@ -303,6 +320,7 @@ final class TavernBridge {
           brief: brief.join('\n\n'),
           rewriteMessageId: rewrite,
           triggered: triggered,
+          continueNextChapter: input && rewrite == null,
         ),
       );
     }

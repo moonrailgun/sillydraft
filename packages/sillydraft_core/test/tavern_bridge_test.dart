@@ -391,6 +391,36 @@ void main() {
       expect(actions.requests.single.rewriteMessageId, isNull);
     });
 
+    test(
+      'composer text requests continuation without parsing slash commands',
+      () async {
+        const text = '她说：a | b\n/cut 0 只是故事里的文字';
+        await bridge.handle('continueWriting', [text]);
+        expect(actions.requests.single.brief, text);
+        expect(actions.requests.single.continueNextChapter, isTrue);
+        expect(actions.requests.single.rewriteMessageId, isNull);
+      },
+    );
+
+    test('composer ignores blank text and rejects non-text input', () async {
+      await bridge.handle('continueWriting', [' \n ']);
+      expect(actions.requests, isEmpty);
+      await expectLater(
+        bridge.handle('continueWriting', [42]),
+        throwsArgumentError,
+      );
+    });
+
+    test('/setinput continues, but /cut still requests a rewrite', () async {
+      await bridge.runSlash('/setinput 她走进山门 | /trigger');
+      expect(actions.requests.single.brief, '她走进山门');
+      expect(actions.requests.single.continueNextChapter, isTrue);
+      actions.requests.clear();
+      await bridge.runSlash('/setinput 改写开场 | /cut 0 | /trigger');
+      expect(actions.requests.single.continueNextChapter, isFalse);
+      expect(actions.requests.single.rewriteMessageId, 0);
+    });
+
     test('/sys | /cut | /trigger asks to rewrite the cut chapter', () async {
       await bridge.runSlash(
         '/sys [仙缘已定 - 普通模式]\n**道号**: 玖神 | /cut 0 | /trigger',

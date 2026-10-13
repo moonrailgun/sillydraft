@@ -129,6 +129,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   /// A chapter to turn to once the story includes it: a chapter just started.
   String? _openWhenLoaded;
+  bool _writingFromInput = false;
   bool _regenerating = false;
 
   /// Relays events between the HTML blocks of the chapter being read.
@@ -847,13 +848,40 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     );
   }
 
-  /// A page asked for text to be sent or generation to start (`/send`,
-  /// `/trigger`, `/cut`). The author sees the request first; `/cut` of a
-  /// chapter becomes a rewrite of that chapter so the interface can replace
-  /// itself with prose.
+  /// Composer input continues the story directly. Other slash requests keep
+  /// their confirmation flow; `/cut` rewrites the selected chapter.
   Future<void> _onWritingRequest(TavernWritingRequest request) async {
     final story = _story;
     if (story == null || story.chapters.isEmpty || !mounted) return;
+    if (request.continueNextChapter) {
+      if (_writingFromInput) {
+        throw const FormatException('正在开始续写，请稍候。');
+      }
+      _writingFromInput = true;
+      try {
+        final repo = ref.read(repositoryProvider);
+        final tasks = await repo.listTasks(branchId: widget.branchId);
+        if (tasks.any(
+          (task) =>
+              task.isActive &&
+              [TaskKind.writing, TaskKind.rewrite].contains(task.kind),
+        )) {
+          throw const FormatException('本书正在写作，请等待完成后再续写。');
+        }
+        final latest = await repo.getStory(widget.branchId);
+        if (!mounted) return;
+        final chapter = await startNextChapter(
+          ref,
+          latest,
+          name: '',
+          brief: request.brief,
+        );
+        if (mounted) setState(() => _openWhenLoaded = chapter.id);
+      } finally {
+        _writingFromInput = false;
+      }
+      return;
+    }
     final target = request.rewriteMessageId;
     final chapter = target == null
         ? story.chapters.last

@@ -172,6 +172,44 @@ const tavernRuntimeJs = r'''
 
   if (!api) return;
 
+  // ST 1.19.0 uses #send_textarea and #send_but (public/script.js).
+  // Here filling that composer means continuing the novel, as requested.
+  var composer = document.createElement('div');
+  composer.hidden = true;
+  var input = document.createElement('textarea');
+  input.id = 'send_textarea';
+  var send = document.createElement('button');
+  send.id = 'send_but';
+  send.type = 'button';
+  composer.append(input, send);
+  document.documentElement.appendChild(composer);
+  var inputValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  var inputJob = null, inputText = '';
+  function submitInput() {
+    if (input.value.trim()) inputText = input.value;
+    else if (!inputJob) return Promise.resolve();
+    if (inputJob) return inputJob;
+    // A single preset action often sets value, emits input/change and sends.
+    inputJob = new Promise(function (resolve) { setTimeout(resolve, 0); })
+      .then(function () {
+        var text = inputText;
+        return call('continueWriting', [text]).then(function () {
+          if (input.value === text) inputValue.set.call(input, '');
+        });
+      })
+      .catch(function (error) { toastr.error(error.message); })
+      .finally(function () { inputJob = null; });
+    return inputJob;
+  }
+  Object.defineProperty(input, 'value', {
+    configurable: true,
+    get: function () { return inputValue.get.call(this); },
+    set: function (value) { inputValue.set.call(this, value); submitInput(); },
+  });
+  input.addEventListener('input', submitInput);
+  input.addEventListener('change', submitInput);
+  send.addEventListener('click', submitInput);
+
   // ---------------------------------------------------------------- helpers
   function clone(value) { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); }
   function isObject(value) { return value !== null && typeof value === 'object'; }
@@ -611,6 +649,7 @@ const tavernRuntimeJs = r'''
         extensionSettings: {}, powerUserSettings: {}, getRequestHeaders: function () { return {}; },
         callPopup: async function (text) { toastr.info(String(text)); return true; },
         callGenericPopup: async function (text) { toastr.info(String(text)); return true; },
+        generate: submitInput,
       };
     },
   };

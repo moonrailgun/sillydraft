@@ -84,7 +84,7 @@ class SettingsScreen extends ConsumerWidget {
                     prefix: const Icon(FLucideIcons.codeXml),
                     title: _wrapped('渲染正文中的 HTML 界面'),
                     subtitle: _wrapped(
-                      '角色卡开场、状态栏等 html 代码块在隔离的网页视图里显示，并提供酒馆助手风格的接口（消息、变量、/send 等）。页面只能通过 HTTPS 联网，不能跳转、读文件或触发生成。关闭后按源码显示。',
+                      '角色卡开场、状态栏等 html 代码块在隔离的网页视图里显示，并提供酒馆助手风格的接口（消息、变量、/send 等）。预设填入酒馆输入框的文本会直接用于续写下一章。页面只能通过 HTTPS 联网，不能跳转或读文件。关闭后按源码显示。',
                     ),
                     suffix: FSwitch(value: renderHtml, onChange: setHtml),
                     onPress: () => setHtml(!renderHtml),

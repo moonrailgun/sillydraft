@@ -115,7 +115,9 @@
 
 不少角色卡用 `html` 代码块做开场界面、状态栏或行动选项，在 SillyTavern 里依赖酒馆助手（JS-Slash-Runner）渲染。SillyDraft 内置了同样的渲染方式，不需要安装扩展：阅读器把正文里的 `html` 代码块（以及内容含 `<html>`、`<head>`、`<body` 的任何代码块）放进一个隔离的网页视图，高度随页面内容自动变化；正则替换出来的 `<div>`、`<details>` 等块级片段去掉脚本后同样按 HTML 显示。从角色卡开始时，开场预览就会显示这个界面，开场源码折叠在下方仍可编辑；若卡片附带酒馆助手脚本，页面会列出脚本名称并说明脚本库不会运行。
 
-界面里的脚本能用酒馆助手的常用接口，SillyDraft 把它们对应到小说：每一章是一条消息，第一章的“消息页”（swipes）是角色卡的各个开场，所以“切换到第二个开场”之类的按钮可以直接替换第一章；`getVariables`/`replaceVariables` 等读写当前分支在该章的变量；`eventOn`/`eventEmit` 在同一页面的各界面间传递；`toastr` 显示为提示条；`alert`/`confirm`/`prompt` 弹出对话框。`triggerSlash` 支持 `/send`、`/sys`、`/sendas`、`/trigger`、`/cut`、`/echo`、`/pass`、`/setvar`、`/getvar`、`/setglobalvar`、`/getglobalvar`、`/addvar`、`/incvar`、`/decvar`、`/flushvar` 和管道 `|`。发送类命令不会自动生成：`/send 文本` 或 `/trigger` 会打开写作请求并把文本填入写作要求，由你确认后才生成；`/cut 楼层 | /trigger` 变成对该章的整章改写，界面在采纳候选后被正文取代。界面不能删除章节，也不能直接调用模型（`generate` 会报错）。
+预设的剧情选项如果原本通过填写酒馆输入框来推进，现在填写的内容会直接作为下一章的写作要求，无需再确认：阅读器翻到新章，边写边显示，完成后自动保存，继续沿用当前分支的模型、预设、角色卡和世界书。直接赋值、输入事件、发送按钮以及 `/setinput` 都适用；重复事件只启动一次，已有写作任务时会提示等待。角色卡尚未创建小说时，预览只记下要求。
+
+界面里的脚本能用酒馆助手的常用接口，SillyDraft 把它们对应到小说：每一章是一条消息，第一章的“消息页”（swipes）是角色卡的各个开场，所以“切换到第二个开场”之类的按钮可以直接替换第一章；`getVariables`/`replaceVariables` 等读写当前分支在该章的变量；`eventOn`/`eventEmit` 在同一页面的各界面间传递；`toastr` 显示为提示条；`alert`/`confirm`/`prompt` 弹出对话框。`triggerSlash` 支持 `/send`、`/sys`、`/sendas`、`/trigger`、`/cut`、`/echo`、`/pass`、`/setvar`、`/getvar`、`/setglobalvar`、`/getglobalvar`、`/addvar`、`/incvar`、`/decvar`、`/flushvar` 和管道 `|`。发送类命令不会自动生成：`/send 文本` 或 `/trigger` 会打开写作请求并把文本填入写作要求，由你确认后才生成；`/cut 楼层 | /trigger` 变成对该章的整章改写，界面在采纳候选后被正文取代。界面不能删除章节，也不能直接调用模型（全局 `generate` 会报错，`SillyTavern.getContext().generate()` 只提交已填入的续写要求）。
 
 安全边界：页面从固定的保留地址加载，只能通过 HTTPS 请求网络（字体、CDN 库、图片），不能跳转到其他网址、读取本地文件、使用摄像头或麦克风，也看不到模型密钥和其他作品。页面能看到的只有当前分支的正文、变量和角色卡元数据。设置中的“渲染正文中的 HTML 界面”可以整体关闭，关闭后按源码显示；阅读器菜单的“显示原正文”同样会显示源码。Windows 和 Linux 暂无内嵌网页视图，显示源码。
 

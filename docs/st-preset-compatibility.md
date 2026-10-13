@@ -112,6 +112,8 @@ ST 对“仅提示词”“仅显示”和一般文本处理有不同执行条�
 
 SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则不能修改已保存正文；显示专用规则不写回正文；用于清理生成文本的规则在候选采纳前应用，原始输出仍可追溯。正文导出以用户采纳的作品为准。替换结果中的 `html` 代码块和块级 HTML 片段按酒馆助手的渲染规则显示：代码块进入带脚本的隔离网页视图并获得消息、变量、事件和 Slash 命令接口；片段去除脚本和事件后显示。没有生成任务的章节（例如角色卡开场）按分支当前绑定的全局、预设和角色卡正则显示。范围、沙箱和未支持项见 [HTML 界面验证](verification/html-rendering.md)。
 
+**酒馆输入框按小说续写适配。** ST 1.19.0 的 `#send_textarea` 与 `#send_but` 分别是聊天输入框和发送入口，`/setinput` 填入文本并返回管道值（依据固定提交的 `public/script.js`、`public/scripts/slash-commands.js`）。按产品要求，SillyDraft 将前端对该输入框的赋值、`input`/`change`、发送按钮和 `SillyTavern.getContext().generate()` 适配为直接续写下一章；同一轮赋值和发送合并，已有写作任务时拒绝重复启动。`/setinput` 同样直接续写，含 `/cut` 的管道仍确认改写。这是小说产品的语义适配，不等同于 ST 仅填入草稿。普通 HTML 片段无此权限；角色卡创建前的预览只保存要求。
+
 **MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一章记录执行本章正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。
 
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
