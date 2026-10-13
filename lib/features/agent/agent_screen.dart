@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -22,7 +23,7 @@ import 'writing_request_screen.dart';
 Future<void> showAssistantSheet(
   BuildContext context, {
   required String branchId,
-  String? sceneId,
+  String? chapterId,
 }) => showAppSheet<void>(
   context: context,
   mainAxisMaxRatio: null,
@@ -60,7 +61,7 @@ Future<void> showAssistantSheet(
             ),
           ),
           Expanded(
-            child: AgentPanel(branchId: branchId, sceneId: sceneId),
+            child: AgentPanel(branchId: branchId, chapterId: chapterId),
           ),
         ],
       ),
@@ -69,9 +70,9 @@ Future<void> showAssistantSheet(
 );
 
 const _starterPrompts = [
-  '检查最近几个场景里人物的动机是否一致',
+  '检查最近几个章节里人物的动机是否一致',
   '梳理目前埋下的伏笔，哪些还没有回收',
-  '为下一个场景提出三种不同的发展',
+  '为下一个章节提出三种不同的发展',
 ];
 
 /// The editing assistant for one story branch: conversation, manuscript
@@ -81,18 +82,18 @@ class AgentPanel extends ConsumerStatefulWidget {
   const AgentPanel({
     super.key,
     required this.branchId,
-    this.sceneId,
-    this.focusSceneId,
+    this.chapterId,
+    this.focusChapterId,
   });
   final String branchId;
 
   /// Story position the assistant is limited to; null means the end of the
   /// branch.
-  final String? sceneId;
+  final String? chapterId;
 
-  /// The scene shown beside the assistant: what "this scene" and the quick
+  /// The chapter shown beside the assistant: what "this chapter" and the quick
   /// actions mean.
-  final String? focusSceneId;
+  final String? focusChapterId;
 
   @override
   ConsumerState<AgentPanel> createState() => _AgentState();
@@ -101,7 +102,7 @@ class AgentPanel extends ConsumerStatefulWidget {
 class _AgentState extends ConsumerState<AgentPanel> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
-  late String? _scene = widget.sceneId;
+  late String? _chapter = widget.chapterId;
   String? _conversation;
   bool _sending = false;
   Object? _error;
@@ -114,7 +115,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   @override
   void didUpdateWidget(AgentPanel old) {
     super.didUpdateWidget(old);
-    if (old.sceneId != widget.sceneId) _moveTo(widget.sceneId);
+    if (old.chapterId != widget.chapterId) _moveTo(widget.chapterId);
   }
 
   @override
@@ -124,9 +125,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
     super.dispose();
   }
 
-  void _moveTo(String? scene) {
+  void _moveTo(String? chapter) {
     setState(() {
-      _scene = scene;
+      _chapter = chapter;
       _conversation = null;
     });
     _selectConversation();
@@ -139,7 +140,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       final all = (await ref
           .read(repositoryProvider)
           .listConversations(widget.branchId));
-      final here = all.where((c) => c['through_scene_id'] == _scene);
+      final here = all.where((c) => c['through_chapter_id'] == _chapter);
       if (mounted) {
         setState(() => _conversation = here.firstOrNull?['id'] as String?);
       }
@@ -150,7 +151,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   Future<String> _ensureConversation() async => _conversation ??= await ref
       .read(repositoryProvider)
-      .createConversation(branchId: widget.branchId, throughSceneId: _scene);
+      .createConversation(
+        branchId: widget.branchId,
+        throughChapterId: _chapter,
+      );
 
   Future<void> _newConversation() async {
     try {
@@ -158,7 +162,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           .read(repositoryProvider)
           .createConversation(
             branchId: widget.branchId,
-            throughSceneId: _scene,
+            throughChapterId: _chapter,
           );
       if (mounted) setState(() => _conversation = id);
     } catch (e) {
@@ -168,7 +172,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   Future<void> _send() async {
     final text = _input.text;
-    if (text.trim().isEmpty) return;
+    if (_sending || text.trim().isEmpty) return;
     setState(() {
       _sending = true;
       _error = null;
@@ -194,7 +198,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         globalRegex: profile.regex,
         chatPreset: profile.assistantPreset,
         skills: await services.skills.enabled(),
-        focusSceneId: widget.focusSceneId ?? _scene,
+        focusChapterId: widget.focusChapterId ?? _chapter,
       );
       if (mounted) _input.clear();
     } catch (e) {
@@ -236,17 +240,17 @@ class _AgentState extends ConsumerState<AgentPanel> {
     }
   }
 
-  Future<Scene?> _pickScene(StorySnapshot story) => showAppSheet<Scene>(
+  Future<Chapter?> _pickChapter(StorySnapshot story) => showAppSheet<Chapter>(
     context: context,
-    title: '选择生成目标场景',
+    title: '选择生成目标章节',
     mainAxisMaxRatio: .7,
     builder: (context) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: FTileGroup(
         children: [
-          for (final s in story.scenes)
+          for (final s in story.chapters)
             FTile(
-              title: Text(s.title.isEmpty ? '未命名场景' : s.title),
+              title: Text(s.title.isEmpty ? '未命名章节' : s.title),
               onPress: () => Navigator.pop(context, s),
             ),
         ],
@@ -260,8 +264,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
           .read(repositoryProvider)
           .getStory(widget.branchId);
       if (!mounted) return;
-      // A record separates "branch end" (scene: null) from dismissing the sheet.
-      final choice = await showAppSheet<({String? scene})>(
+      // A record separates "branch end" (chapter: null) from dismissing the sheet.
+      final choice = await showAppSheet<({String? chapter})>(
         context: context,
         title: '助手参考到哪个故事位置',
         mainAxisMaxRatio: .7,
@@ -284,17 +288,19 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 child: FTileGroup(
                   children: [
                     FTile(
-                      prefix: Icon(_scene == null ? FLucideIcons.check : null),
+                      prefix: Icon(
+                        _chapter == null ? FLucideIcons.check : null,
+                      ),
                       title: const Text('当前分支末尾'),
-                      onPress: () => Navigator.pop(context, (scene: null)),
+                      onPress: () => Navigator.pop(context, (chapter: null)),
                     ),
-                    for (final s in story.scenes)
+                    for (final s in story.chapters)
                       FTile(
                         prefix: Icon(
-                          _scene == s.id ? FLucideIcons.check : null,
+                          _chapter == s.id ? FLucideIcons.check : null,
                         ),
-                        title: Text(s.title.isEmpty ? '未命名场景' : s.title),
-                        onPress: () => Navigator.pop(context, (scene: s.id)),
+                        title: Text(s.title.isEmpty ? '未命名章节' : s.title),
+                        onPress: () => Navigator.pop(context, (chapter: s.id)),
                       ),
                   ],
                 ),
@@ -303,8 +309,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
           ],
         ),
       );
-      if (choice != null && mounted && choice.scene != _scene) {
-        _moveTo(choice.scene);
+      if (choice != null && mounted && choice.chapter != _chapter) {
+        _moveTo(choice.chapter);
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -316,14 +322,18 @@ class _AgentState extends ConsumerState<AgentPanel> {
       final story = await ref
           .read(repositoryProvider)
           .getStory(widget.branchId);
-      if (story.scenes.isEmpty) throw const FormatException('请先在正文目录创建场景。');
+      if (story.chapters.isEmpty) throw const FormatException('请先在正文目录创建章节。');
       if (!mounted) return;
-      Scene? scene = story.scenes.where((s) => s.id == _scene).firstOrNull;
-      scene ??= await _pickScene(story);
-      if (scene == null || !mounted) return;
+      Chapter? chapter = story.chapters
+          .where((s) => s.id == _chapter)
+          .firstOrNull;
+      chapter ??= await _pickChapter(story);
+      if (chapter == null || !mounted) return;
       final task = await Navigator.push<GenerationTask>(
         context,
-        MaterialPageRoute(builder: (_) => WritingRequestScreen(scene: scene!)),
+        MaterialPageRoute(
+          builder: (_) => WritingRequestScreen(chapter: chapter!),
+        ),
       );
       if (task != null && mounted) {
         Navigator.push(
@@ -349,14 +359,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
     final pending =
         ref.watch(pendingReviewCountProvider(widget.branchId)).value ?? 0;
     final running = tasks.where((t) => t.isActive).length;
-    final active = tasks
-        .where(
-          (t) =>
-              t.kind == TaskKind.agent &&
-              t.input['conversationId'] == _conversation &&
-              t.isActive,
-        )
-        .firstOrNull;
+    final conversationTasks = tasks.where(
+      (t) =>
+          t.kind == TaskKind.agent &&
+          t.input['conversationId'] == _conversation,
+    );
+    final currentTask =
+        conversationTasks.where((t) => t.isActive).firstOrNull ??
+        conversationTasks.firstOrNull;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 920),
@@ -365,7 +375,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           child: FTabs(
             expands: true,
             children: [
-              FTabEntry(label: const Text('对话'), child: _chat(active)),
+              FTabEntry(label: const Text('对话'), child: _chat(currentTask)),
               FTabEntry(
                 label: Text(pending > 0 ? '候选 · $pending' : '候选'),
                 child: _proposals(),
@@ -420,24 +430,24 @@ class _AgentState extends ConsumerState<AgentPanel> {
   }
 
   /// One-tap requests above the input. Each fills in a message about the
-  /// scene beside the chat, else the scene at the assistant's position, for
+  /// chapter beside the chat, else the chapter at the assistant's position, for
   /// the author to finish or send. The assistant may only write the last
-  /// scene it can see, so continuing or revising another scene, or asking
+  /// chapter it can see, so continuing or revising another chapter, or asking
   /// about one beyond its position, first moves the position there.
   Widget _quickActions(StorySnapshot? story) {
-    final scenes = story?.scenes ?? const <Scene>[];
-    final limit = _scene == null
-        ? scenes.length - 1
-        : scenes.indexWhere((s) => s.id == _scene);
-    final focus = scenes.indexWhere((s) => s.id == widget.focusSceneId);
+    final chapters = story?.chapters ?? const <Chapter>[];
+    final limit = _chapter == null
+        ? chapters.length - 1
+        : chapters.indexWhere((s) => s.id == _chapter);
+    final focus = chapters.indexWhere((s) => s.id == widget.focusChapterId);
     final at = focus >= 0 ? focus : limit;
-    final target = at >= 0 ? scenes[at] : null;
+    final target = at >= 0 ? chapters[at] : null;
     final name = target == null
         ? '当前故事'
-        : '「${target.title.isEmpty ? '当前场景' : target.title}」';
+        : '「${target.title.isEmpty ? '当前章节' : target.title}」';
     void fill(String text, {bool edit = false}) {
       if (target != null && (edit ? at != limit : at > limit)) {
-        _moveTo(at == scenes.length - 1 ? null : target.id);
+        _moveTo(at == chapters.length - 1 ? null : target.id);
       }
       setState(() {
         _input.text = text;
@@ -601,9 +611,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
-  Widget _chat(GenerationTask? active) {
+  Widget _chat(GenerationTask? task) {
+    final active = task?.isActive == true ? task : null;
     final story = ref.watch(storyProvider(widget.branchId)).value;
-    final scene = story?.scenes.where((s) => s.id == _scene).firstOrNull;
+    final chapter = story?.chapters.where((s) => s.id == _chapter).firstOrNull;
     final colors = context.theme.colors;
     return LayoutBuilder(
       builder: (_, bounds) => Column(
@@ -633,9 +644,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                 icon: FLucideIcons.mapPin,
                                 label: Flexible(
                                   child: Text(
-                                    _scene == null
+                                    _chapter == null
                                         ? '参考范围：分支末尾'
-                                        : '参考范围：截至「${scene == null || scene.title.isEmpty ? '当前场景' : scene.title}」',
+                                        : '参考范围：截至「${chapter == null || chapter.title.isEmpty ? '当前章节' : chapter.title}」',
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -644,7 +655,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                               _presetChip(),
                               _skillsChip(),
                               _chip(
-                                tooltip: '为参考位置的场景生成正文候选',
+                                tooltip: '为参考位置的章节生成正文候选',
                                 icon: FLucideIcons.notebookPen,
                                 label: const Text('生成正文'),
                                 onPress: _generate,
@@ -669,7 +680,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                     value: ref.watch(conversationsProvider(widget.branchId)),
                     builder: (conversations) {
                       final all = conversations
-                          .where((c) => c['through_scene_id'] == _scene)
+                          .where((c) => c['through_chapter_id'] == _chapter)
                           .toList();
                       if (all.length < 2) return const SizedBox.shrink();
                       String label(int i) =>
@@ -722,47 +733,73 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 ? ListView(children: [_starter()])
                 : AsyncView(
                     value: ref.watch(messagesProvider(_conversation!)),
-                    builder: (messages) => ListView(
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        if (messages.isEmpty) _starter(),
-                        for (final message in messages) _message(message),
-                        if (active != null)
-                          FCard(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const FProgress(),
-                                  const SizedBox(height: 12),
-                                  SelectableText(
-                                    active.partialText.isEmpty
-                                        ? '编辑助手正在工作…'
-                                        : active.partialText,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FButton(
-                                      variant: FButtonVariant.ghost,
-                                      size: FButtonSizeVariant.sm,
-                                      mainAxisSize: MainAxisSize.min,
-                                      onPress: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              TaskScreen(taskId: active.id),
-                                        ),
+                    // Reversed so it opens at the latest message and stays
+                    // there as a reply streams in; aligned to the top while
+                    // short, like an unreversed list.
+                    builder: (messages) => Align(
+                      alignment: Alignment.topCenter,
+                      child: ListView(
+                        reverse: true,
+                        // ponytail: lays out every message, fine for chat-sized
+                        // threads; switch to a builder if threads get huge.
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          if (task != null &&
+                              task.status != TaskStatus.completed)
+                            FCard(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (task.isActive)
+                                      const FProgress()
+                                    else
+                                      Text(
+                                        '编辑回复${taskStatusLabels[task.status]}',
+                                        style: TextStyle(color: colors.error),
                                       ),
-                                      child: const Text('查看工具与任务'),
+                                    if (task.error.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      SelectableText(task.error),
+                                    ],
+                                    if (task.isActive ||
+                                        task.partialText.isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      SelectableText(
+                                        task.partialText.isEmpty
+                                            ? '编辑助手正在工作…'
+                                            : task.partialText,
+                                      ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FButton(
+                                        variant: FButtonVariant.ghost,
+                                        size: FButtonSizeVariant.sm,
+                                        mainAxisSize: MainAxisSize.min,
+                                        onPress: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute<void>(
+                                            builder: (_) =>
+                                                TaskScreen(taskId: task.id),
+                                          ),
+                                        ),
+                                        child: const Text('查看工具与任务'),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                      ],
+                          for (final message in messages.reversed)
+                            _message(message),
+                          if (messages.isEmpty) _starter(),
+                        ],
+                      ),
                     ),
                   ),
           ),
@@ -780,16 +817,30 @@ class _AgentState extends ConsumerState<AgentPanel> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: FTextField(
-                        key: const Key('agent-input'),
-                        focusNode: _inputFocus,
-                        control: FTextFieldControl.managed(
-                          controller: _input,
-                          onChange: (_) => setState(() {}),
+                      child: Focus(
+                        canRequestFocus: false,
+                        onKeyEvent: (_, event) {
+                          if ((event.logicalKey != LogicalKeyboardKey.enter &&
+                                  event.logicalKey !=
+                                      LogicalKeyboardKey.numpadEnter) ||
+                              HardwareKeyboard.instance.isShiftPressed ||
+                              !_input.value.composing.isCollapsed) {
+                            return KeyEventResult.ignored;
+                          }
+                          if (event is KeyDownEvent && active == null) _send();
+                          return KeyEventResult.handled;
+                        },
+                        child: FTextField(
+                          key: const Key('agent-input'),
+                          focusNode: _inputFocus,
+                          control: FTextFieldControl.managed(
+                            controller: _input,
+                            onChange: (_) => setState(() {}),
+                          ),
+                          minLines: 1,
+                          maxLines: 5,
+                          hint: '向编辑助手描述你的想法…',
                         ),
-                        minLines: 1,
-                        maxLines: 5,
-                        hint: '向编辑助手描述你的想法…',
                       ),
                     ),
                     const SizedBox(width: 8),
