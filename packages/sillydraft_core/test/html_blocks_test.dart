@@ -133,4 +133,70 @@ void main() {
       expect(HtmlBlocks.rewriteViewportUnits(source), source);
     });
   });
+
+  group('HtmlBlocks.document', () {
+    HtmlBlock block(HtmlBlockKind kind, String source) =>
+        HtmlBlock(start: 0, end: source.length, source: source, kind: kind);
+
+    test(
+      'front-end page nests inside a body with runtime, state and libraries',
+      () {
+        final doc = HtmlBlocks.document(
+          block: HtmlBlockKind.frontend == HtmlBlockKind.frontend
+              ? block(HtmlBlockKind.frontend, _page)
+              : throw StateError('unreachable'),
+          runtime: tavernRuntimeJs,
+          state: {
+            'name1': '玖神',
+            'messages': [
+              {'message': '</script><script>alert(1)</script>'},
+            ],
+          },
+          nonce: 'abc',
+          viewportHeight: 812,
+        );
+        expect(doc, startsWith('<!DOCTYPE html>'));
+        expect(doc, contains('--TH-viewport-height:812px'));
+        expect(
+          doc,
+          contains(
+            "default-src https: wss: data: blob: 'unsafe-inline' 'unsafe-eval'",
+          ),
+        );
+        expect(doc, contains('window.__SD_STATE='));
+        expect(doc, contains('"api":true'));
+        expect(doc, contains(r'<\/script><script>alert(1)<\/script>'));
+        expect(doc, contains('lodash'));
+        expect(doc, contains('jquery'));
+        expect(doc, contains('min-height: var(--TH-viewport-height)'));
+        expect(doc, contains('<body>\n<html>'));
+        expect(doc, contains('window.SillyDraftBridge.postMessage'));
+        expect(doc, contains('function getChatMessages'));
+        expect(doc, contains('include_swipe === true'));
+      },
+    );
+
+    test('fragments get a nonce-only script policy and no API', () {
+      final doc = HtmlBlocks.document(
+        block: block(
+          HtmlBlockKind.fragment,
+          '<div onclick="x()">ok</div><script>bad()</script>',
+        ),
+        runtime: tavernRuntimeJs,
+        state: const {},
+        nonce: 'n0nce',
+      );
+      expect(doc, contains("script-src 'nonce-n0nce'"));
+      expect(doc, contains("frame-src 'none'"));
+      expect(doc, contains('"api":false'));
+      expect(doc, isNot(contains('bad()')));
+      expect(doc, isNot(contains('onclick')));
+      expect(doc, isNot(contains('lodash')));
+      expect(doc, contains('<script nonce="n0nce">'));
+    });
+
+    test('runtime script never closes itself early', () {
+      expect(tavernRuntimeJs.toLowerCase(), isNot(contains('</script')));
+    });
+  });
 }
