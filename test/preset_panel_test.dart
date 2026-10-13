@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/presets/preset_screen.dart';
+import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft/features/resources/writing_profile.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -88,7 +89,7 @@ void main() {
       );
       await tester.tap(find.text('添加条目'));
       await tester.pumpAndSettle();
-      expect(find.text('新条目'), findsOneWidget);
+      expect(find.textContaining('新条目'), findsOneWidget);
 
       await tester.ensureVisible(find.byKey(const Key('preset-save')));
       await tester.tap(find.byKey(const Key('preset-save')));
@@ -128,4 +129,41 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a preset\'s detail page previews its samplers and prompts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final resource = await services.library.import(
+      Uint8List.fromList(utf8.encode(jsonEncode(_preset))),
+      filename: 'fog.json',
+      kind: ResourceKind.preset,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(ResourceDetailScreen(resourceId: resource.id)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('采样参数'), findsOneWidget);
+    expect(find.textContaining('temperature  1.0'), findsOneWidget);
+    expect(find.textContaining('启用 2 / 2'), findsOneWidget);
+    expect(find.byKey(const Key('preset-prompt-main')), findsOneWidget);
+    expect(find.text('写悬疑小说。'), findsOneWidget);
+    expect(find.text('动态标记 · 生成时填入'), findsOneWidget);
+    expect(find.text('原始 JSON'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('preset-prompt-main')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

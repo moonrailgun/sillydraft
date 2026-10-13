@@ -325,6 +325,13 @@ class ResourceDetailScreen extends ConsumerWidget {
         final preset = resource.kind == ResourceKind.preset
             ? PresetImporter().decode(resource.data)
             : null;
+        final json = SelectableText(
+          _previewJson(resource.data),
+          style: theme.typography.body.sm.copyWith(
+            fontFamily: 'monospace',
+            color: theme.colors.foreground,
+          ),
+        );
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -417,10 +424,8 @@ class ResourceDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              Text(
-                '提示词 ${preset.prompts.length} 项 · 顺序组 ${preset.orderGroups.length} 组',
-              ),
-              const SizedBox(height: 12),
+              _PresetPreview(preset),
+              const SizedBox(height: 24),
             ],
             Text(
               '导出会保留未知字段并移除已识别凭据。角色卡附件保存在加密原文件中；此 JSON 导出不包含二进制附件。',
@@ -429,13 +434,21 @@ class ResourceDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            SelectableText(
-              _previewJson(resource.data),
-              style: theme.typography.body.sm.copyWith(
-                fontFamily: 'monospace',
-                color: theme.colors.foreground,
+            if (preset == null)
+              json
+            else
+              // The preview above is the readable view; the source stays one
+              // click away, open by default when there is nothing to preview.
+              FAccordion(
+                children: [
+                  FAccordionItem(
+                    title: const Text('原始 JSON'),
+                    initiallyExpanded:
+                        preset.prompts.isEmpty && _samplers(preset).isEmpty,
+                    child: json,
+                  ),
+                ],
               ),
-            ),
           ],
         );
       },
@@ -576,6 +589,158 @@ class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
       ),
     ),
   );
+}
+
+/// A formatting bundle keeps its samplers in its `preset` part.
+Map<String, dynamic> _samplers(ImportedPreset preset) =>
+    preset.parameters.isNotEmpty
+    ? preset.parameters
+    : preset.parts['preset']?.parameters ?? const {};
+
+/// A read-only look at an ST preset: its sampler values, then its prompt
+/// entries in the order generation uses them. Tapping an entry shows its
+/// whole text.
+class _PresetPreview extends StatefulWidget {
+  const _PresetPreview(this.preset);
+  final ImportedPreset preset;
+  @override
+  State<_PresetPreview> createState() => _PresetPreviewState();
+}
+
+class _PresetPreviewState extends State<_PresetPreview> {
+  final _open = <String>{};
+
+  Widget _heading(String title, [String? note]) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text.rich(
+      TextSpan(
+        text: title,
+        style: context.theme.typography.body.md.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+        children: [
+          if (note != null)
+            TextSpan(
+              text: '  $note',
+              style: context.theme.typography.body.sm.copyWith(
+                fontWeight: FontWeight.normal,
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    final preset = widget.preset;
+    final samplers = _samplers(preset);
+    List<PromptOrderItem> order;
+    try {
+      order = preset.selectOrder();
+    } on PresetSelectionRequired {
+      order = preset.orderGroups.first.items;
+    }
+    final prompts = {for (final p in preset.prompts) p.identifier: p};
+    final placed = {for (final item in order) item.identifier};
+    final on = {
+      for (final item in order)
+        if (item.enabled) item.identifier,
+    };
+    // The order's entries first, then any the order leaves out (never sent).
+    final rows = [
+      for (final item in order) ?prompts[item.identifier],
+      for (final p in preset.prompts)
+        if (!placed.contains(p.identifier)) p,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (samplers.isNotEmpty) ...[
+          _heading('采样参数'),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final MapEntry(:key, :value) in samplers.entries)
+                FBadge(
+                  variant: FBadgeVariant.outline,
+                  child: Text.rich(
+                    TextSpan(
+                      text: '$key  ',
+                      style: TextStyle(color: theme.colors.mutedForeground),
+                      children: [
+                        TextSpan(
+                          text: _shortValue(value),
+                          style: TextStyle(color: theme.colors.foreground),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+        ],
+        if (rows.isNotEmpty) ...[
+          _heading(
+            '提示词',
+            '启用 ${rows.where((p) => on.contains(p.identifier)).length} / '
+                '${rows.length}'
+                '${preset.orderGroups.length > 1 ? ' · 按默认顺序组（共 ${preset.orderGroups.length} 组）' : ''}',
+          ),
+          FTileGroup(
+            children: [
+              for (final p in rows)
+                FTile(
+                  key: ValueKey('preset-prompt-${p.identifier}'),
+                  prefix: Icon(
+                    on.contains(p.identifier)
+                        ? FLucideIcons.circleCheck
+                        : FLucideIcons.circle,
+                    color: on.contains(p.identifier)
+                        ? null
+                        : theme.colors.mutedForeground,
+                  ),
+                  title: Text(
+                    p.name,
+                    style: on.contains(p.identifier)
+                        ? null
+                        : TextStyle(color: theme.colors.mutedForeground),
+                  ),
+                  subtitle: p.marker
+                      ? const Text('动态标记 · 生成时填入')
+                      : Text(
+                          p.content.trim().isEmpty ? '（空）' : p.content.trim(),
+                          maxLines: _open.contains(p.identifier) ? null : 2,
+                          softWrap: true,
+                          overflow: _open.contains(p.identifier)
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                        ),
+                  details: Text(
+                    [
+                      p.role,
+                      if (p.injectionPosition == 1) '深度 ${p.depth}',
+                    ].join(' · '),
+                  ),
+                  onPress: () => setState(() {
+                    if (!_open.remove(p.identifier)) _open.add(p.identifier);
+                  }),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+String _shortValue(Object? value) {
+  final text = value is String ? value : jsonEncode(value);
+  return text.length > 40 ? '${text.substring(0, 40)}…' : text;
 }
 
 String _previewJson(Map<String, dynamic> value) {
