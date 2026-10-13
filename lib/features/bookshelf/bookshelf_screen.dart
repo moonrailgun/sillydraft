@@ -45,6 +45,22 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
           NovelWorkspace(novelId: novel.id, initialSection: section),
     ),
   );
+  Future<void> _delete(Novel novel) async {
+    final yes = await confirmAction(
+      context,
+      title: '删除“${novel.title}”？',
+      message: '作品的全部章节、分支、版本历史、资料和编辑会话都会删除，不能撤销。资源库里的卡片和预设会保留。',
+      confirmLabel: '删除作品',
+      destructive: true,
+    );
+    if (!yes || !mounted) return;
+    try {
+      await ref.read(repositoryProvider).deleteNovel(novel.id);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _sample() async {
     try {
       final novel = await createSample(ref.read(repositoryProvider));
@@ -215,6 +231,9 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                                   archived: !novels[i].archived,
                                 );
                           },
+                          onDelete: novels[i].archived
+                              ? () => _delete(novels[i])
+                              : null,
                         ),
                         childCount: novels.length,
                       ),
@@ -364,8 +383,12 @@ class _NovelCard extends ConsumerWidget {
     required this.onOpen,
     required this.onReview,
     required this.onArchive,
+    this.onDelete,
   });
   final Novel novel;
+
+  /// Only archived works can be deleted.
+  final VoidCallback? onDelete;
 
   /// [onReview] opens the novel on its assistant, where candidates wait.
   final VoidCallback onOpen, onReview, onArchive;
@@ -515,6 +538,13 @@ class _NovelCard extends ConsumerWidget {
                   ? FLucideIcons.archiveRestore
                   : FLucideIcons.archive,
             ),
+            if (onDelete case final delete?)
+              menuEntry(
+                '删除作品',
+                delete,
+                icon: FLucideIcons.trash2,
+                destructive: true,
+              ),
           ],
         ),
       ],
