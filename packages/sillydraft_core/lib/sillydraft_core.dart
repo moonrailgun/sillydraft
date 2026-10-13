@@ -33,6 +33,7 @@ export 'src/model/asset.dart';
 export 'src/assets/asset_library.dart';
 export 'src/providers/image_provider.dart';
 export 'src/providers/openai_image.dart';
+export 'src/providers/comfyui.dart';
 export 'src/providers/comfy_workflow.dart';
 export 'src/agent/illustration_service.dart';
 export 'src/st/resource_library.dart';
