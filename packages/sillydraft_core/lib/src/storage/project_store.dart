@@ -187,6 +187,31 @@ extension ProjectOperations on StoryRepository {
     return getNovel(novelId);
   });
 
+  /// Deletes a work with all its branches, history, lore and tasks. Shared
+  /// library resources stay; asset files no longer referenced are pruned at
+  /// the next start.
+  Future<void> deleteNovel(String id) => _write(() async {
+    final branches = (await _rows(
+      'SELECT id FROM branches WHERE novel_id = ?',
+      [id],
+    )).map((r) => r['id'] as String).toList();
+    if ((await _rows(
+      "SELECT id FROM generation_tasks WHERE branch_id IN (SELECT id FROM branches WHERE novel_id = ?) AND status IN ('queued','running')",
+      [id],
+    )).isNotEmpty) {
+      throw StateError('请先停止这部作品正在运行的生成任务');
+    }
+    await _execute('PRAGMA defer_foreign_keys = ON');
+    await _removeProjectRows(id);
+    for (final key in [
+      'syncState/$id',
+      'syncConfig/$id',
+      for (final b in branches) 'htmlVariables/$b',
+    ]) {
+      await _execute('DELETE FROM app_settings WHERE key = ?', [key]);
+    }
+  });
+
   Future<void> _removeProjectRows(String id) async {
     final previous = (await exportProject(id)).tables;
     for (final table in projectTables.reversed) {
