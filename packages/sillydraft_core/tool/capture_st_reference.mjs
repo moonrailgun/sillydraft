@@ -25,7 +25,7 @@ const injections = [
   {role: 'system', content: 'depth-zero', injection_depth: 0, injection_order: 100},
   {role: 'system', content: 'deep', injection_depth: 8, injection_order: 100},
 ];
-const messages = [{role:'user',content:'brief'}, {role:'assistant',content:'accepted scene'}];
+const messages = [{role:'user',content:'brief'}, {role:'assistant',content:'accepted chapter'}];
 const expected = await context.populationInjectionPrompts(structuredClone(injections), structuredClone(messages));
 await fs.writeFile('test/fixtures/st/injection-reference.json', JSON.stringify({
   commit, functionSha256: createHash('sha256').update(body).digest('hex'),

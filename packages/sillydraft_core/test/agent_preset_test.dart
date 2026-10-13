@@ -88,7 +88,7 @@ void main() {
           baseUrl: 'http://localhost:1',
           model: 't',
         ),
-        message: '这一分组奏如何？',
+        message: '这一章的节奏如何？',
         card: const CardImporter().decode(
           Uint8List.fromList(utf8.encode('{"name":"沈砚","description":"看守人"}')),
           'card.json',
@@ -102,7 +102,7 @@ void main() {
       expect(messages.first['role'], 'system');
       expect(contents.first, startsWith(editorInstructions));
       expect(contents[1], '你是沈砚的文风顾问，回答要简短。', reason: 'macros rendered');
-      expect(contents.sublist(2, 5), ['先前的问题', '先前的回答', '这一分组奏如何？']);
+      expect(contents.sublist(2, 5), ['先前的问题', '先前的回答', '这一章的节奏如何？']);
       expect(contents[5], '记住：只用中文。', reason: 'post-history after chat');
       expect(contents, isNot(contains('不应出现')));
       expect(seen!.tools, isNotEmpty, reason: 'editing tools are kept');
