@@ -129,6 +129,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   /// A chapter to turn to once the story includes it: a chapter just started.
   String? _openWhenLoaded;
+  bool _regenerating = false;
 
   /// Relays events between the HTML blocks of the chapter being read.
   final _bus = HtmlEventBus();
@@ -877,6 +878,35 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     }
   }
 
+  Future<void> _regenerate(Chapter chapter, GenerationTask? previous) async {
+    if (_regenerating) return;
+    setState(() => _regenerating = true);
+    try {
+      final tasks = await ref
+          .read(repositoryProvider)
+          .listTasks(branchId: widget.branchId);
+      if (tasks.any(
+        (t) =>
+            t.isActive && [TaskKind.writing, TaskKind.rewrite].contains(t.kind),
+      )) {
+        throw const FormatException('本书正在写作，请等待完成后再重新生成。');
+      }
+      if (!mounted) return;
+      await writeChapter(
+        ref,
+        chapter,
+        brief:
+            previous?.input['brief'] as String? ??
+            '重新写当前章节《${chapter.title}》的完整正文。',
+        rewrite: true,
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _regenerating = false);
+    }
+  }
+
   /// The page itself: running header, the text, and a running footer with
   /// progress and the time, like a printed book.
   Widget _reading(
@@ -889,26 +919,34 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final faint = foreground.withValues(alpha: .5);
     final small = TextStyle(color: faint, fontSize: 12);
     final last = _index == story.chapters.length - 1;
-    // An empty chapter being written shows the text as it arrives; while it
-    // is written, or waits to be taken in, the story has no end to offer.
-    final draft = chapter.content.text.trim().isNotEmpty
-        ? null
-        : (ref.watch(tasksProvider(widget.branchId)).value ?? const [])
-              .where(
-                (t) =>
-                    [TaskKind.writing, TaskKind.rewrite].contains(t.kind) &&
-                    t.chapterId == chapter.id,
-              )
-              .firstOrNull;
-    final writing =
-        draft != null &&
-        (draft.isActive ||
-            (ref.watch(proposalsProvider(widget.branchId)).value ?? const [])
-                .any(
-                  (p) =>
-                      p.id == draft.result['proposalId'] &&
-                      p.status == ProposalStatus.pending,
-                ));
+    // Show inline generation while preserving any saved text. Tasks started
+    // in the candidate editor keep their existing review flow.
+    final tasks = ref.watch(tasksProvider(widget.branchId)).value ?? const [];
+    final latest = tasks
+        .where(
+          (t) =>
+              [TaskKind.writing, TaskKind.rewrite].contains(t.kind) &&
+              t.chapterId == chapter.id,
+        )
+        .firstOrNull;
+    final pending =
+        latest != null &&
+        (ref.watch(proposalsProvider(widget.branchId)).value ?? const []).any(
+          (p) =>
+              p.id == latest.result['proposalId'] &&
+              p.status == ProposalStatus.pending,
+        );
+    final hasText = chapter.content.text.trim().isNotEmpty;
+    final draft =
+        latest != null &&
+            (!hasText ||
+                (latest.input['autoAccept'] == true &&
+                    (latest.isActive ||
+                        pending ||
+                        latest.status != TaskStatus.completed)))
+        ? latest
+        : null;
+    final writing = draft != null && (draft.isActive || pending);
     return SafeArea(
       child: Column(
         children: [
@@ -978,14 +1016,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                 ),
                               ),
                               SizedBox(height: _style.fontSize * 1.5),
-                              if (draft != null)
-                                ChapterDraft(
-                                  key: ValueKey('draft:${draft.id}'),
-                                  task: draft,
-                                  prose: (text) => _prose(text, foreground),
-                                  controls: _noTap,
-                                )
-                              else
+                              if (hasText || draft == null)
                                 Text.rich(
                                   _document!.span,
                                   key: _textKey,
@@ -993,6 +1024,44 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                       ? TextAlign.justify
                                       : TextAlign.start,
                                   style: _style.body(foreground),
+                                ),
+                              if (draft != null)
+                                ChapterDraft(
+                                  key: ValueKey('draft:${draft.id}'),
+                                  task: draft,
+                                  prose: (text) => _prose(text, foreground),
+                                  controls: _noTap,
+                                )
+                              else if (hasText)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 20),
+                                  child: Center(
+                                    child: _noTap(
+                                      FButton(
+                                        key: const Key('chapter-regenerate'),
+                                        variant: FButtonVariant.outline,
+                                        size: FButtonSizeVariant.sm,
+                                        mainAxisSize: MainAxisSize.min,
+                                        onPress:
+                                            _regenerating ||
+                                                tasks.any(
+                                                  (t) =>
+                                                      t.isActive &&
+                                                      [
+                                                        TaskKind.writing,
+                                                        TaskKind.rewrite,
+                                                      ].contains(t.kind),
+                                                )
+                                            ? null
+                                            : () =>
+                                                  _regenerate(chapter, latest),
+                                        prefix: const Icon(
+                                          FLucideIcons.refreshCw,
+                                        ),
+                                        child: const Text('重新生成'),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               const SizedBox(height: 36),
                               if (!writing)

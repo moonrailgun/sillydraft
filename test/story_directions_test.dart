@@ -130,6 +130,180 @@ Future<List<GenerationTask>> _directionRuns(_Open book) async => [
 ];
 
 void main() {
+  testWidgets('regenerating replaces the chapter and keeps its old revision', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    const refusal = 'I cannot fulfill this request.';
+    final requests = <ProviderRequest>[];
+    final book = await _open(
+      tester,
+      text: refusal,
+      requests: requests,
+      gate: gate.future,
+      reader: {'autoDirections': false},
+    );
+    final repo = book.services.repository;
+    final original = (await repo.getStory(book.branchId)).chapters.single;
+    final previous = await repo.createTask(
+      branchId: book.branchId,
+      chapterId: original.id,
+      baseRevisionId: original.revisionId,
+      kind: TaskKind.writing,
+      input: {'brief': '她在船上遇见了旧识。'},
+    );
+    await repo.updateTask(previous.id, status: TaskStatus.completed);
+    await tester.pumpAndSettle();
+    final again = find.byKey(const Key('chapter-regenerate'));
+    expect(again, findsOneWidget);
+    await tester.ensureVisible(again);
+    await tester.pumpAndSettle();
+    await tester.tap(again);
+    for (var i = 0; i < 50; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      if (find.byKey(const Key('chapter-stop')).evaluate().isNotEmpty) break;
+    }
+    expect(find.byKey(const Key('chapter-stop')), findsOneWidget);
+    expect(jsonEncode(requests.single.messages), contains('她在船上遇见了旧识。'));
+    expect(jsonEncode(requests.single.messages), contains('重新写当前章节的完整正文'));
+    expect(find.byKey(const Key('chapter-regenerate')), findsNothing);
+    expect(
+      (await repo.getStory(book.branchId)).chapters.single.revisionId,
+      original.revisionId,
+    );
+    gate.complete();
+    await tester.pumpAndSettle();
+    final chapter = (await repo.getStory(book.branchId)).chapters.single;
+    expect(chapter.id, original.id);
+    expect(chapter.content.text.trim(), '她推开门。她守在灯下。');
+    expect(
+      (await repo.getRevision(original.revisionId)).content.text.trim(),
+      refusal,
+    );
+    expect(find.byKey(const Key('chapter-regenerate')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed regeneration keeps the chapter and can be retried', (
+    tester,
+  ) async {
+    final requests = <ProviderRequest>[];
+    final book = await _open(
+      tester,
+      failures: [1],
+      requests: requests,
+      reader: {'autoDirections': false},
+    );
+    final again = find.byKey(const Key('chapter-regenerate'));
+    await tester.ensureVisible(again);
+    await tester.pumpAndSettle();
+    await tester.tap(again);
+    await tester.pumpAndSettle();
+    final repo = book.services.repository;
+    expect(
+      (await repo.getStory(book.branchId)).chapters.single.content.text.trim(),
+      '风暴要来了。',
+    );
+    expect(find.textContaining('模型服务暂时不可用'), findsOneWidget);
+    final retry = find.byKey(const Key('chapter-again'));
+    await tester.ensureVisible(retry);
+    await tester.pumpAndSettle();
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.getStory(book.branchId)).chapters.single.content.text.trim(),
+      '她推开门。她守在灯下。',
+    );
+    expect(
+      '重新写当前章节的完整正文'.allMatches(jsonEncode(requests.last.messages)),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('regeneration preserves edits made while the model is writing', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    final book = await _open(
+      tester,
+      gate: gate.future,
+      reader: {'autoDirections': false},
+    );
+    final repo = book.services.repository;
+    final original = (await repo.getStory(book.branchId)).chapters.single;
+    final again = find.byKey(const Key('chapter-regenerate'));
+    await tester.ensureVisible(again);
+    await tester.pumpAndSettle();
+    await tester.tap(again);
+    for (var i = 0; i < 50; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      if (find.byKey(const Key('chapter-stop')).evaluate().isNotEmpty) break;
+    }
+    expect(find.byKey(const Key('chapter-stop')), findsOneWidget);
+    await repo.saveChapter(
+      branchId: book.branchId,
+      chapterId: original.id,
+      expectedRevisionId: original.revisionId,
+      content: ManuscriptContent.plainText('作者刚改好的正文。'),
+    );
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.getStory(book.branchId)).chapters.single.content.text.trim(),
+      '作者刚改好的正文。',
+    );
+    final pending = await repo.listProposals(
+      book.branchId,
+      status: ProposalStatus.pending,
+    );
+    expect(pending, hasLength(1));
+    expect(pending.single.content.text.trim(), '她推开门。她守在灯下。');
+    expect(find.textContaining('这一章没有自动写入'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('manual candidates keep their review flow in a saved chapter', (
+    tester,
+  ) async {
+    final book = await _open(tester, reader: {'autoDirections': false});
+    final repo = book.services.repository;
+    final chapter = (await repo.getStory(book.branchId)).chapters.single;
+    final task = await repo.createTask(
+      branchId: book.branchId,
+      chapterId: chapter.id,
+      baseRevisionId: chapter.revisionId,
+      kind: TaskKind.rewrite,
+      input: {'brief': '修改对话'},
+    );
+    final proposal = await repo.createProposal(
+      branchId: book.branchId,
+      chapterId: chapter.id,
+      baseRevisionId: chapter.revisionId,
+      content: ManuscriptContent.plainText('待审阅的正文。'),
+      taskId: task.id,
+    );
+    await repo.updateTask(
+      task.id,
+      status: TaskStatus.completed,
+      result: {'proposalId': proposal.id},
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chapter-draft')), findsNothing);
+    expect(find.byKey(const Key('chapter-regenerate')), findsOneWidget);
+    expect(
+      (await repo.getProposal(proposal.id)).status,
+      ProposalStatus.pending,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'the next chapter is numbered the way the book numbers its chapters',
     () {

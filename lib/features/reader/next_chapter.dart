@@ -87,18 +87,24 @@ Future<GenerationTask> writeChapter(
   WidgetRef ref,
   Chapter chapter, {
   required String brief,
+  bool rewrite = false,
 }) async {
   final services = ref.read(servicesProvider);
   final connection = await services.connectionFor('writing');
   if (connection == null) throw const FormatException('请先在设置里添加写作模型连接。');
   final profile = await WritingContext.load(services, chapter.branchId);
+  const rewriteInstruction = '重新写当前章节的完整正文，替换当前版本，不要续写或输出说明。\n原写作要求：\n';
+  if (rewrite && !brief.startsWith(rewriteInstruction)) {
+    brief = '$rewriteInstruction$brief';
+  }
   return services.writing.startPrepared(
     await services.writing.prepare(
       branchId: chapter.branchId,
       chapterId: chapter.id,
       connection: connection,
       brief: brief,
-      append: true,
+      append: !rewrite,
+      rewrite: rewrite,
       preset: profile.preset,
       card: profile.card,
       userName: profile.userName,
@@ -150,7 +156,7 @@ Future<Chapter> startNextChapter(
   return chapter;
 }
 
-/// An empty chapter being written: the text as it arrives, set like the rest
+/// A chapter being written: the text as it arrives, set like the rest
 /// of the book, which becomes the chapter's text once written. A failure, or
 /// a result that could not be taken in because the chapter or the story state
 /// changed meanwhile, waits here for the author.
@@ -197,6 +203,7 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
         chapterId: task.chapterId!,
       ),
       brief: task.input['brief'] as String? ?? '',
+      rewrite: task.kind == TaskKind.rewrite,
     );
   });
 
