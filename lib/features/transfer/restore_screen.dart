@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -80,9 +81,10 @@ class _RestoreState extends ConsumerState<RestoreBackupScreen> {
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !_busy,
-    child: Scaffold(
-      appBar: AppBar(title: const Text('恢复项目备份')),
+    child: PageScaffold(
+      title: '恢复项目备份',
       body: SafeArea(
+        top: false,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
@@ -91,10 +93,11 @@ class _RestoreState extends ConsumerState<RestoreBackupScreen> {
               children: [
                 const Text('恢复后会新增一部独立作品，包含备份中的分支和历史。当前书架中的作品会保留。'),
                 const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _choose,
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('选择备份文件'),
+                FButton(
+                  variant: FButtonVariant.outline,
+                  onPress: _busy ? null : _choose,
+                  prefix: const Icon(FLucideIcons.folderOpen),
+                  child: const Text('选择备份文件'),
                 ),
                 if (_bytes != null) ...[
                   const SizedBox(height: 12),
@@ -102,29 +105,29 @@ class _RestoreState extends ConsumerState<RestoreBackupScreen> {
                     '已选择备份 · ${(_bytes!.length / 1024).toStringAsFixed(1)} KB',
                   ),
                   const SizedBox(height: 16),
-                  TextField(
+                  FTextField(
                     key: const Key('restore-passphrase'),
-                    controller: _passphrase,
+                    control: FTextFieldControl.managed(controller: _passphrase),
                     obscureText: true,
                     autocorrect: false,
                     enableSuggestions: false,
                     enabled: !_busy,
-                    decoration: const InputDecoration(labelText: '备份口令'),
+                    label: const Text('备份口令'),
                   ),
                   const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _busy ? null : _read,
+                  FButton(
+                    onPress: _busy ? null : _read,
                     child: const Text('解锁并预览'),
                   ),
                 ],
                 if (_busy)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
-                    child: LinearProgressIndicator(),
+                    child: FProgress(),
                   ),
                 if (_preview case final preview?) ...[
                   const SizedBox(height: 24),
-                  Card(
+                  FCard(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
                       child: Column(
@@ -132,25 +135,31 @@ class _RestoreState extends ConsumerState<RestoreBackupScreen> {
                         children: [
                           Text(
                             preview.snapshot.title,
-                            style: Theme.of(context).textTheme.titleLarge,
+                            style: context.theme.typography.body.lg.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: context.theme.colors.foreground,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(
                             '${preview.branchCount} 个分支 · ${preview.assetCount} 张图片',
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'ST 原文件会使用本机安全存储重新保护。未完成的生成任务会标为中断，模型密钥需重新配置。',
+                          Text(
+                            'ST 原文件会使用本机的资源密钥重新加密。未完成的生成任务会标为中断，模型密钥需重新配置。',
+                            style: context.theme.typography.body.sm.copyWith(
+                              color: context.theme.colors.mutedForeground,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _restore,
-                    icon: const Icon(Icons.restore),
-                    label: const Text('恢复为独立作品'),
+                  FButton(
+                    onPress: _busy ? null : _restore,
+                    prefix: const Icon(FLucideIcons.archiveRestore),
+                    child: const Text('恢复为独立作品'),
                   ),
                 ],
               ],

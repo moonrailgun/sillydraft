@@ -10,7 +10,10 @@ import 'package:sillydraft/features/transfer/file_gateway.dart';
 import 'package:sillydraft/features/transfer/transfer_screen.dart';
 import 'package:sillydraft/features/transfer/restore_screen.dart';
 import 'package:sillydraft/features/transfer/sync_screen.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/host.dart';
 
 class _Files implements TransferFileGateway {
   Uint8List? selected;
@@ -60,12 +63,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(home: ProjectSyncScreen(novelId: novel.id)),
+          child: testHost(ProjectSyncScreen(novelId: novel.id)),
         ),
       );
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextField, '项目同步口令（至少 12 个字符）'),
+        find.widgetWithText(FTextField, '项目同步口令（至少 12 个字符）'),
         'different new passphrase',
       );
       await tester.scrollUntilVisible(
@@ -119,7 +122,7 @@ void main() {
             servicesProvider.overrideWithValue(services),
             transferFilesProvider.overrideWithValue(files),
           ],
-          child: MaterialApp(home: TransferScreen(novelId: n.id)),
+          child: testHost(TransferScreen(novelId: n.id)),
         ),
       );
       await tester.pumpAndSettle();
@@ -133,6 +136,12 @@ void main() {
           sceneId: s.id,
         )).revisionId,
         s.revisionId,
+      );
+      // The note sits under the backup form, below the fold on a phone.
+      await tester.scrollUntilVisible(
+        find.text('已交给系统保存或分享'),
+        250,
+        scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('已交给系统保存或分享'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -178,7 +187,7 @@ void main() {
             servicesProvider.overrideWithValue(services),
             transferFilesProvider.overrideWithValue(files),
           ],
-          child: const MaterialApp(home: RestoreBackupScreen()),
+          child: testHost(const RestoreBackupScreen()),
         ),
       );
       await tester.pumpAndSettle();

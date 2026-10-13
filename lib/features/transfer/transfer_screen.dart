@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -73,133 +74,147 @@ class _TransferState extends ConsumerState<TransferScreen> {
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !_busy,
-    child: Scaffold(
-      appBar: AppBar(title: const Text('导出与备份')),
+    child: PageScaffold(
+      title: '导出与备份',
       body: SafeArea(
+        top: false,
         child: AsyncView(
           value: ref.watch(novelProvider(widget.novelId)),
-          builder: (Novel novel) => Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  Text(
-                    novel.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('阅读文件使用所选分支中已采纳的正文。'),
-                  const SizedBox(height: 16),
-                  AsyncView(
-                    value: ref.watch(transferBranchesProvider(novel.id)),
-                    builder: (List<StoryBranch> branches) =>
-                        DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          initialValue: _branch ?? novel.activeBranchId,
-                          decoration: const InputDecoration(
-                            labelText: '导出的故事分支',
+          builder: (Novel novel) {
+            final theme = context.theme;
+            final heading = theme.typography.body.lg.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colors.foreground,
+            );
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    Text(
+                      novel.title,
+                      style: theme.typography.body.xl2.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colors.foreground,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('阅读文件使用所选分支中已采纳的正文。'),
+                    const SizedBox(height: 16),
+                    AsyncView(
+                      value: ref.watch(transferBranchesProvider(novel.id)),
+                      builder: (List<StoryBranch> branches) {
+                        final names = {for (final b in branches) b.id: b.name};
+                        return FSelect<String>.rich(
+                          label: const Text('导出的故事分支'),
+                          enabled: !_busy,
+                          format: (id) => names[id] ?? '',
+                          control: FSelectControl.lifted(
+                            value: _branch ?? novel.activeBranchId,
+                            onChange: (v) {
+                              if (v != null) setState(() => _branch = v);
+                            },
                           ),
-                          items: [
+                          children: [
                             for (final b in branches)
-                              DropdownMenuItem(
-                                value: b.id,
-                                child: Text(
+                              FSelectItem<String>(
+                                title: Text(
                                   b.name,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                value: b.id,
                               ),
                           ],
-                          onChanged: _busy
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    for (final entry in {
+                      PublicationFormat.text: '导出 TXT',
+                      PublicationFormat.markdown: '导出 Markdown 与插图',
+                      PublicationFormat.epub: '导出 EPUB',
+                    }.entries)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: FButton(
+                          variant: FButtonVariant.outline,
+                          onPress: _busy
                               ? null
-                              : (v) => setState(() => _branch = v),
+                              : () => _export(novel, entry.key),
+                          prefix: const Icon(FLucideIcons.share),
+                          child: Text(entry.value),
                         ),
-                  ),
-                  const SizedBox(height: 16),
-                  for (final entry in {
-                    PublicationFormat.text: '导出 TXT',
-                    PublicationFormat.markdown: '导出 Markdown 与插图',
-                    PublicationFormat.epub: '导出 EPUB',
-                  }.entries)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => _export(novel, entry.key),
-                        icon: const Icon(Icons.ios_share),
-                        label: Text(entry.value),
                       ),
+                    const Text(
+                      'TXT 用文字标记插图；Markdown 以 ZIP 携带图片；EPUB 包含目录、封面和插图。',
                     ),
-                  const Text(
-                    'TXT 用文字标记插图；Markdown 以 ZIP 携带图片；EPUB 包含目录、封面和插图。',
-                  ),
-                  const SizedBox(height: 28),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  Text('完整项目备份', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '保存所有分支、正文版本、创作资料、任务记录、图片和已引用的 ST 原文件。用口令保护备份；口令遗失后无法恢复。模型密钥需在新设备重新配置。',
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _password,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: '备份口令（至少 12 个字符）',
+                    const SizedBox(height: 28),
+                    const FDivider(),
+                    const SizedBox(height: 16),
+                    Text('完整项目备份', style: heading),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '保存所有分支、正文版本、创作资料、任务记录、图片和已引用的 ST 原文件。用口令保护备份；口令遗失后无法恢复。模型密钥需在新设备重新配置。',
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _confirmation,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    enabled: !_busy,
-                    decoration: const InputDecoration(labelText: '再次输入备份口令'),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : () => _export(novel, null),
-                    icon: const Icon(Icons.lock_outline),
-                    label: const Text('创建加密备份'),
-                  ),
-                  if (_busy) ...[
-                    const SizedBox(height: 20),
-                    const LinearProgressIndicator(),
-                    const SizedBox(height: 8),
-                    const Text('正在准备文件，请稍候…'),
-                  ],
-                  if (_message != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(_message!, semanticsLabel: _message),
+                    const SizedBox(height: 16),
+                    FTextField(
+                      control: FTextFieldControl.managed(controller: _password),
+                      obscureText: true,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      enabled: !_busy,
+                      label: const Text('备份口令（至少 12 个字符）'),
                     ),
-                  const SizedBox(height: 28),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.cloud_sync_outlined),
-                    title: const Text('多设备同步'),
-                    subtitle: const Text('连接自己的同步空间，保留冲突副本'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _busy
-                        ? null
-                        : () => Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  ProjectSyncScreen(novelId: novel.id),
+                    const SizedBox(height: 12),
+                    FTextField(
+                      control: FTextFieldControl.managed(
+                        controller: _confirmation,
+                      ),
+                      obscureText: true,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      enabled: !_busy,
+                      label: const Text('再次输入备份口令'),
+                    ),
+                    const SizedBox(height: 16),
+                    FButton(
+                      onPress: _busy ? null : () => _export(novel, null),
+                      prefix: const Icon(FLucideIcons.lock),
+                      child: const Text('创建加密备份'),
+                    ),
+                    if (_busy) ...[
+                      const SizedBox(height: 20),
+                      const FProgress(),
+                      const SizedBox(height: 8),
+                      const Text('正在准备文件，请稍候…'),
+                    ],
+                    if (_message != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(_message!, semanticsLabel: _message),
+                      ),
+                    const SizedBox(height: 28),
+                    FTile(
+                      prefix: const Icon(FLucideIcons.cloudSync),
+                      title: const Text('多设备同步'),
+                      subtitle: const Text('连接自己的同步空间，保留冲突副本'),
+                      suffix: const Icon(FLucideIcons.chevronRight),
+                      onPress: _busy
+                          ? null
+                          : () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ProjectSyncScreen(novelId: novel.id),
+                              ),
                             ),
-                          ),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     ),

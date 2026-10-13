@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute, SelectableText;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -124,28 +125,15 @@ class _SyncState extends ConsumerState<ProjectSyncScreen> {
   Future<void> _synchronize({String? resolution}) async {
     if (!_form.currentState!.validate()) return;
     if (resolution != null) {
-      final yes = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: Text(resolution == 'local' ? '将本机版本同步到远端？' : '采用远端版本？'),
-          content: Text(
-            resolution == 'local'
-                ? '远端冲突副本会继续保留在书架，可随时查看。'
-                : '会先保存本机冲突副本，再更新当前作品。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('继续'),
-            ),
-          ],
-        ),
+      final yes = await confirmAction(
+        context,
+        title: resolution == 'local' ? '将本机版本同步到远端？' : '采用远端版本？',
+        message: resolution == 'local'
+            ? '远端冲突副本会继续保留在书架，可随时查看。'
+            : '会先保存本机冲突副本，再更新当前作品。',
+        confirmLabel: '继续',
       );
-      if (yes != true || !mounted) return;
+      if (!yes || !mounted) return;
     }
     setState(() {
       _busy = true;
@@ -224,24 +212,13 @@ class _SyncState extends ConsumerState<ProjectSyncScreen> {
   Future<void> _disconnect() async {
     final id = widget.novelId;
     if (id == null) return;
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('断开此作品的同步？'),
-        content: const Text('本机作品与远端文件保留。本机保存的同步认证和口令会移除，请确认已另行保存口令。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('断开同步'),
-          ),
-        ],
-      ),
+    final yes = await confirmAction(
+      context,
+      title: '断开此作品的同步？',
+      message: '本机作品与远端文件保留。本机保存的同步认证和口令会移除，请确认已另行保存口令。',
+      confirmLabel: '断开同步',
     );
-    if (yes != true || !mounted) return;
+    if (!yes || !mounted) return;
     final services = ref.read(servicesProvider);
     await services.repository.removeSetting('syncConfig/$id');
     await services.repository.removeSetting('syncState/$id');
@@ -259,184 +236,193 @@ class _SyncState extends ConsumerState<ProjectSyncScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_busy,
-    child: Scaffold(
-      appBar: AppBar(title: Text(widget.novelId == null ? '连接远端作品' : '多设备同步')),
-      body: SafeArea(
-        child: !_loaded
-            ? const Center(child: CircularProgressIndicator())
-            : Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Form(
-                    key: _form,
-                    child: ListView(
-                      padding: const EdgeInsets.all(24),
-                      children: [
-                        const Text(
-                          '使用自己的 HTTP / WebDAV 文件空间。服务需支持强 ETag 与条件 PUT；所有设备填写同一个文件地址和同步口令。',
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: _url,
-                          enabled: !_busy,
-                          autocorrect: false,
-                          keyboardType: TextInputType.url,
-                          decoration: const InputDecoration(
-                            labelText: '完整备份文件地址',
-                            hintText: 'https://你的服务/novel.sillydraft',
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    return PopScope(
+      canPop: !_busy,
+      child: PageScaffold(
+        title: widget.novelId == null ? '连接远端作品' : '多设备同步',
+        body: SafeArea(
+          top: false,
+          child: !_loaded
+              ? const Center(child: FCircularProgress())
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Form(
+                      key: _form,
+                      child: ListView(
+                        padding: const EdgeInsets.all(24),
+                        children: [
+                          const Text(
+                            '使用自己的 HTTP / WebDAV 文件空间。服务需支持强 ETag 与条件 PUT；所有设备填写同一个文件地址和同步口令。',
                           ),
-                          validator: (v) =>
-                              Uri.tryParse(v?.trim() ?? '')?.hasAuthority ==
-                                  true
-                              ? null
-                              : '请填写完整文件地址',
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          initialValue: _auth,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: '同步服务认证',
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'none', child: Text('无认证')),
-                            DropdownMenuItem(
-                              value: 'basic',
-                              child: Text('用户名与密码（Basic）'),
+                          const SizedBox(height: 20),
+                          FTextFormField(
+                            control: FTextFieldControl.managed(
+                              controller: _url,
                             ),
-                            DropdownMenuItem(
-                              value: 'bearer',
-                              child: Text('访问令牌（Bearer）'),
+                            enabled: !_busy,
+                            autocorrect: false,
+                            keyboardType: TextInputType.url,
+                            label: const Text('完整备份文件地址'),
+                            hint: 'https://你的服务/novel.sillydraft',
+                            validator: (v) =>
+                                Uri.tryParse(v?.trim() ?? '')?.hasAuthority ==
+                                    true
+                                ? null
+                                : '请填写完整文件地址',
+                          ),
+                          const SizedBox(height: 16),
+                          FSelect<String>(
+                            label: const Text('同步服务认证'),
+                            enabled: !_busy,
+                            items: const {
+                              '无认证': 'none',
+                              '用户名与密码（Basic）': 'basic',
+                              '访问令牌（Bearer）': 'bearer',
+                            },
+                            control: FSelectControl.lifted(
+                              value: _auth,
+                              onChange: (v) {
+                                if (v != null) setState(() => _auth = v);
+                              },
+                            ),
+                          ),
+                          if (_auth == 'basic') ...[
+                            const SizedBox(height: 16),
+                            FTextField(
+                              control: FTextFieldControl.managed(
+                                controller: _user,
+                              ),
+                              enabled: !_busy,
+                              label: const Text('用户名'),
                             ),
                           ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _auth = v!),
-                        ),
-                        if (_auth == 'basic') ...[
+                          if (_auth != 'none') ...[
+                            const SizedBox(height: 16),
+                            FTextField(
+                              control: FTextFieldControl.managed(
+                                controller: _password,
+                              ),
+                              obscureText: true,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              enabled: !_busy,
+                              label: Text(_auth == 'basic' ? '密码' : '访问令牌'),
+                              description: widget.novelId == null
+                                  ? null
+                                  : const Text('留空保留当前地址的认证；更换地址需重新填写'),
+                            ),
+                          ],
                           const SizedBox(height: 16),
-                          TextField(
-                            controller: _user,
-                            enabled: !_busy,
-                            decoration: const InputDecoration(labelText: '用户名'),
-                          ),
-                        ],
-                        if (_auth != 'none') ...[
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _password,
+                          FTextField(
+                            control: FTextFieldControl.managed(
+                              controller: _phrase,
+                            ),
                             obscureText: true,
                             autocorrect: false,
                             enableSuggestions: false,
                             enabled: !_busy,
-                            decoration: InputDecoration(
-                              labelText: _auth == 'basic' ? '密码' : '访问令牌',
-                              helperText: widget.novelId == null
-                                  ? null
-                                  : '留空保留当前地址的认证；更换地址需重新填写',
+                            label: const Text('项目同步口令（至少 12 个字符）'),
+                            description: Text(
+                              widget.novelId == null
+                                  ? '由另一设备创建同步时设置'
+                                  : '留空保留本机已保存的口令',
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _phrase,
-                          obscureText: true,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          enabled: !_busy,
-                          decoration: InputDecoration(
-                            labelText: '项目同步口令（至少 12 个字符）',
-                            helperText: widget.novelId == null
-                                ? '由另一设备创建同步时设置'
-                                : '留空保留本机安全存储中的口令',
+                          const SizedBox(height: 12),
+                          const Text('项目在上传前加密。请保留口令，口令无法重置；模型密钥不会上传。'),
+                          const SizedBox(height: 12),
+                          FCheckbox(
+                            label: const Text('允许 HTTP（仅可信网络）'),
+                            value: _insecure,
+                            enabled: !_busy,
+                            onChange: (v) => setState(() => _insecure = v),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text('项目在上传前加密。请保留口令，口令无法重置；模型密钥不会上传。'),
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('允许 HTTP（仅可信网络）'),
-                          value: _insecure,
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _insecure = v!),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () => _synchronize(),
-                          icon: const Icon(Icons.sync),
-                          label: Text(
-                            widget.novelId == null ? '连接并下载作品' : '保存配置并同步',
-                          ),
-                        ),
-                        if (_busy) ...[
                           const SizedBox(height: 20),
-                          const LinearProgressIndicator(),
-                          const SizedBox(height: 8),
-                          const Text('正在加密或同步，请稍候…'),
-                        ],
-                        if (_message != null)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Text(_message!),
+                          FButton(
+                            onPress: _busy ? null : () => _synchronize(),
+                            prefix: const Icon(FLucideIcons.refreshCw),
+                            child: Text(
+                              widget.novelId == null ? '连接并下载作品' : '保存配置并同步',
+                            ),
                           ),
-                        if (widget.novelId != null &&
-                            _state['conflictNovelId'] is String) ...[
-                          const SizedBox(height: 24),
-                          Text(
-                            '处理并发修改',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 12),
-                          const Text('比较后可以手动整合内容，再选择要同步的版本。未选择前，双方版本均保留。'),
-                          const SizedBox(height: 12),
-                          OutlinedButton(
-                            onPressed: _busy
-                                ? null
-                                : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => SyncConflictComparison(
-                                        localId: widget.novelId!,
-                                        copyId:
-                                            _state['conflictNovelId'] as String,
+                          if (_busy) ...[
+                            const SizedBox(height: 20),
+                            const FProgress(),
+                            const SizedBox(height: 8),
+                            const Text('正在加密或同步，请稍候…'),
+                          ],
+                          if (_message != null)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Text(_message!),
+                            ),
+                          if (widget.novelId != null &&
+                              _state['conflictNovelId'] is String) ...[
+                            const SizedBox(height: 24),
+                            Text(
+                              '处理并发修改',
+                              style: theme.typography.body.lg.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colors.foreground,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text('比较后可以手动整合内容，再选择要同步的版本。未选择前，双方版本均保留。'),
+                            const SizedBox(height: 12),
+                            FButton(
+                              variant: FButtonVariant.outline,
+                              onPress: _busy
+                                  ? null
+                                  : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => SyncConflictComparison(
+                                          localId: widget.novelId!,
+                                          copyId:
+                                              _state['conflictNovelId']
+                                                  as String,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                            child: const Text('比较本机与远端副本'),
-                          ),
-                          const SizedBox(height: 12),
-                          OutlinedButton(
-                            onPressed: _busy
-                                ? null
-                                : () => _synchronize(resolution: 'local'),
-                            child: const Text('保留本机并上传'),
-                          ),
-                          const SizedBox(height: 12),
-                          OutlinedButton(
-                            onPressed: _busy
-                                ? null
-                                : () => _synchronize(resolution: 'remote'),
-                            child: const Text('采用远端并保留本机副本'),
-                          ),
+                              child: const Text('比较本机与远端副本'),
+                            ),
+                            const SizedBox(height: 12),
+                            FButton(
+                              variant: FButtonVariant.outline,
+                              onPress: _busy
+                                  ? null
+                                  : () => _synchronize(resolution: 'local'),
+                              child: const Text('保留本机并上传'),
+                            ),
+                            const SizedBox(height: 12),
+                            FButton(
+                              variant: FButtonVariant.outline,
+                              onPress: _busy
+                                  ? null
+                                  : () => _synchronize(resolution: 'remote'),
+                              child: const Text('采用远端并保留本机副本'),
+                            ),
+                          ],
+                          if (widget.novelId != null) ...[
+                            const SizedBox(height: 24),
+                            FButton(
+                              variant: FButtonVariant.ghost,
+                              onPress: _busy ? null : _disconnect,
+                              child: const Text('断开此作品的同步'),
+                            ),
+                          ],
                         ],
-                        if (widget.novelId != null) ...[
-                          const SizedBox(height: 24),
-                          TextButton(
-                            onPressed: _busy ? null : _disconnect,
-                            child: const Text('断开此作品的同步'),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class SyncConflictComparison extends ConsumerWidget {
@@ -447,9 +433,10 @@ class SyncConflictComparison extends ConsumerWidget {
   });
   final String localId, copyId;
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('同步冲突比较')),
+  Widget build(BuildContext context, WidgetRef ref) => PageScaffold(
+    title: '同步冲突比较',
     body: SafeArea(
+      top: false,
       child: AsyncView(
         value: ref.watch(novelProvider(localId)),
         builder: (Novel local) => AsyncView(
@@ -460,30 +447,35 @@ class SyncConflictComparison extends ConsumerWidget {
               value: ref.watch(storyProvider(remote.activeBranchId)),
               builder: (StorySnapshot b) {
                 Widget panel(String label, StorySnapshot story) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    ListTile(
+                    FItem(
                       title: Text(label),
                       subtitle: Text(
                         '${story.branch.name} · ${story.scenes.length} 个场景',
                       ),
-                      trailing: IconButton(
+                      suffix: IconAction(
+                        icon: FLucideIcons.externalLink,
                         tooltip: '打开此作品',
-                        onPressed: () => Navigator.push(
+                        onPress: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
                             builder: (_) =>
                                 NovelWorkspace(novelId: story.novel.id),
                           ),
                         ),
-                        icon: const Icon(Icons.open_in_new),
                       ),
                     ),
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(24),
                         child: SelectableText(
-                          story.text.replaceAll('\uFFFC', '[插图]'),
-                          style: const TextStyle(fontSize: 17, height: 1.8),
+                          story.text.replaceAll('￼', '[插图]'),
+                          style: context.theme.typography.body.md.copyWith(
+                            fontSize: 17,
+                            height: 1.8,
+                            color: context.theme.colors.foreground,
+                          ),
                         ),
                       ),
                     ),
@@ -493,25 +485,30 @@ class SyncConflictComparison extends ConsumerWidget {
                   return Row(
                     children: [
                       Expanded(child: panel('本机版本', a)),
-                      const VerticalDivider(width: 1),
+                      const FDivider(
+                        axis: Axis.vertical,
+                        style: FDividerStyleDelta.delta(
+                          padding: EdgeInsetsGeometryDelta.value(
+                            EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
                       Expanded(child: panel('远端副本', b)),
                     ],
                   );
                 }
-                return DefaultTabController(
-                  length: 2,
-                  child: Column(
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: FTabs(
+                    expands: true,
                     children: [
-                      const TabBar(
-                        tabs: [
-                          Tab(text: '本机版本'),
-                          Tab(text: '远端副本'),
-                        ],
+                      FTabEntry(
+                        label: const Text('本机版本'),
+                        child: panel('本机版本', a),
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          children: [panel('本机版本', a), panel('远端副本', b)],
-                        ),
+                      FTabEntry(
+                        label: const Text('远端副本'),
+                        child: panel('远端副本', b),
                       ),
                     ],
                   ),
