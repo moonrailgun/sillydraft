@@ -143,6 +143,11 @@ extension _AgentExecution on TaskRunner {
       jsonObject(input['request'], 'request'),
     );
     final messages = request.messages;
+    final skills = [
+      for (final s in input['skills'] as List? ?? const [])
+        AgentSkill.fromJson(s as Map<String, dynamic>),
+    ];
+    final tools = [..._editingTools, ...skillTools(skills)];
     for (var round = 0; round < 8; round++) {
       cancel.check();
       if (estimateTokens(jsonEncode(messages)) +
@@ -156,7 +161,7 @@ extension _AgentExecution on TaskRunner {
       await for (final event in provider.generate(
         ProviderRequest(
           messages: messages,
-          tools: _editingTools,
+          tools: tools,
           parameters: request.parameters,
         ),
         cancellation: cancel,
@@ -243,7 +248,13 @@ extension _AgentExecution on TaskRunner {
           conversation,
           role: 'tool',
           content: content,
-          metadata: {'tool_call_id': call.id, 'tool_name': call.name},
+          metadata: {
+            'tool_call_id': call.id,
+            'tool_name': call.name,
+            // Marks the conversation so later turns keep this skill loaded.
+            if (call.name == 'activate_skill' && result['loaded'] == true)
+              'skill': call.arguments['name'],
+          },
         );
         messages.add({
           'role': 'tool',
@@ -261,6 +272,9 @@ extension _AgentExecution on TaskRunner {
     GenerationCancellation cancel,
   ) async {
     final args = call.arguments;
+    if (call.name == 'activate_skill' || call.name == 'read_skill_file') {
+      return _skillTool(task, call);
+    }
     final scenes = (task.input['sceneSnapshot'] as List? ?? [])
         .cast<Map<String, dynamic>>();
     final lore = (task.input['loreSnapshot'] as List? ?? [])
@@ -501,5 +515,38 @@ extension _AgentExecution on TaskRunner {
       }
     }
     throw const FormatException('未授权的工具');
+  }
+
+  /// Skill tools answer from the skill snapshot frozen into the task input.
+  Map<String, dynamic> _skillTool(GenerationTask task, ToolCallReady call) {
+    final args = call.arguments;
+    final skills = [
+      for (final s in task.input['skills'] as List? ?? const [])
+        AgentSkill.fromJson(s as Map<String, dynamic>),
+    ];
+    final skill = skills
+        .where((s) => s.modelInvocable && s.name == args['name'])
+        .firstOrNull;
+    if (skill == null) throw const FormatException('没有这个技能');
+    if (call.name == 'activate_skill') {
+      if (args.length != 1) throw const FormatException('参数无效');
+      final active = (task.input['activeSkills'] as List? ?? const []);
+      if (active.contains(skill.name)) {
+        return {'loaded': false, 'note': '技能「${skill.name}」已在本会话中加载，无需重复加载。'};
+      }
+      return {'loaded': true, 'content': skillContent(skill)};
+    }
+    final path = args['path'];
+    if (args.length != 2 || path is! String) {
+      throw const FormatException('参数无效');
+    }
+    final text = skill.files[path.replaceFirst(RegExp(r'^\./'), '')];
+    if (text != null) return {'path': path, 'content': text};
+    return {
+      'error': skill.unsupportedFiles.contains(path)
+          ? '该文件是脚本或二进制，本应用不读取也不执行。'
+          : '技能中没有这个文件。',
+      'files': skill.files.keys.toList(),
+    };
   }
 }

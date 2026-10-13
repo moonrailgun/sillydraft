@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../agent/skills.dart';
 import '../agent/writing_service.dart';
 import '../assets/asset_library.dart';
 import '../model/asset.dart';

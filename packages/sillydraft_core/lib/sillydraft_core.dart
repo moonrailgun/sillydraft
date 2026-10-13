@@ -24,6 +24,8 @@ export 'src/providers/openai_compatible.dart';
 export 'src/providers/remote_provider.dart';
 export 'src/providers/local_cli.dart';
 export 'src/providers/connection_probe.dart';
+export 'src/agent/skills.dart';
+export 'src/agent/builtin_skills.dart';
 export 'src/model/task.dart';
 export 'src/tasks/task_runner.dart';
 export 'src/agent/writing_service.dart';

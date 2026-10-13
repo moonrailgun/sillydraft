@@ -5,6 +5,7 @@ import '../st/preset_importer.dart';
 import '../st/world_book_engine.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
+import 'skills.dart';
 
 final class EditorAgent {
   const EditorAgent({required this.repository, required this.runner});
@@ -23,6 +24,10 @@ final class EditorAgent {
     int? selectedOrderId,
     List<ScopedWorldBook> worldBooks = const [],
     List<Map<String, dynamic>> globalRegex = const [],
+
+    /// Enabled Agent Skills. Their names and descriptions are offered to the
+    /// model; `/skill-name` at the start of [message] loads one directly.
+    List<AgentSkill> skills = const [],
 
     /// The scene the author is looking at beside the chat, which "this
     /// scene" means. Ignored when it lies beyond the conversation's position.
@@ -43,24 +48,50 @@ final class EditorAgent {
       branchId,
       throughSceneId: throughSceneId,
     );
+    final explicit = explicitSkill(message, skills);
+    if (explicit != null) {
+      await repository.appendAgentMessage(
+        conversationId,
+        role: 'system',
+        content: skillContent(explicit.skill),
+        metadata: {'skill': explicit.skill.name, 'explicit': true},
+      );
+      message = explicit.rest.isEmpty
+          ? '请按「${explicit.skill.title}」技能开始。'
+          : explicit.rest;
+    }
     await repository.appendAgentMessage(
       conversationId,
       role: 'user',
       content: message.trim(),
     );
     final messages = await repository.getAgentMessages(conversationId);
+    // Skills activated earlier in this conversation (by the author or the
+    // model) stay in force: re-sent once each, never dropped between turns.
+    final active = <String>{
+      for (final m in messages)
+        if (m.raw['skill'] case final String name) name,
+    }.toList();
+    final activeSkills = [
+      for (final name in active) ...skills.where((s) => s.name == name).take(1),
+    ];
     final focus = scenes.where((s) => s.id == focusSceneId).firstOrNull;
     final focusNote = focus == null
         ? ''
         : '\n作者正在看场景「${focus.title.isEmpty ? '未命名场景' : focus.title}」'
               '（sceneId: ${focus.id}）。作者说“这一幕”“当前场景”时指它。';
-    final instructions = '$editorInstructions$focusNote';
+    final instructions = '$editorInstructions$focusNote${skillCatalog(skills)}';
+    final skillMessages = [
+      for (final s in activeSkills)
+        {'role': 'system', 'content': skillContent(s)},
+    ];
     // Tool exchanges stay in the durable conversation log. A new user turn
     // includes textual discussion; its tool loop starts afresh, so an interrupted
     // old call cannot create an invalid or implicitly replayed wire exchange.
     final request = ProviderRequest(
       messages: [
         {'role': 'system', 'content': instructions},
+        ...skillMessages,
         for (final m in messages)
           if (['user', 'assistant'].contains(m.role) && m.content.isNotEmpty)
             {'role': m.role, 'content': m.content},
@@ -74,6 +105,8 @@ final class EditorAgent {
         'request': request.raw,
         'conversationId': conversationId,
         'throughSceneId': throughSceneId,
+        if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
+        if (active.isNotEmpty) 'activeSkills': active,
         'editSceneId': scenes.lastOrNull?.id,
         'sourceRevisions': [
           for (final s in scenes) {'sceneId': s.id, 'revisionId': s.revisionId},
