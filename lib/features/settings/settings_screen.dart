@@ -360,6 +360,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       .where((s) => s.isNotEmpty)
       .toSet()
       .toList();
+  Set<String> get _modelOptions => {..._models, ..._selectedModels};
   @override
   void dispose() {
     _testing?.cancel();
@@ -876,13 +877,15 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
               ),
             if (_models.isNotEmpty) ...[
               const SizedBox(height: 4),
-              FMultiSelect<String>(
+              FMultiSelect<String>.search(
+                {for (final m in _modelOptions) m: m},
                 // A new list gets a fresh selection.
                 key: ObjectKey(_models),
                 label: Text(_cli ? '常用模型（可多选）' : '从服务端模型列表多选'),
-                items: {
-                  for (final m in {..._models, ..._selectedModels}) m: m,
-                },
+                // Model IDs carry a vendor prefix, so match anywhere.
+                filter: (query) => _modelOptions.where(
+                  (m) => m.toLowerCase().contains(query.toLowerCase()),
+                ),
                 control: FMultiValueControl<String>.lifted(
                   value: _selectedModels.toSet(),
                   onChange: (v) => setState(() => _model.text = v.join('\n')),
