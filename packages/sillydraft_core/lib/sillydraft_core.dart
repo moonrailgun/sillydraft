@@ -40,3 +40,6 @@ export 'src/providers/comfy_workflow.dart';
 export 'src/agent/illustration_service.dart';
 export 'src/st/resource_library.dart';
 export 'src/model/display_context.dart';
+export 'src/mvu/mvu_path.dart';
+export 'src/mvu/mvu_value.dart';
+export 'src/mvu/mvu_commands.dart';
