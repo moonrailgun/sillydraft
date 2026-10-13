@@ -55,9 +55,7 @@ const _textLimits = <_Sampler>[
   ('seed', '随机种子（-1 为随机）', -1, 0, true),
 ];
 
-/// ST's “AI 回复配置” for one novel: pick the active preset, tune sampling,
-/// manage prompts, and save/save as/rename/import/export — all in one place.
-/// Every save is a new resource version; the novel follows the new version.
+/// Preset adjustments autosave to this branch; library originals stay intact.
 class PresetScreen extends ConsumerStatefulWidget {
   const PresetScreen({super.key, required this.branchId});
   final String branchId;
@@ -69,8 +67,14 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
   Map<String, dynamic>? _setting;
   LibraryResource? _resource;
   Map<String, dynamic>? _draft;
-  bool _dirty = false, _busy = false;
-  int _revision = 0; // Rebuilds the prompt editor after save/revert/switch.
+  bool _busy = false;
+  int _revision = 0, _pendingWrites = 0;
+  Future<void> _pending = Future.value();
+  Object? _saveError;
+
+  bool get _customized =>
+      (_setting?['presetOverrides'] as Map?)?.containsKey(_resource?.id) ??
+      false;
 
   String get _settingKey => 'writing/${widget.branchId}';
 
@@ -92,8 +96,11 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
         _resource = resource;
         _draft = resource == null
             ? null
-            : jsonDecode(jsonEncode(resource.data)) as Map<String, dynamic>;
-        _dirty = false;
+            : jsonDecode(
+                jsonEncode(
+                  (setting['presetOverrides'] as Map?)?[id] ?? resource.data,
+                ),
+              ) as Map<String, dynamic>;
         _revision++;
       });
     } catch (e) {
@@ -112,32 +119,36 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     await ref.read(repositoryProvider).setSetting(_settingKey, setting);
   }
 
-  Future<bool> _discardOk() async {
-    if (!_dirty) return true;
-    final yes = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AppDialog(
-        title: const Text('放弃未保存的修改？'),
-        actions: [
-          FButton(
-            variant: FButtonVariant.outline,
-            onPress: () => Navigator.pop(context, false),
-            child: const Text('继续编辑'),
-          ),
-          FButton(
-            variant: FButtonVariant.destructive,
-            onPress: () => Navigator.pop(context, true),
-            child: const Text('放弃修改'),
-          ),
-        ],
-      ),
-    );
-    return yes == true;
+  void _persist() {
+    final repo = ref.read(repositoryProvider);
+    final setting = jsonDecode(jsonEncode(_setting!)) as Map<String, dynamic>;
+    setState(() => _pendingWrites++);
+    // Serialize snapshots so fast edits cannot finish in the wrong order.
+    _pending = _pending.then((_) async {
+      try {
+        await repo.setSetting(_settingKey, setting);
+        _saveError = null;
+      } catch (e) {
+        _saveError = e;
+      } finally {
+        _pendingWrites--;
+        if (mounted) setState(() {});
+      }
+    });
+  }
+
+  Future<void> _awaitSaved() async {
+    while (_pendingWrites > 0) {
+      await _pending;
+    }
+    if (_saveError != null) throw _saveError!;
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
     setState(() => _busy = true);
     try {
+      await _awaitSaved();
       await action();
     } catch (e) {
       if (mounted) showError(context, e);
@@ -147,29 +158,17 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
   }
 
   Future<void> _switch(String? id) async {
-    if (id == _resource?.id || !await _discardOk()) return;
+    if (id == _resource?.id) return;
     await _run(() async {
       await _bind(id);
       await _load(select: id);
     });
   }
 
-  /// Saves the working copy as a new version and moves the novel onto it.
-  Future<void> _save({String? rename}) => _run(() async {
-    final resource = _resource!;
-    final data = {...?_draft, 'name': ?rename};
-    final next = await ref
-        .read(servicesProvider)
-        .library
-        .edit(resource.id, data);
-    if (_setting?['presetId'] == resource.id) await _bind(next.id);
-    await _load(select: next.id);
-  });
-
   Future<void> _saveAs() async {
     final name = await askText(
       context,
-      title: '另存为新预设',
+      title: '存入预设库',
       initial: '${_resource?.name ?? '预设'} 副本',
       label: '预设名称',
     );
@@ -189,18 +188,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     });
   }
 
-  Future<void> _rename() async {
-    final name = await askText(
-      context,
-      title: '重命名预设',
-      initial: _resource!.name,
-      label: '预设名称',
-    );
-    if (name != null) await _save(rename: name);
-  }
-
   Future<void> _import() async {
-    if (!await _discardOk()) return;
     final file = await openFile(
       acceptedTypeGroups: const [
         XTypeGroup(
@@ -257,27 +245,42 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     }
   });
 
-  Future<void> _archive() async {
+  Future<void> _reset() async {
     final yes = await confirmAction(
       context,
-      title: '归档预设「${_resource!.name}」？',
-      message: '归档后不再出现在列表中，可在资源库恢复。已有生成任务记录不受影响。本作品改回默认写作配置。',
-      confirmLabel: '归档',
+      title: '恢复预设「${_resource!.name}」？',
+      message: '清除当前分支对此预设的调整，恢复为预设库中的内容。',
+      confirmLabel: '恢复',
     );
     if (!yes) return;
-    await _run(() async {
-      await ref
-          .read(repositoryProvider)
-          .archiveResource(_resource!.id, archived: true);
-      await _bind(null);
-      await _load(select: null);
+    _changed(() {
+      _draft = jsonDecode(jsonEncode(_resource!.data)) as Map<String, dynamic>;
+      _revision++;
     });
   }
 
-  void _edit(void Function(Map<String, dynamic> target) change) => setState(() {
-    change(_samplerTarget(_draft!));
-    _dirty = true;
-  });
+  void _changed(VoidCallback change) {
+    setState(() {
+      change();
+      final overrides = Map<String, dynamic>.from(
+        _setting!['presetOverrides'] as Map? ?? {},
+      );
+      if (canonicalJson(_draft) == canonicalJson(_resource!.data)) {
+        overrides.remove(_resource!.id);
+      } else {
+        overrides[_resource!.id] = _draft;
+      }
+      if (overrides.isEmpty) {
+        _setting!.remove('presetOverrides');
+      } else {
+        _setting!['presetOverrides'] = overrides;
+      }
+    });
+    _persist();
+  }
+
+  void _edit(void Function(Map<String, dynamic> target) change) =>
+      _changed(() => change(_samplerTarget(_draft!)));
 
   /// Samplers live at the top level, or in `preset` for a formatting bundle.
   Map<String, dynamic> _samplerTarget(Map<String, dynamic> draft) =>
@@ -289,12 +292,15 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
   Widget build(BuildContext context) {
     final resources = ref.watch(resourcesProvider).value ?? const [];
     final parents = {for (final r in resources) r.parentId};
-    // Like ST's dropdown: one row per preset (its latest version).
+    final customizedIds = (_setting?['presetOverrides'] as Map? ?? {}).keys;
+    // Keep customized versions selectable after their library original changes.
     final presets = [
       for (final r in resources)
         if (r.kind == ResourceKind.preset &&
             !r.archived &&
-            (!parents.contains(r.id) || r.id == _resource?.id))
+            (!parents.contains(r.id) ||
+                r.id == _resource?.id ||
+                customizedIds.contains(r.id)))
           r,
     ];
     final names = {for (final r in resources) r.id: r.name};
@@ -305,12 +311,13 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     final assistant = _setting?[assistantUsesPresetKey] != false;
     final assistantCapable = chat || kind == PresetKind.promptPack;
     return PopScope(
-      canPop: !_dirty,
+      canPop: _pendingWrites == 0 && _saveError == null && !_busy,
       onPopInvokedWithResult: (didPop, _) async {
-        if (!didPop && await _discardOk() && context.mounted) {
-          setState(() => _dirty = false);
-          Navigator.pop(context);
-        }
+        if (didPop || _busy) return;
+        await _run(() async {
+          await WidgetsBinding.instance.endOfFrame;
+          if (context.mounted) Navigator.pop(context);
+        });
       },
       child: PageScaffold(
         title: '预设',
@@ -325,10 +332,8 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
               header: true,
               tooltip: '预设操作',
               entries: [
-                menuEntry('另存为新预设', _saveAs, icon: FLucideIcons.copy),
-                menuEntry('重命名', _rename, icon: FLucideIcons.pencil),
+                menuEntry('存入预设库…', _saveAs, icon: FLucideIcons.copy),
                 menuEntry('导出 JSON', _export, icon: FLucideIcons.download),
-                menuEntry('归档', _archive, icon: FLucideIcons.archive),
               ],
             )
           else
@@ -342,149 +347,153 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
             ? const Center(child: FCircularProgress())
             : Align(
                 alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                    children: [
-                      if (_busy) const FProgress(),
-                      const SizedBox(height: 8),
-                      FSelect<String>.rich(
-                        key: ValueKey(
-                          'preset:${_resource?.id}:${presets.length}',
-                        ),
-                        label: const Text('当前预设'),
-                        description: const Text('本作品的正文生成使用它；切换立即生效'),
-                        enabled: !_busy,
-                        format: (id) => id == _none
-                            ? '不使用预设（SillyDraft 默认）'
-                            : names[id] ?? id,
-                        control: FSelectControl<String>.lifted(
-                          value: _resource?.id ?? _none,
-                          onChange: (id) {
-                            if (id != null) _switch(id == _none ? null : id);
-                          },
-                        ),
-                        children: [
-                          FSelectItem<String>(
-                            title: const Text('不使用预设（SillyDraft 默认）'),
-                            value: _none,
+                child: AbsorbPointer(
+                  absorbing: _busy,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                      children: [
+                        if (_busy) const FProgress(),
+                        const SizedBox(height: 8),
+                        FSelect<String>.rich(
+                          key: ValueKey(
+                            'preset:${_resource?.id}:${presets.length}',
                           ),
-                          for (final r in presets)
+                          label: const Text('当前预设'),
+                          description: const Text('修改自动保存到当前分支，不影响预设库和其他分支'),
+                          enabled: !_busy,
+                          format: (id) => id == _none
+                              ? '不使用预设（SillyDraft 默认）'
+                              : '${names[id] ?? id}${customizedIds.contains(id) ? ' · 已自定义' : ''}',
+                          control: FSelectControl<String>.lifted(
+                            value: _resource?.id ?? _none,
+                            onChange: (id) {
+                              if (id != null) _switch(id == _none ? null : id);
+                            },
+                          ),
+                          children: [
                             FSelectItem<String>(
-                              title: Text(
-                                r.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              value: r.id,
+                              title: const Text('不使用预设（SillyDraft 默认）'),
+                              value: _none,
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (_resource == null)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Text(
-                            '还没有选择预设。点右上角导入 SillyTavern 的预设文件（聊天补全预设、提示词包或高级格式组合包），或在资源库导入后在这里选择。',
-                          ),
-                        )
-                      else ...[
-                        FTile(
-                          key: const Key('assistant-uses-preset'),
-                          enabled: assistantCapable,
-                          title: _wrapped('助手对话也使用此预设'),
-                          subtitle: _wrapped(
-                            assistantCapable
-                                ? '助手的身份与语气按预设组装；编辑规则与工具权限不变'
-                                : '文本补全模板不能用于助手对话',
-                          ),
-                          suffix: FSwitch(
-                            value: assistant && assistantCapable,
-                            enabled: assistantCapable,
-                            onChange: _setAssistant,
-                          ),
-                          onPress: assistantCapable
-                              ? () => _setAssistant(!assistant)
-                              : null,
+                            for (final r in presets)
+                              FSelectItem<String>(
+                                title: Text(
+                                  '${r.name}${customizedIds.contains(r.id) ? ' · 已自定义' : ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                value: r.id,
+                              ),
+                          ],
                         ),
-                        if (_dirty) ...[
+                        const SizedBox(height: 12),
+                        if (_resource == null)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Text(
+                              '还没有选择预设。点右上角导入 SillyTavern 的预设文件（聊天补全预设、提示词包或高级格式组合包），或在资源库导入后在这里选择。',
+                            ),
+                          )
+                        else ...[
+                          FTile(
+                            key: const Key('assistant-uses-preset'),
+                            enabled: assistantCapable,
+                            title: _wrapped('助手对话也使用此预设'),
+                            subtitle: _wrapped(
+                              assistantCapable
+                                  ? '助手的身份与语气按预设组装；编辑规则与工具权限不变'
+                                  : '文本补全模板不能用于助手对话',
+                            ),
+                            suffix: FSwitch(
+                              value: assistant && assistantCapable,
+                              enabled: assistantCapable,
+                              onChange: _setAssistant,
+                            ),
+                            onPress: assistantCapable
+                                ? () => _setAssistant(!assistant)
+                                : null,
+                          ),
                           const SizedBox(height: 12),
-                          FCard(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                              child: Row(
-                                children: [
-                                  const Expanded(
-                                    child: Text('有未保存的修改。保存会生成新版本，本作品随之使用新版本。'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FButton(
-                                    variant: FButtonVariant.ghost,
-                                    mainAxisSize: MainAxisSize.min,
-                                    onPress: _busy
-                                        ? null
-                                        : () => _load(select: _resource!.id),
-                                    child: const Text('还原'),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  FButton(
-                                    key: const Key('preset-save'),
-                                    mainAxisSize: MainAxisSize.min,
-                                    onPress: _busy ? null : _save,
-                                    child: const Text('保存'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (chat || text) ...[
-                          _heading('采样参数'),
-                          for (final s in chat ? _chatSamplers : _textSamplers)
-                            _slider(s),
-                          for (final s in chat ? _chatLimits : _textLimits)
-                            _number(s),
-                        ],
-                        if (PresetPromptEditor.supports(_draft!)) ...[
-                          _heading('提示词管理'),
-                          PresetPromptEditor(
-                            key: ValueKey(
-                              'prompts:${_resource!.id}:$_revision',
-                            ),
-                            value: _draft!,
-                            scrollable: false,
-                            onChanged: (value) => setState(() {
-                              // The editor holds its own copy; take back only
-                              // the prompt fields so sampler edits survive.
-                              if (value['data'] is Map) {
-                                _draft!['data'] = value['data'];
-                              } else {
-                                _draft!['prompts'] = value['prompts'];
-                                _draft!['prompt_order'] = value['prompt_order'];
-                              }
-                              _dirty = true;
-                            }),
-                          ),
-                        ],
-                        if (preset!.diagnostics.isNotEmpty) ...[
-                          _heading('兼容提示'),
-                          FTileGroup(
+                          Row(
                             children: [
-                              for (final d in preset.diagnostics)
-                                FTile(
-                                  prefix: Icon(
-                                    d.severity == DiagnosticSeverity.error
-                                        ? FLucideIcons.circleAlert
-                                        : FLucideIcons.info,
-                                  ),
-                                  title: _wrapped(d.message),
-                                  subtitle: Text(d.code),
+                              Expanded(
+                                child: Text(
+                                  _saveError != null
+                                      ? '自动保存失败，修改尚未保存'
+                                      : _pendingWrites > 0
+                                      ? '正在自动保存…'
+                                      : _customized
+                                      ? '已自定义 · 已自动保存'
+                                      : '使用预设库原件 · 修改会自动保存',
+                                ),
+                              ),
+                              if (_saveError != null)
+                                FButton(
+                                  variant: FButtonVariant.outline,
+                                  mainAxisSize: MainAxisSize.min,
+                                  onPress: _pendingWrites > 0 ? null : _persist,
+                                  child: const Text('重试'),
+                                ),
+                              if (_customized)
+                                FButton(
+                                  key: const Key('preset-reset'),
+                                  variant: FButtonVariant.ghost,
+                                  mainAxisSize: MainAxisSize.min,
+                                  onPress: _busy ? null : _reset,
+                                  child: const Text('恢复预设'),
                                 ),
                             ],
                           ),
+                          if (chat || text) ...[
+                            _heading('采样参数'),
+                            for (final s
+                                in chat ? _chatSamplers : _textSamplers)
+                              _slider(s),
+                            for (final s in chat ? _chatLimits : _textLimits)
+                              _number(s),
+                          ],
+                          if (PresetPromptEditor.supports(_draft!)) ...[
+                            _heading('提示词管理'),
+                            PresetPromptEditor(
+                              key: ValueKey(
+                                'prompts:${_resource!.id}:$_revision',
+                              ),
+                              value: _draft!,
+                              scrollable: false,
+                              onChanged: (value) => _changed(() {
+                                // The editor holds its own copy; take back only
+                                // the prompt fields so sampler edits survive.
+                                if (value['data'] is Map) {
+                                  _draft!['data'] = value['data'];
+                                } else {
+                                  _draft!['prompts'] = value['prompts'];
+                                  _draft!['prompt_order'] =
+                                      value['prompt_order'];
+                                }
+                              }),
+                            ),
+                          ],
+                          if (preset!.diagnostics.isNotEmpty) ...[
+                            _heading('兼容提示'),
+                            FTileGroup(
+                              children: [
+                                for (final d in preset.diagnostics)
+                                  FTile(
+                                    prefix: Icon(
+                                      d.severity == DiagnosticSeverity.error
+                                          ? FLucideIcons.circleAlert
+                                          : FLucideIcons.info,
+                                    ),
+                                    title: _wrapped(d.message),
+                                    subtitle: Text(d.code),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -492,11 +501,10 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     );
   }
 
-  void _setAssistant(bool value) => _run(() async {
-    final setting = {...?_setting, assistantUsesPresetKey: value};
-    await ref.read(repositoryProvider).setSetting(_settingKey, setting);
-    if (mounted) setState(() => _setting = setting);
-  });
+  void _setAssistant(bool value) {
+    setState(() => _setting![assistantUsesPresetKey] = value);
+    _persist();
+  }
 
   Widget _heading(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),

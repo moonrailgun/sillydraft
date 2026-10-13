@@ -43,7 +43,10 @@ class WritingContext {
   ) async {
     final data =
         await services.repository.getSetting('writing/$branchId') ?? {};
-    ImportedPreset? preset = data['presetId'] is String
+    final override = (data['presetOverrides'] as Map?)?[data['presetId']];
+    ImportedPreset? preset = override is Map<String, dynamic>
+        ? PresetImporter().decode(override)
+        : data['presetId'] is String
         ? await services.library.preset(data['presetId'] as String)
         : null;
     final parts = <String, dynamic>{};
@@ -161,6 +164,7 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
     setState(() {
       for (final key in [
         'presetId',
+        'presetOverrides',
         'selectedOrderId',
         assistantUsesPresetKey,
       ]) {
@@ -269,7 +273,11 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
                   .firstOrNull;
               final preset = selected == null
                   ? null
-                  : PresetImporter().decode(selected.data);
+                  : PresetImporter().decode(
+                      (_value!['presetOverrides'] as Map?)?[selected.id]
+                              as Map<String, dynamic>? ??
+                          selected.data,
+                    );
               String orderLabel(int? id) {
                 if (id == null) return '自动选择全局顺序 100001';
                 final group = preset?.orderGroups
@@ -323,7 +331,14 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
                       key: const Key('open-preset-panel'),
                       prefix: const Icon(FLucideIcons.slidersHorizontal),
                       title: Text('预设：${selected?.name ?? '未选择'}'),
-                      subtitle: const Text('选择、调整采样参数和提示词条目'),
+                      subtitle: Text(
+                        (_value!['presetOverrides'] as Map?)?.containsKey(
+                                  selected?.id,
+                                ) ==
+                                true
+                            ? '已自定义 · 仅当前分支生效'
+                            : '调整参数和提示词，自动保存到当前分支',
+                      ),
                       suffix: const Icon(FLucideIcons.chevronRight),
                       onPress: _openPresets,
                     ),

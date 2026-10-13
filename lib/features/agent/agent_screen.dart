@@ -556,6 +556,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
         .firstOrNull
         ?.name;
     final off = setting?[assistantUsesPresetKey] == false;
+    final customized =
+        (setting?['presetOverrides'] as Map?)?.containsKey(id) == true;
     return _chip(
       key: const Key('agent-preset'),
       tooltip: '选择与编辑 ST 预设',
@@ -565,8 +567,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
           name == null
               ? '预设：未选择'
               : off
-              ? '预设：$name（未用于对话）'
-              : '预设：$name',
+              ? '预设：$name${customized ? ' · 已自定义' : ''}（未用于对话）'
+              : '预设：$name${customized ? ' · 已自定义' : ''}',
           overflow: TextOverflow.ellipsis,
         ),
       ),
