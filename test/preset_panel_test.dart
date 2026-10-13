@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
@@ -173,6 +173,26 @@ void main() {
     final repo = services.repository;
     final novel = await repo.createNovel(title: '雾港');
     final branch = novel.activeBranchId;
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    final longHtml = List.generate(
+      80,
+      (i) => '<div data-line="$i">\$1</div>',
+    ).join('\n');
     final data = {
       ..._preset,
       'extensions': {
@@ -192,7 +212,7 @@ void main() {
             'id': 'prompt',
             'promptOnly': true,
             'findRegex': '/雾/g',
-            'replaceString': '雾气',
+            'replaceString': longHtml,
             'placement': [1],
           },
         ],
@@ -230,6 +250,30 @@ void main() {
     expect(find.text('正则 2'), findsOneWidget);
     expect(enabled(status), isFalse);
     expect(enabled(prompt), isTrue, reason: 'missing disabled defaults to on');
+    await tester.tap(find.byKey(const Key('preset-regex-details-0')));
+    await tester.pumpAndSettle();
+    final rule = DisplayContext.regexRulesOf(data['extensions']).first;
+    expect(find.text('查找表达式'), findsOneWidget);
+    expect(
+      find.widgetWithText(SelectableText, rule['findRegex'] as String),
+      findsOneWidget,
+    );
+    expect(find.text(rule['replaceString'] as String), findsOneWidget);
+    expect(find.text('执行条件与其他字段'), findsOneWidget);
+    await tester.tap(find.text('复制完整规则'));
+    await tester.pumpAndSettle();
+    expect(jsonDecode(copied!), rule);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse, reason: 'viewing must not toggle a rule');
+    await tester.tap(find.byKey(const Key('preset-regex-details-1')));
+    await tester.pumpAndSettle();
+    expect(find.text(longHtml), findsOneWidget);
+    await tester.ensureVisible(find.text('执行条件与其他字段'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('已有生成章节仍使用生成时的规则'), findsOneWidget);
 
     await tester.ensureVisible(status);

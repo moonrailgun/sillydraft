@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart' show SelectableText;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,6 +12,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../resources/preset_prompt_editor.dart';
+import '../resources/resource_preview.dart';
 import '../resources/writing_profile.dart';
 
 const _json = JsonEncoder.withIndent('  ');
@@ -612,10 +614,66 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
       key: Key('preset-regex-$index'),
       title: _wrapped(name),
       subtitle: _wrapped('${enabled ? '已启用' : '已停用'} · ${stages.join('、')}'),
-      suffix: FSwitch(semanticsLabel: name, value: enabled, onChange: toggle),
+      suffix: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconAction(
+            key: Key('preset-regex-details-$index'),
+            icon: FLucideIcons.fileCode,
+            tooltip: '查看正则内容',
+            onPress: () => _showRegex(rule, name),
+          ),
+          FSwitch(semanticsLabel: name, value: enabled, onChange: toggle),
+        ],
+      ),
       onPress: () => toggle(!enabled),
     );
   }
+
+  Future<void> _showRegex(Map<String, dynamic> rule, String name) =>
+      showAppDialog<void>(
+        context: context,
+        builder: (context) => AppDialog(
+          maxWidth: 800,
+          title: Text(name),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (key, label) in [
+                ('findRegex', '查找表达式'),
+                ('replaceString', '替换内容'),
+              ]) ...[
+                Text(label),
+                const SizedBox(height: 4),
+                SelectableText(
+                  '${rule[key] ?? ''}',
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+                const SizedBox(height: 16),
+              ],
+              const Text('执行条件与其他字段'),
+              const SizedBox(height: 4),
+              JsonTreeView(
+                {...rule}
+                  ..remove('findRegex')
+                  ..remove('replaceString'),
+              ),
+            ],
+          ),
+          actions: [
+            FButton(
+              variant: FButtonVariant.outline,
+              onPress: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+            FButton(
+              onPress: () =>
+                  Clipboard.setData(ClipboardData(text: _json.convert(rule))),
+              child: const Text('复制完整规则'),
+            ),
+          ],
+        ),
+      );
 
   Widget _slider(_Sampler s) {
     final (key, label, min, max, integer) = s;
