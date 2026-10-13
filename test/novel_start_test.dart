@@ -54,6 +54,18 @@ const _card =
 "scenario":"雾港","first_mes":"{{user}}听见钟声","alternate_greetings":[]}}''';
 
 void main() {
+  testWidgets('an empty shelf offers every way to begin', (tester) async {
+    await _launch(tester);
+    expect(find.byKey(const Key('start-blank')), findsOneWidget);
+    expect(find.byKey(const Key('start-card')), findsOneWidget);
+    expect(find.byKey(const Key('start-import')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('create-novel')));
+    await tester.pumpAndSettle();
+    expect(find.text('开始一部作品'), findsOneWidget);
+    expect(find.text('续写已有小说'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a dropped book is previewed, imported, and ready to continue', (
     tester,
   ) async {

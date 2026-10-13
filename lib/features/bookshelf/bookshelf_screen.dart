@@ -1,15 +1,16 @@
-import 'package:flutter/material.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/sample.dart';
 import '../../app/widgets.dart';
+import '../agent/agent_providers.dart';
 import '../editor/workspace_screen.dart';
-import '../settings/settings_screen.dart';
-import 'novel_dialog.dart';
+import 'novel_start.dart';
 import 'search_screen.dart';
-import '../resources/resource_library_screen.dart';
 import '../illustrations/asset_image.dart';
 import '../transfer/restore_screen.dart';
 import '../transfer/sync_screen.dart';
@@ -22,23 +23,27 @@ class BookshelfScreen extends ConsumerStatefulWidget {
 
 class _BookshelfState extends ConsumerState<BookshelfScreen> {
   String _query = '';
-  bool _archived = false;
-  Future<void> _create() async {
-    final novel = await showNovelDialog(context);
-    if (novel != null && mounted) _open(novel);
+  bool _archived = false, _dragging = false;
+
+  Future<void> _drop(DropDoneDetails details) async {
+    setState(() => _dragging = false);
+    final file = details.files.firstOrNull;
+    if (file == null) return;
+    if (details.files.length > 1) {
+      toast(context, '一次开始一部作品，已使用 ${file.name}');
+    }
+    await startFromFile(context, name: file.name, read: file.readAsBytes);
   }
 
-  void _open(Novel novel) => Navigator.push(
+  void _open(
+    Novel novel, [
+    WorkspaceSection section = WorkspaceSection.manuscript,
+  ]) => Navigator.push(
     context,
-    MaterialPageRoute<void>(builder: (_) => NovelWorkspace(novelId: novel.id)),
-  );
-  void _settings() => Navigator.push(
-    context,
-    MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-  );
-  void _resources() => Navigator.push(
-    context,
-    MaterialPageRoute<void>(builder: (_) => const ResourceLibraryScreen()),
+    MaterialPageRoute<void>(
+      builder: (_) =>
+          NovelWorkspace(novelId: novel.id, initialSection: section),
+    ),
   );
   Future<void> _sample() async {
     try {
@@ -52,7 +57,7 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    final scheme = Theme.of(context).colorScheme;
+    final theme = context.theme;
     final content = AsyncView(
       value: ref.watch(novelsProvider),
       retry: () => ref.invalidate(novelsProvider),
@@ -71,54 +76,45 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                 wide ? 40 : 24,
-                24,
+                12,
                 wide ? 40 : 24,
-                16,
+                12,
               ),
               sliver: SliverToBoxAdapter(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '让故事，慢慢生长。',
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: .5,
+                    FTextField(
+                      hint: '搜索作品',
+                      prefixBuilder: (context, style, variants) =>
+                          FTextField.prefixIconBuilder(
+                            context,
+                            style,
+                            variants,
+                            const Icon(FLucideIcons.search),
                           ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '每一个念头，都可以成为下一章。',
-                      style: TextStyle(
-                        color: scheme.onSurfaceVariant,
-                        fontSize: 15,
+                      control: FTextFieldControl.managed(
+                        onChange: (v) {
+                          if (v.text != _query) {
+                            setState(() => _query = v.text);
+                          }
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    TextField(
-                      decoration: const InputDecoration(
-                        hintText: '搜索作品',
-                        prefixIcon: Icon(Icons.search_rounded),
-                      ),
-                      onChanged: (v) => setState(() => _query = v),
                     ),
                     const SizedBox(height: 20),
                     Wrap(
                       spacing: 10,
                       runSpacing: 8,
                       children: [
-                        ChoiceChip(
-                          label: Text(
-                            '创作中 ${all.where((n) => !n.archived).length}',
-                          ),
+                        ChoicePill(
+                          label: '创作中 ${all.where((n) => !n.archived).length}',
                           selected: !_archived,
-                          onSelected: (_) => setState(() => _archived = false),
+                          onPress: () => setState(() => _archived = false),
                         ),
-                        ChoiceChip(
-                          label: const Text('已归档'),
+                        ChoicePill(
+                          label: '已归档',
                           selected: _archived,
-                          onSelected: (_) => setState(() => _archived = true),
+                          onPress: () => setState(() => _archived = true),
                         ),
                       ],
                     ),
@@ -127,17 +123,19 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
               ),
             ),
             if (novels.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
+              // Scrolls like any page: the ways to begin are taller than a
+              // small phone once text is enlarged.
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(32),
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.auto_stories_outlined,
+                        FLucideIcons.libraryBig,
                         size: 72,
-                        color: scheme.primary.withValues(alpha: .6),
+                        color: theme.colors.mutedForeground.withValues(
+                          alpha: .6,
+                        ),
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -146,24 +144,40 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                             : _archived
                             ? '这里会保留归档的作品'
                             : '你的第一部作品，从这里开始',
-                        style: Theme.of(context).textTheme.titleLarge,
+                        style: theme.typography.body.xl.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colors.foreground,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 10),
                       Text(
                         '正文会保存在设备上，离线也能写作和阅读。',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
+                        style: theme.typography.body.sm.copyWith(
+                          color: theme.colors.mutedForeground,
+                        ),
                         textAlign: TextAlign.center,
                       ),
-                      if (!_archived && _query.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 24),
-                          child: OutlinedButton.icon(
-                            onPressed: _sample,
-                            icon: const Icon(Icons.explore_outlined),
-                            label: const Text('打开示例小说'),
+                      if (!_archived && _query.isEmpty) ...[
+                        const SizedBox(height: 24),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: const FCard(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: NovelStartOptions(),
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        FButton(
+                          variant: FButtonVariant.ghost,
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: _sample,
+                          prefix: const Icon(FLucideIcons.compass),
+                          child: const Text('或者先看看示例小说'),
+                        ),
+                      ],
                       const SizedBox(height: 80),
                     ],
                   ),
@@ -196,6 +210,8 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                         (context, i) => _NovelCard(
                           novel: novels[i],
                           onOpen: () => _open(novels[i]),
+                          onReview: () =>
+                              _open(novels[i], WorkspaceSection.agent),
                           onArchive: () async {
                             await ref
                                 .read(repositoryProvider)
@@ -215,115 +231,153 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
         );
       },
     );
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.auto_stories_rounded, color: scheme.primary),
-            const SizedBox(width: 12),
-            const Flexible(
-              child: Text(
-                'SillyDraft',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.w700),
+    return AppScaffold(
+      header: FHeader(
+        // Like an app bar title: legible at large text, never huge.
+        title: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.34,
+          child: Row(
+            children: [
+              Icon(
+                FLucideIcons.libraryBig,
+                size: 24,
+                color: theme.colors.foreground,
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              const Flexible(
+                child: Text('SillyDraft', overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          IconButton(
+        suffixes: [
+          HeaderIconAction(
+            icon: FLucideIcons.search,
             tooltip: '搜索正文',
-            onPressed: () => Navigator.push(
+            onPress: () => Navigator.push(
               context,
               MaterialPageRoute<void>(
                 builder: (_) => const GlobalSearchScreen(),
               ),
             ),
-            icon: const Icon(Icons.search),
           ),
-          IconButton(
-            onPressed: _resources,
-            tooltip: '创作资源库',
-            icon: const Icon(Icons.folder_open_outlined),
-          ),
-          IconButton(
-            onPressed: _settings,
-            tooltip: '设置',
-            icon: const Icon(Icons.tune_rounded),
-          ),
-          PopupMenuButton<String>(
+          MenuAction(
+            header: true,
             tooltip: '导入与同步',
-            onSelected: (value) => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => value == 'restore'
-                    ? const RestoreBackupScreen()
-                    : const ProjectSyncScreen(),
+            entries: [
+              menuEntry(
+                '恢复项目备份',
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RestoreBackupScreen(),
+                  ),
+                ),
+                icon: FLucideIcons.archiveRestore,
               ),
-            ),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'restore', child: Text('恢复项目备份')),
-              PopupMenuItem(value: 'sync', child: Text('连接远端作品')),
+              menuEntry(
+                '连接远端作品',
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProjectSyncScreen(),
+                  ),
+                ),
+                icon: FLucideIcons.cloudSync,
+              ),
             ],
           ),
-          const SizedBox(width: 12),
         ],
       ),
-      body: SafeArea(
+      floatingActionButton: FloatingAction(
+        key: const Key('create-novel'),
+        icon: FLucideIcons.plus,
+        label: '新建作品',
+        onPress: () => showNovelStart(context),
+      ),
+      child: SafeArea(
         top: false,
-        child: wide
-            ? Row(
-                children: [
-                  NavigationRail(
-                    selectedIndex: 0,
-                    labelType: NavigationRailLabelType.all,
-                    onDestinationSelected: (i) {
-                      if (i == 1) _resources();
-                      if (i == 2) _settings();
-                    },
-                    destinations: const [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.library_books_outlined),
-                        selectedIcon: Icon(Icons.library_books_rounded),
-                        label: Text('作品'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.folder_open_outlined),
-                        label: Text('资源'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.settings_outlined),
-                        label: Text('设置'),
-                      ),
-                    ],
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: content),
-                ],
+        child: canDropFiles
+            ? DropTarget(
+                onDragEntered: (_) => setState(() => _dragging = true),
+                onDragExited: (_) => setState(() => _dragging = false),
+                onDragDone: _drop,
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: content),
+                    if (_dragging) const Positioned.fill(child: _DropHint()),
+                  ],
+                ),
               )
             : content,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const Key('create-novel'),
-        onPressed: _create,
-        icon: const Icon(Icons.add),
-        label: const Text('新建作品'),
       ),
     );
   }
 }
 
-class _NovelCard extends StatelessWidget {
+/// Shown while a file is dragged over the shelf.
+class _DropHint extends StatelessWidget {
+  const _DropHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    return IgnorePointer(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colors.secondary.withValues(alpha: .92),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: theme.colors.primary, width: 2),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                FLucideIcons.fileDown,
+                size: 56,
+                color: theme.colors.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '松开以开始一部作品',
+                style: theme.typography.body.xl.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colors.secondaryForeground,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '小说 TXT、Markdown、EPUB：导入后续写\n角色卡 PNG、JSON、CHARX：选开场开始故事',
+                textAlign: TextAlign.center,
+                style: theme.typography.body.sm.copyWith(
+                  color: theme.colors.secondaryForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NovelCard extends ConsumerWidget {
   const _NovelCard({
     required this.novel,
     required this.onOpen,
+    required this.onReview,
     required this.onArchive,
   });
   final Novel novel;
-  final VoidCallback onOpen, onArchive;
+
+  /// [onReview] opens the novel on its assistant, where candidates wait.
+  final VoidCallback onOpen, onReview, onArchive;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending =
+        ref.watch(pendingReviewCountProvider(novel.activeBranchId)).value ?? 0;
     final colors = [
       const Color(0xffe2dff0),
       const Color(0xffd9e6df),
@@ -332,115 +386,143 @@ class _NovelCard extends StatelessWidget {
     ];
     final color =
         colors[novel.id.codeUnits.fold(0, (a, b) => a + b) % colors.length];
-    return Card(
+    return FCard(
       clipBehavior: Clip.antiAlias,
-      child: Semantics(
-        button: true,
-        label: '打开作品 ${novel.title}',
-        onTap: onOpen,
-        child: InkWell(
-          excludeFromSemantics: true,
-          onTap: onOpen,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: novel.coverAssetId != null
-                    ? AssetImageView(
-                        assetId: novel.coverAssetId!,
-                        thumbnail: true,
-                        fit: BoxFit.cover,
-                        label: '${novel.title}的封面',
-                      )
-                    : Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [color, color.withValues(alpha: .5)],
-                          ),
-                        ),
-                        padding: const EdgeInsets.all(24),
-                        child: Stack(
-                          children: [
-                            Positioned(
-                              right: -12,
-                              bottom: -10,
-                              child: Icon(
-                                Icons.auto_stories_rounded,
-                                size: 120,
-                                color: Colors.white.withValues(alpha: .4),
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  novel.genre,
-                                  style: const TextStyle(
-                                    color: Color(0xff514b65),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  novel.title,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 23,
-                                    height: 1.35,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xff343044),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+      child: FTappable(
+        semanticsLabel: '打开作品 ${novel.title}',
+        onPress: onOpen,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _cover(color),
+                  if (pending > 0)
+                    Positioned(
+                      left: 12,
+                      bottom: 12,
+                      child: FTooltip(
+                        tipBuilder: (_, _) => const Text('在助手中审阅候选'),
+                        child: FButton(
+                          key: ValueKey('pending-${novel.id}'),
+                          variant: FButtonVariant.secondary,
+                          size: FButtonSizeVariant.sm,
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: onReview,
+                          prefix: const Icon(FLucideIcons.sparkles),
+                          child: Text('$pending 个候选待审'),
                         ),
                       ),
+                    ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 8, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            novel.synopsis.isEmpty
-                                ? '一个正在生长的故事'
-                                : novel.synopsis,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '${dateLabel(novel.updatedAt)} 更新',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 10),
+              child: _footer(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cover(Color color) => novel.coverAssetId != null
+      ? AssetImageView(
+          assetId: novel.coverAssetId!,
+          thumbnail: true,
+          fit: BoxFit.cover,
+          label: '${novel.title}的封面',
+        )
+      : Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [color, color.withValues(alpha: .5)],
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Stack(
+            children: [
+              const Positioned(
+                right: -12,
+                bottom: -10,
+                child: Icon(
+                  FLucideIcons.bookOpen,
+                  size: 120,
+                  color: Color(0x66ffffff),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    novel.genre,
+                    style: const TextStyle(
+                      color: Color(0xff514b65),
+                      fontSize: 12,
                     ),
-                    PopupMenuButton<String>(
-                      tooltip: '作品操作',
-                      onSelected: (_) => onArchive(),
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'archive',
-                          child: Text(novel.archived ? '恢复到书架' : '归档作品'),
-                        ),
-                      ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    novel.title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      height: 1.35,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xff343044),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+
+  Widget _footer(BuildContext context) {
+    final theme = context.theme;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                novel.synopsis.isEmpty ? '一个正在生长的故事' : novel.synopsis,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.typography.body.sm.copyWith(
+                  color: theme.colors.foreground,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${dateLabel(novel.updatedAt)} 更新',
+                style: theme.typography.body.xs.copyWith(
+                  color: theme.colors.mutedForeground,
                 ),
               ),
             ],
           ),
         ),
-      ),
+        MenuAction(
+          tooltip: '作品操作',
+          entries: [
+            menuEntry(
+              novel.archived ? '恢复到书架' : '归档作品',
+              onArchive,
+              icon: novel.archived
+                  ? FLucideIcons.archiveRestore
+                  : FLucideIcons.archive,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

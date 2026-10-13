@@ -306,6 +306,52 @@ void main() {
     },
   );
 
+  testWidgets('pending candidates on the shelf open the novel assistant', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '候选测试');
+    final chapter = await repo.createChapter(
+      branchId: novel.activeBranchId,
+      title: '一',
+    );
+    final scene = await repo.createScene(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      content: ManuscriptContent.plainText('原来的正文'),
+    );
+    await repo.createProposal(
+      branchId: novel.activeBranchId,
+      sceneId: scene.id,
+      baseRevisionId: scene.revisionId,
+      content: ManuscriptContent.plainText('候选的新正文'),
+    );
+    await tester.pumpWidget(SillyDraftApp(services: services));
+    await tester.pumpAndSettle();
+    expect(find.text('1 个候选待审'), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('pending-${novel.id}')));
+    await tester.pumpAndSettle();
+    expect(_selected(tester), 2);
+    expect(find.text('候选 · 1'), findsOneWidget);
+    await tester.tap(find.text('候选 · 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('待审阅正文'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final wide in [false, true]) {
     testWidgets(
       '${wide ? 'desktop docks' : 'phone floats'} the assistant from the editor at this scene',
