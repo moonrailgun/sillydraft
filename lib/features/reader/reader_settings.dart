@@ -447,12 +447,6 @@ class _ReaderSettingsState extends State<_ReaderSettings> {
           subtitle: '已配置整理模型时，读到全书末尾自动提出三种走向（会调用一次模型）',
         ),
         _switch(
-          '点按左右翻页',
-          s.tapToTurn,
-          (v) => _set(_style.copyWith(tapToTurn: v)),
-          subtitle: '点屏幕左侧上翻、右侧下翻，点中间显示菜单',
-        ),
-        _switch(
           '阅读时屏幕常亮',
           s.keepAwake,
           (v) => _set(_style.copyWith(keepAwake: v)),

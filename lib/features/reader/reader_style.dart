@@ -65,7 +65,6 @@ final class ReaderStyle {
     this.autoNight = true,
     this.font = ReaderFont.serif,
     this.dim = 0,
-    this.tapToTurn = true,
     this.keepAwake = true,
     this.autoScrollSpeed = 40,
     this.highlightQuotes = true,
@@ -85,7 +84,7 @@ final class ReaderStyle {
 
   /// Space after each paragraph, in lines of body text.
   final double paragraphSpacing;
-  final bool indent, justify, autoNight, tapToTurn, keepAwake;
+  final bool indent, justify, autoNight, keepAwake;
   final ReaderTheme theme;
   final ReaderFont font;
 
@@ -121,7 +120,6 @@ final class ReaderStyle {
     bool? autoNight,
     ReaderFont? font,
     double? dim,
-    bool? tapToTurn,
     bool? keepAwake,
     double? autoScrollSpeed,
     bool? highlightQuotes,
@@ -139,7 +137,6 @@ final class ReaderStyle {
     autoNight: autoNight ?? this.autoNight,
     font: font ?? this.font,
     dim: dim ?? this.dim,
-    tapToTurn: tapToTurn ?? this.tapToTurn,
     keepAwake: keepAwake ?? this.keepAwake,
     autoScrollSpeed: autoScrollSpeed ?? this.autoScrollSpeed,
     highlightQuotes: highlightQuotes ?? this.highlightQuotes,
@@ -159,7 +156,6 @@ final class ReaderStyle {
     'autoNight': autoNight,
     'font': font.name,
     'dim': dim,
-    'tapToTurn': tapToTurn,
     'keepAwake': keepAwake,
     'autoScrollSpeed': autoScrollSpeed,
     'highlightQuotes': highlightQuotes,
@@ -193,7 +189,6 @@ final class ReaderStyle {
       autoNight: json['autoNight'] as bool? ?? d.autoNight,
       font: named(ReaderFont.values, 'font', d.font),
       dim: number('dim', d.dim, dimRange),
-      tapToTurn: json['tapToTurn'] as bool? ?? d.tapToTurn,
       keepAwake: json['keepAwake'] as bool? ?? d.keepAwake,
       autoScrollSpeed: number('autoScrollSpeed', d.autoScrollSpeed, speedRange),
       highlightQuotes: json['highlightQuotes'] as bool? ?? d.highlightQuotes,

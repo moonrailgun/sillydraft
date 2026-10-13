@@ -419,7 +419,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   /// A quick tap that is not part of selecting text, scrolling or pressing a
-  /// button: the sides turn pages, the middle shows or hides the bars.
+  /// button shows or hides the bars.
   void _pointerUp(PointerUpEvent event, double width) {
     final consumed = _consumed;
     _consumed = false;
@@ -435,17 +435,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       _showChrome(true);
       return;
     }
-    final x = event.localPosition.dx / width;
-    if (_style.tapToTurn && x < .3) {
-      _page(-1);
-    } else if (_style.tapToTurn && x > .7) {
-      _page(1);
-    } else {
-      _showChrome(!_chrome);
-    }
+    _showChrome(!_chrome);
   }
 
-  /// Wraps controls inside the page so tapping them does not also turn it.
+  /// Wraps controls inside the page so tapping them does not also toggle the bars.
   Widget _noTurn(Widget child) =>
       Listener(onPointerDown: (_) => _consumed = true, child: child);
 
