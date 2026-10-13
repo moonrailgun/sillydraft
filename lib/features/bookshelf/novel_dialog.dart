@@ -65,15 +65,7 @@ class _NovelDialogState extends ConsumerState<NovelDialog> {
           style: _style.text.trim(),
           pointOfView: _pointOfView,
         );
-        final chapter = await repo.createChapter(
-          branchId: result.activeBranchId,
-          title: '第一章',
-        );
-        await repo.createScene(
-          branchId: result.activeBranchId,
-          chapterId: chapter.id,
-          title: '第一幕',
-        );
+        await repo.createChapter(branchId: result.activeBranchId, title: '第一章');
       } else {
         result = old.copyWith(
           title: _title.text.trim(),

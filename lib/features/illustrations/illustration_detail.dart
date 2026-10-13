@@ -75,15 +75,15 @@ class IllustrationDetail extends ConsumerWidget {
       await ref.read(servicesProvider).flushDrafts();
       final story = await ref.read(repositoryProvider).getStory(branchId);
       if (!context.mounted) return;
-      if (story.scenes.isEmpty) throw const FormatException('请先创建正文场景');
-      final scene = await showAppSheet<Scene>(
+      if (story.chapters.isEmpty) throw const FormatException('请先创建正文章节');
+      final chapter = await showAppSheet<Chapter>(
         context: context,
-        title: '插入到场景末尾',
+        title: '插入到章节末尾',
         builder: (context) => ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           children: [
-            for (final s in story.scenes)
+            for (final s in story.chapters)
               FItem(
                 title: Text(s.title),
                 onPress: () => Navigator.pop(context, s),
@@ -91,15 +91,15 @@ class IllustrationDetail extends ConsumerWidget {
           ],
         ),
       );
-      if (scene == null) return;
+      if (chapter == null) return;
       await ref
           .read(repositoryProvider)
           .insertIllustration(
             branchId: branchId,
-            sceneId: scene.id,
-            expectedRevisionId: scene.revisionId,
+            chapterId: chapter.id,
+            expectedRevisionId: chapter.revisionId,
             assetId: asset.id,
-            offset: scene.content.text.length - 1,
+            offset: chapter.content.text.length - 1,
           );
       if (context.mounted) toast(context, '插画已加入正文');
     } catch (e) {

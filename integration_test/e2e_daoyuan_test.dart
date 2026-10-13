@@ -163,7 +163,7 @@ void main() {
       'document.getElementById("confirm-creation-button").click()',
     );
     await waitFor(
-      () => find.text('改写整幕').evaluate().isNotEmpty,
+      () => find.text('改写整章').evaluate().isNotEmpty,
       'writing request screen',
       timeout: const Duration(seconds: 60),
     );

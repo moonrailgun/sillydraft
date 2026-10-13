@@ -11,9 +11,9 @@ import '../illustrations/illustration_gallery.dart';
 import '../illustrations/asset_image.dart';
 
 class StoryMapScreen extends ConsumerStatefulWidget {
-  const StoryMapScreen({super.key, required this.entry, this.atSceneId});
+  const StoryMapScreen({super.key, required this.entry, this.atChapterId});
   final LoreEntry entry;
-  final String? atSceneId;
+  final String? atChapterId;
   @override
   ConsumerState<StoryMapScreen> createState() => _MapState();
 }
@@ -75,7 +75,7 @@ class _MapState extends ConsumerState<StoryMapScreen> {
             name: _entry.name,
             content: _entry.content,
             certainty: _entry.certainty,
-            atSceneId: widget.atSceneId,
+            atChapterId: widget.atChapterId,
             data: {
               ..._entry.data,
               'points': _points,
@@ -144,7 +144,7 @@ class _MapState extends ConsumerState<StoryMapScreen> {
         .read(repositoryProvider)
         .listLore(
           _entry.branchId,
-          throughSceneId: widget.atSceneId,
+          throughChapterId: widget.atChapterId,
           kind: LoreKind.location,
         ));
     if (!mounted) return;

@@ -24,8 +24,8 @@ String _input(WidgetTester tester) => tester
     .controller
     .text;
 
-/// Picks a scene in the outline pane.
-Future<void> _scene(WidgetTester tester, String title) async {
+/// Picks a chapter in the outline pane.
+Future<void> _chapter(WidgetTester tester, String title) async {
   await tester.tap(
     find.descendant(
       of: find.byKey(const Key('workspace-outline')),
@@ -42,7 +42,7 @@ Finder _page(String text) => find.descendant(
 
 void main() {
   testWidgets(
-    'wide screens keep tools on the left, the page in the middle and a folding outline on the right',
+    'wide screens keep the outline on the left, the page in the middle and folding tools on the right',
     (tester) async {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
@@ -59,14 +59,9 @@ void main() {
       });
       final repo = services.repository;
       final novel = await repo.createNovel(title: '雾港来信');
-      final chapter = await repo.createChapter(
-        branchId: novel.activeBranchId,
-        title: '第一章',
-      );
       for (final (title, text) in [('码头', '雾从港口升起。'), ('灯塔', '灯塔熄灭了。')]) {
-        await repo.createScene(
+        await repo.createChapter(
           branchId: novel.activeBranchId,
-          chapterId: chapter.id,
           title: title,
           content: ManuscriptContent.plainText(text),
         );
@@ -76,7 +71,7 @@ void main() {
       await tester.tap(find.text('雾港来信'));
       await tester.pumpAndSettle();
 
-      // Left to right: the tool rail, the assistant, the page, the outline.
+      // Left to right: the tool rail, the outline, the page, the assistant.
       final tools = tester.getRect(find.byKey(const Key('workspace-tools')));
       final page = tester.getRect(find.byKey(const Key('reader-page')));
       final outline = tester.getRect(
@@ -84,10 +79,10 @@ void main() {
       );
       expect(
         tester.getRect(find.byKey(_rail)).right,
-        lessThanOrEqualTo(tools.left),
+        lessThanOrEqualTo(outline.left),
       );
-      expect(tools.right, lessThan(page.left));
-      expect(page.right, lessThan(outline.left));
+      expect(outline.right, lessThan(page.left));
+      expect(page.right, lessThan(tools.left));
       expect(find.byKey(const Key('agent-input')), findsOneWidget);
       expect(find.text('正文目录'), findsOneWidget);
       // The rail offers tools only; the manuscript is always on the page.
@@ -96,8 +91,8 @@ void main() {
         findsNothing,
       );
 
-      // Picking a scene in the outline shows it on the page.
-      await _scene(tester, '码头');
+      // Picking a chapter in the outline shows it on the page.
+      await _chapter(tester, '码头');
       expect(_page('雾从港口升起。'), findsOneWidget);
 
       // Switching tools leaves the page as it is.
@@ -118,8 +113,8 @@ void main() {
       await _tool(tester, '助手');
       expect(find.byKey(const Key('agent-input')), findsOneWidget);
 
-      // Quick actions act on the scene in view. Revising one before the end
-      // moves the assistant there, as it may only write the last scene it
+      // Quick actions act on the chapter in view. Revising one before the end
+      // moves the assistant there, as it may only write the last chapter it
       // can see.
       await tester.tap(find.byKey(const Key('agent-quick-修改')));
       await tester.pumpAndSettle();
@@ -128,7 +123,7 @@ void main() {
       await tester.tap(find.byKey(const Key('agent-quick-查找')));
       await tester.pumpAndSettle();
       expect(_input(tester), '在正文中查找：');
-      await _scene(tester, '灯塔');
+      await _chapter(tester, '灯塔');
       await tester.tap(find.byKey(const Key('agent-quick-续写')));
       await tester.pumpAndSettle();
       expect(_input(tester), startsWith('续写「灯塔」'));

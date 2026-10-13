@@ -76,11 +76,6 @@ void main() {
           novel = await services.repository.createNovel(title: '取消生图');
       final chapter = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('不会被生图任务改动的正文'),
       );
       await tester.pumpWidget(
@@ -88,8 +83,8 @@ void main() {
           overrides: [servicesProvider.overrideWithValue(services)],
           child: testHost(
             IllustrationRequestScreen(
-              branchId: scene.branchId,
-              sceneId: scene.id,
+              branchId: chapter.branchId,
+              chapterId: chapter.id,
             ),
           ),
         ),
@@ -111,21 +106,21 @@ void main() {
       }
       expect((await started.future).prompt, '雾中的港口，水彩');
       expect(
-        (await repo.listTasks(branchId: scene.branchId)).single.kind,
+        (await repo.listTasks(branchId: chapter.branchId)).single.kind,
         TaskKind.illustration,
       );
       await tester.tap(find.text('取消生成'));
       await tester.pumpAndSettle();
       expect(
-        (await repo.listTasks(branchId: scene.branchId)).single.status,
+        (await repo.listTasks(branchId: chapter.branchId)).single.status,
         TaskStatus.cancelled,
       );
       expect(
-        (await repo.getScene(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+        (await repo.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
         )).revisionId,
-        scene.revisionId,
+        chapter.revisionId,
       );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -142,7 +137,7 @@ void main() {
       late Directory dir;
       late AppServices services;
       late Novel novel;
-      late Scene scene;
+      late Chapter chapter;
       await tester.runAsync(() async {
         dir = await Directory.systemTemp.createTemp('sillydraft-image-ui-');
         services = AppServices(
@@ -151,13 +146,8 @@ void main() {
           dataDirectory: dir,
         );
         novel = await services.repository.createNovel(title: '带插画的小说');
-        final chapter = await services.repository.createChapter(
+        chapter = await services.repository.createChapter(
           branchId: novel.activeBranchId,
-          title: '第一章',
-        );
-        scene = await services.repository.createScene(
-          branchId: novel.activeBranchId,
-          chapterId: chapter.id,
           content: ManuscriptContent.plainText('港口起雾了。'),
         );
         await services.assets!.importImage(
@@ -191,8 +181,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('带插画的小说'));
       await tester.pumpAndSettle();
-      await tester.tap(findAction('编辑正文'));
-      await tester.pumpAndSettle();
+      await editChapter(tester, chapter.title);
       await tester.tap(findAction('插入图片'));
       await tester.pump();
       await settleImages();
@@ -202,9 +191,9 @@ void main() {
       expect(find.byType(AssetImageView), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
       expect(
-        (await services.repository.getScene(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+        (await services.repository.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
         )).content.delta.any((op) => op['insert'] is Map),
         true,
       );
@@ -245,18 +234,13 @@ void main() {
           byteLength: 200,
         ),
       );
-      final c = await repo.createChapter(
+      final s = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final s = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: c.id,
         content: ManuscriptContent.plainText('港口'),
       );
       final inserted = await repo.insertIllustration(
         branchId: s.branchId,
-        sceneId: s.id,
+        chapterId: s.id,
         expectedRevisionId: s.revisionId,
         assetId: asset.id,
         offset: 2,
@@ -274,7 +258,10 @@ void main() {
       await tester.pumpAndSettle();
       expect((await repo.getAsset(asset.id)).archived, true);
       expect(
-        (await repo.getScene(branchId: s.branchId, sceneId: s.id)).revisionId,
+        (await repo.getChapter(
+          branchId: s.branchId,
+          chapterId: s.id,
+        )).revisionId,
         inserted.revisionId,
       );
       expect(tester.takeException(), isNull);

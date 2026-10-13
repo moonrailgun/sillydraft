@@ -55,19 +55,13 @@ void main() {
       final novel = await repo.createNovel(title: '选区写作');
       final chapter = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('甲原文乙'),
       );
       await tester.pumpWidget(SillyDraftApp(services: services));
       await tester.pumpAndSettle();
       await tester.tap(find.text('选区写作'));
       await tester.pumpAndSettle();
-      await tester.tap(findAction('编辑正文'));
-      await tester.pumpAndSettle();
+      await editChapter(tester, chapter.title);
       tester
           .widget<QuillEditor>(find.byType(QuillEditor))
           .controller
@@ -87,9 +81,9 @@ void main() {
       await tester.tap(find.text('开始生成候选'));
       await tester.pumpAndSettle();
       expect(
-        (await repo.getScene(
+        (await repo.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text.trim(),
         '甲原文乙',
       );
@@ -98,9 +92,9 @@ void main() {
       await tester.tap(find.text('采纳到正文'));
       await tester.pumpAndSettle();
       expect(
-        (await repo.getScene(
+        (await repo.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text.trim(),
         '甲新句乙',
       );

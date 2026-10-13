@@ -61,9 +61,9 @@ class _Model implements ModelProvider {
   void close() {}
 }
 
-typedef _Open = ({AppServices services, String branchId, String sceneId});
+typedef _Open = ({AppServices services, String branchId, String chapterId});
 
-/// A one-scene book in the reader, with a model that answers when [model].
+/// A one-chapter book in the reader, with a model that answers when [model].
 Future<_Open> _open(
   WidgetTester tester, {
   List<ProviderRequest>? requests,
@@ -99,11 +99,6 @@ Future<_Open> _open(
   final novel = await repo.createNovel(title: '灯塔');
   final chapter = await repo.createChapter(
     branchId: novel.activeBranchId,
-    title: '一',
-  );
-  final scene = await repo.createScene(
-    branchId: novel.activeBranchId,
-    chapterId: chapter.id,
     title: '风暴前夜',
     content: ManuscriptContent.plainText(text),
   );
@@ -121,7 +116,7 @@ Future<_Open> _open(
   return (
     services: services,
     branchId: novel.activeBranchId,
-    sceneId: scene.id,
+    chapterId: chapter.id,
   );
 }
 
@@ -136,8 +131,14 @@ void main() {
   test(
     'the next chapter is numbered the way the book numbers its chapters',
     () {
-      Chapter chapter(String title) =>
-          Chapter(id: title, branchId: 'b', title: title, position: 0);
+      Chapter chapter(String title) => Chapter(
+        id: title,
+        branchId: 'b',
+        title: title,
+        position: 0,
+        revisionId: 'r',
+        content: ManuscriptContent.plainText(''),
+      );
       expect(nextChapterTitle([], '开端'), '第一章 开端');
       expect(nextChapterTitle([chapter('一')], '出海'), '第二章 出海');
       expect(nextChapterTitle([chapter('第十九章 雨')], '晴'), '第二十章 晴');
@@ -171,7 +172,7 @@ void main() {
     final story = await book.services.repository.getStory(book.branchId);
     // Written into the same chapter: no second one for the retry.
     expect(story.chapters, hasLength(2));
-    expect(story.scenes.last.content.text, contains('她守在灯下。'));
+    expect(story.chapters.last.content.text, contains('她守在灯下。'));
     expect(find.byKey(const Key('chapter-draft')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -187,7 +188,7 @@ void main() {
         if (!gate.isCompleted) gate.complete();
       });
       final repo = book.services.repository;
-      // Nothing to press: a short scene shows its end at once.
+      // Nothing to press: a short chapter shows its end at once.
       expect(find.text('1. 出海'), findsOneWidget);
       expect(find.text('2. 留守'), findsOneWidget);
       expect(find.text('3. 报信'), findsOneWidget);
@@ -219,10 +220,10 @@ void main() {
       gate.complete();
       await tester.pumpAndSettle();
       final story = await repo.getStory(book.branchId);
-      expect(story.chapters.map((c) => c.title), ['一', '第二章 留守']);
-      expect(story.scenes.first.content.text.trim(), '风暴要来了。');
-      expect(story.scenes.last.title, '第二章 留守');
-      expect(story.scenes.last.content.text, contains('她推开门。她守在灯下。'));
+      expect(story.chapters.map((c) => c.title), ['风暴前夜', '第二章 留守']);
+      expect(story.chapters.first.content.text.trim(), '风暴要来了。');
+      expect(story.chapters.last.title, '第二章 留守');
+      expect(story.chapters.last.content.text, contains('她推开门。她守在灯下。'));
       // Taken in by itself, committing the chapter's story state with it
       // (per-chapter snapshots are checked in the core tests).
       expect(
@@ -319,7 +320,7 @@ void main() {
       // bottom bar.
       scroll.jumpTo(scroll.position.maxScrollExtent);
       await tester.pumpAndSettle();
-      final bar = tester.getRect(find.textContaining('本幕约剩')).top;
+      final bar = tester.getRect(find.textContaining('本章约剩')).top;
       expect(tester.getRect(find.text('分支与结局')).bottom, lessThanOrEqualTo(bar));
       expect(tester.takeException(), isNull);
     },

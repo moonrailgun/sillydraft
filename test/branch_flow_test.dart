@@ -23,11 +23,6 @@ void main() {
     final novel = await repo.createNovel(title: '岔路');
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('抵达港口'),
     );
     final task = await repo.createTask(
@@ -35,7 +30,7 @@ void main() {
       kind: TaskKind.branches,
       input: {
         'sourceRevisions': [
-          {'sceneId': scene.id, 'revisionId': scene.revisionId},
+          {'chapterId': chapter.id, 'revisionId': chapter.revisionId},
         ],
       },
     );
@@ -82,21 +77,16 @@ void main() {
     final novel = await repo.createNovel(title: '比较分支');
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('原来的故事'),
     );
     final branch = await repo.forkBranch(
       branchId: novel.activeBranchId,
       name: '另一条路',
     );
-    await repo.saveScene(
+    await repo.saveChapter(
       branchId: branch.id,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       content: ManuscriptContent.plainText('新的故事'),
     );
     await tester.pumpWidget(

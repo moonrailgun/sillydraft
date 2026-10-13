@@ -59,10 +59,6 @@ void main() {
         await tester.pumpAndSettle();
       });
       final novel = await repo.createNovel(title: '格式阅读');
-      final chapter = await repo.createChapter(
-        branchId: novel.activeBranchId,
-        title: '第一章',
-      );
       final content = ManuscriptContent.fromDelta([
         {'insert': '标题'},
         {
@@ -90,9 +86,8 @@ void main() {
           'attributes': {'blockquote': true},
         },
       ]);
-      await repo.createScene(
+      await repo.createChapter(
         branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: content,
       );
       await tester.pumpWidget(
@@ -111,7 +106,7 @@ void main() {
       expect(heading.style?.fontWeight, FontWeight.bold);
       expect(heading.style?.fontSize, greaterThan(20));
       expect(
-        (await repo.getStory(novel.activeBranchId)).scenes.single.content,
+        (await repo.getStory(novel.activeBranchId)).chapters.single.content,
         content,
       );
       expect(tester.takeException(), isNull);
@@ -143,17 +138,12 @@ void main() {
       final novel = await repo.createNovel(title: '显示正则');
       final chapter = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '第一章',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('之前正文'),
       );
       final task = await repo.createTask(
-        branchId: scene.branchId,
-        sceneId: scene.id,
-        baseRevisionId: scene.revisionId,
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+        baseRevisionId: chapter.revisionId,
         kind: TaskKind.writing,
         input: {
           'clock': '2026-01-01T00:00:00Z',
@@ -175,7 +165,7 @@ void main() {
         content: ManuscriptContent.plainText('暗号到了。'),
         rawText: '暗号到了。',
       );
-      final proposal = (await repo.listProposals(scene.branchId)).single;
+      final proposal = (await repo.listProposals(chapter.branchId)).single;
       await tester.pumpWidget(
         host(services, ProposalScreen(proposalId: proposal.id)),
       );
@@ -189,14 +179,14 @@ void main() {
       await tester.tap(find.text('采纳到正文'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(
-        host(services, ReaderScreen(branchId: scene.branchId)),
+        host(services, ReaderScreen(branchId: chapter.branchId)),
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('阿雾的来信到了。', findRichText: true), findsWidgets);
       expect(
-        (await repo.getScene(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+        (await repo.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
         )).content.text,
         '暗号到了。\n',
       );
@@ -205,7 +195,7 @@ void main() {
         () => PublicationExporter(
           repository: repo,
           assets: services.assets!,
-        ).export(branchId: scene.branchId, format: PublicationFormat.text),
+        ).export(branchId: chapter.branchId, format: PublicationFormat.text),
       ))!;
       expect(utf8.decode(exported.bytes), contains('暗号到了。'));
       expect(utf8.decode(exported.bytes), isNot(contains('阿雾的来信')));

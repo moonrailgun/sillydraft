@@ -11,7 +11,7 @@ import 'dart:typed_data';
 /// `*x*`; `__x__` underlines (`underline: true`) and a word wrapped in single
 /// underscores is italic (ST's underscore extension). Showdown lets emphasis
 /// run on through a paragraph; here it stays within a line, so a stray `*`
-/// never restyles the rest of the scene.
+/// never restyles the rest of the chapter.
 final class ProseMarkup {
   ProseMarkup._(this._flags);
 

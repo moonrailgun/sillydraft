@@ -204,13 +204,13 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
       if (preview != null &&
           (preview.chatVariables.isNotEmpty ||
               preview.globalVariables.isNotEmpty) &&
-          story.scenes.isNotEmpty) {
+          story.chapters.isNotEmpty) {
         // What the opening interface set before creation becomes the
-        // opening scene's variable state.
+        // opening chapter's variable state.
         final current = await repo.getBranchVariables(novel.activeBranchId);
         await repo.setBranchVariables(
           branchId: novel.activeBranchId,
-          sceneId: story.scenes.first.id,
+          chapterId: story.chapters.first.id,
           expectedVersion: current.version,
           local: {...current.local, ...encodeVariables(preview.chatVariables)},
           global: {
@@ -251,11 +251,11 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
             ),
           ),
         );
-        if (brief != null && story.scenes.isNotEmpty) {
+        if (brief != null && story.chapters.isNotEmpty) {
           final task = await navigator.push<GenerationTask>(
             MaterialPageRoute(
               builder: (_) => WritingRequestScreen(
-                scene: story.scenes.first,
+                chapter: story.chapters.first,
                 initialBrief: brief,
               ),
             ),
@@ -384,7 +384,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
       ),
       minLines: 5,
       maxLines: 14,
-      label: const Text('第一幕正文'),
+      label: const Text('第一章正文'),
     );
     String greetingLabel(int i) =>
         '${i == 0 ? '默认开场' : '备用开场 $i'} · ${_card!.greetings[i].replaceAll('\n', ' ')}';
@@ -406,7 +406,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text('选中的开场成为第一幕，人物和世界设定存入旁路资料。其他备用开场仍保留在角色卡里。'),
+                  const Text('选中的开场成为第一章，人物和世界设定存入旁路资料。其他备用开场仍保留在角色卡里。'),
                   if (_display.helperScripts.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     FAlert(

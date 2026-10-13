@@ -13,13 +13,13 @@ import '../../app/widgets.dart';
 /// MVU actions (reload InitVar, reprocess) MagVarUpdate offers as buttons.
 ///
 /// Scopes map onto the novel: `global` and `chat` are the branch's
-/// versioned variables at the latest scene (or [sceneId]), `message` is
-/// each scene's record, `character` and `preset` are the tables HTML
+/// versioned variables at the latest chapter (or [chapterId]), `message` is
+/// each chapter's record, `character` and `preset` are the tables HTML
 /// pages keep for those scopes.
 class VariablesScreen extends ConsumerStatefulWidget {
-  const VariablesScreen({super.key, required this.branchId, this.sceneId});
+  const VariablesScreen({super.key, required this.branchId, this.chapterId});
   final String branchId;
-  final String? sceneId;
+  final String? chapterId;
   @override
   ConsumerState<VariablesScreen> createState() => _VariablesState();
 }
@@ -36,7 +36,7 @@ const _scopes = [
     '聊天',
     '分支变量（getvar / setvar）。MVU 的 stat_data、display_data、delta_data、schema 也在这里。',
   ),
-  _Scope('message', '消息楼层', '每一幕是一条消息；显示该幕生效的变量，修改只写入该幕。'),
+  _Scope('message', '消息楼层', '每一章是一条消息；显示该章生效的变量，修改只写入该章。'),
   _Scope('character', '角色', '界面以 type: character 读写的变量，属于本作品。'),
   _Scope('preset', '预设', '界面以 type: preset 读写的变量，属于本作品。'),
 ];
@@ -49,8 +49,8 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
   /// differs is being edited and is not reset by a reload.
   final _loadedText = <String, String>{};
 
-  /// Variables of the scenes opened on the message tab, read on demand.
-  final _sceneVariables = <String, Map<String, dynamic>>{};
+  /// Variables of the chapters opened on the message tab, read on demand.
+  final _chapterVariables = <String, Map<String, dynamic>>{};
 
   /// Version of the branch variables when they were loaded; a save with
   /// an older version is refused, so edits never roll back changes made
@@ -68,7 +68,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
   Object? _loadError;
   bool _busy = false;
 
-  /// Scenes whose editor is open; only the latest scene opens by itself.
+  /// Chapters whose editor is open; only the latest chapter opens by itself.
   final _expanded = <String>{};
 
   @override
@@ -105,18 +105,18 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
     return _editors[key] = TextEditingController(text: text);
   }
 
-  /// Reads one scene's variables for its editor on the message tab.
-  Future<void> _loadScene(Scene scene) async {
+  /// Reads one chapter's variables for its editor on the message tab.
+  Future<void> _loadChapter(Chapter chapter) async {
     final variables = decodeVariables(
       (await _repo.getBranchVariables(
         widget.branchId,
-        throughSceneId: scene.id,
+        throughChapterId: chapter.id,
       )).local,
     );
     if (!mounted) return;
     setState(() {
-      _sceneVariables[scene.id] = variables;
-      _editor('scene:${scene.id}', variables);
+      _chapterVariables[chapter.id] = variables;
+      _editor('chapter:${chapter.id}', variables);
     });
   }
 
@@ -125,7 +125,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
       final story = await _repo.getStory(widget.branchId);
       final latest = await _repo.getBranchVariables(
         widget.branchId,
-        throughSceneId: widget.sceneId,
+        throughChapterId: widget.chapterId,
       );
       final other =
           (await _repo.getSetting('htmlVariables/${widget.branchId}') ?? {})
@@ -133,15 +133,17 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
       final entries = await _mvu.initEntries(widget.branchId);
       final checks = await _mvu.schemaChecks(widget.branchId);
       final head = await _repo.getBranchVariables(widget.branchId);
-      if (_expanded.isEmpty && story.scenes.isNotEmpty) {
-        _expanded.add(story.scenes.last.id);
+      if (_expanded.isEmpty && story.chapters.isNotEmpty) {
+        _expanded.add(story.chapters.last.id);
       }
-      final perScene = <String, Map<String, dynamic>>{};
-      for (final scene in story.scenes.where((s) => _expanded.contains(s.id))) {
-        perScene[scene.id] = decodeVariables(
+      final perChapter = <String, Map<String, dynamic>>{};
+      for (final chapter in story.chapters.where(
+        (s) => _expanded.contains(s.id),
+      )) {
+        perChapter[chapter.id] = decodeVariables(
           (await _repo.getBranchVariables(
             widget.branchId,
-            throughSceneId: scene.id,
+            throughChapterId: chapter.id,
           )).local,
         );
       }
@@ -164,9 +166,9 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
                 : <String, dynamic>{},
           );
         }
-        _sceneVariables.addAll(perScene);
-        for (final entry in perScene.entries) {
-          _editor('scene:${entry.key}', entry.value);
+        _chapterVariables.addAll(perChapter);
+        for (final entry in perChapter.entries) {
+          _editor('chapter:${entry.key}', entry.value);
         }
       });
     } catch (error) {
@@ -204,15 +206,15 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
     final value = _parse(key);
     if (value == null) return;
     await _run(() async {
-      final sceneId = widget.sceneId ?? _story!.scenes.lastOrNull?.id;
-      if (sceneId == null) throw const FormatException('请先创建一个正文场景');
+      final chapterId = widget.chapterId ?? _story!.chapters.lastOrNull?.id;
+      if (chapterId == null) throw const FormatException('请先创建一个正文章节');
       final current = await _repo.getBranchVariables(
         widget.branchId,
-        throughSceneId: sceneId,
+        throughChapterId: chapterId,
       );
       await _repo.setBranchVariables(
         branchId: widget.branchId,
-        sceneId: sceneId,
+        chapterId: chapterId,
         expectedVersion: _headVersion!,
         local: key == 'chat' ? encodeVariables(value) : current.local,
         global: key == 'global' ? encodeVariables(value) : current.global,
@@ -220,22 +222,22 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
     }, done: '已保存');
   }
 
-  Future<void> _saveScene(Scene scene) async {
-    final value = _parse('scene:${scene.id}');
+  Future<void> _saveChapter(Chapter chapter) async {
+    final value = _parse('chapter:${chapter.id}');
     if (value == null) return;
     await _run(() async {
       final current = await _repo.getBranchVariables(
         widget.branchId,
-        throughSceneId: scene.id,
+        throughChapterId: chapter.id,
       );
       await _repo.setBranchVariables(
         branchId: widget.branchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
         expectedVersion: _headVersion!,
         local: encodeVariables(value),
         global: current.global,
       );
-    }, done: '已保存第 ${_story!.scenes.indexOf(scene)} 楼的变量');
+    }, done: '已保存第 ${_story!.chapters.indexOf(chapter)} 楼的变量');
   }
 
   Future<void> _saveOther(String scope) async {
@@ -269,7 +271,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
         final confirmed = await confirmAction(
           context,
           title: '重新处理变量',
-          message: '从初始变量开始，按每一幕正文中的更新命令重新推算所有楼层的变量。手动修改过的变量会被覆盖。',
+          message: '从初始变量开始，按每一章正文中的更新命令重新推算所有楼层的变量。手动修改过的变量会被覆盖。',
           confirmLabel: '重新处理',
         );
         if (!confirmed) return;
@@ -278,7 +280,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
           if (errors.isNotEmpty && mounted) {
             final story = _story!;
             final lines = errors.entries.map((e) {
-              final index = story.scenes.indexWhere((s) => s.id == e.key);
+              final index = story.chapters.indexWhere((s) => s.id == e.key);
               final where = index < 0 ? e.key : '第 $index 楼';
               return '$where：${e.value.join('；')}';
             });
@@ -401,7 +403,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
                     ? (_initEntries.isEmpty
                           ? '当前作品没有 [InitVar] 世界书条目，也没有 stat_data；绑定带有初始变量的角色卡或世界书后可在此读取。'
                           : '已找到 ${_initEntries.length} 个 [InitVar] 条目，但变量尚未初始化。选择“重新读取初始变量”。')
-                    : '已初始化（${books.isEmpty ? '无世界书记录' : books}）。模型回复中的 <UpdateVariable> / <JSONPatch> 命令在采纳候选时写入该幕；'
+                    : '已初始化（${books.isEmpty ? '无世界书记录' : books}）。模型回复中的 <UpdateVariable> / <JSONPatch> 命令在采纳候选时写入该章；'
                           '结构校验${checks ? '开启' : '关闭（角色卡自带 registerMvuSchema 脚本时默认关闭）'}。',
                 style: theme.typography.body.xs.copyWith(
                   color: theme.colors.mutedForeground,
@@ -441,43 +443,43 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
     const padding = EdgeInsets.fromLTRB(0, 4, 0, 16);
     if (scope.key == 'message') {
       final story = _story!;
-      final scenes = story.scenes.reversed.toList();
+      final chapters = story.chapters.reversed.toList();
       return ListView.builder(
         padding: padding,
-        itemCount: scenes.length + 1,
+        itemCount: chapters.length + 1,
         itemBuilder: (context, i) {
           if (i == 0) {
-            return scenes.isEmpty
+            return chapters.isEmpty
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [hint, const Text('这部作品还没有正文。')],
                   )
                 : hint;
           }
-          final scene = scenes[i - 1];
-          final open = _expanded.contains(scene.id);
-          final loaded = _sceneVariables.containsKey(scene.id);
+          final chapter = chapters[i - 1];
+          final open = _expanded.contains(chapter.id);
+          final loaded = _chapterVariables.containsKey(chapter.id);
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: FCard(
-              key: Key('scene-card-${scene.id}'),
+              key: Key('chapter-card-${chapter.id}'),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   FItem(
                     title: Text(
-                      '第 ${story.scenes.indexOf(scene)} 楼 · ${scene.title}',
+                      '第 ${story.chapters.indexOf(chapter)} 楼 · ${chapter.title}',
                     ),
                     suffix: Icon(
                       open ? FLucideIcons.chevronUp : FLucideIcons.chevronDown,
                     ),
                     onPress: () {
                       setState(() {
-                        if (!_expanded.remove(scene.id)) {
-                          _expanded.add(scene.id);
+                        if (!_expanded.remove(chapter.id)) {
+                          _expanded.add(chapter.id);
                         }
                       });
-                      if (!open && !loaded) _loadScene(scene);
+                      if (!open && !loaded) _loadChapter(chapter);
                     },
                   ),
                   if (open && !loaded)
@@ -492,28 +494,28 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _jsonEditor(
-                            'scene:${scene.id}',
-                            save: () => _saveScene(scene),
+                            'chapter:${chapter.id}',
+                            save: () => _saveChapter(chapter),
                           ),
                           if (_initEntries.isNotEmpty ||
                               MvuData.presentIn(_latest?.local ?? const {}))
                             Align(
                               alignment: Alignment.centerLeft,
                               child: FButton(
-                                key: Key('reprocess-${scene.id}'),
+                                key: Key('reprocess-${chapter.id}'),
                                 variant: FButtonVariant.ghost,
                                 mainAxisSize: MainAxisSize.min,
                                 onPress: _busy
                                     ? null
                                     : () => _run(
-                                        () => _mvu.processScene(
+                                        () => _mvu.processChapter(
                                           widget.branchId,
-                                          scene.id,
+                                          chapter.id,
                                         ),
-                                        done: '已按本幕正文重新推算变量',
+                                        done: '已按本章正文重新推算变量',
                                       ),
                                 prefix: const Icon(FLucideIcons.rotateCcw),
-                                child: const Text('按本幕正文重新推算'),
+                                child: const Text('按本章正文重新推算'),
                               ),
                             ),
                         ],

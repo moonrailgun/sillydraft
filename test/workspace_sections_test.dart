@@ -32,19 +32,13 @@ Future<(AppServices, Novel)> _openNovel(
   });
   final repo = services.repository;
   final novel = await repo.createNovel(title: '雾港来信');
-  final chapter = await repo.createChapter(
+  await repo.createChapter(
     branchId: novel.activeBranchId,
-    title: '第一章',
-  );
-  await repo.createScene(
-    branchId: novel.activeBranchId,
-    chapterId: chapter.id,
     title: '码头',
     content: ManuscriptContent.plainText('雾从港口升起。'),
   );
-  await repo.createScene(
+  await repo.createChapter(
     branchId: novel.activeBranchId,
-    chapterId: chapter.id,
     title: '灯塔',
     content: ManuscriptContent.plainText('灯塔熄灭了。'),
   );
@@ -72,7 +66,7 @@ int _selected(WidgetTester tester) {
 void main() {
   for (final wide in [false, true]) {
     testWidgets(
-      '${wide ? 'desktop' : 'phone'} scene selection previews before editing and returns to the updated preview',
+      '${wide ? 'desktop' : 'phone'} chapter selection previews before editing and returns to the updated preview',
       (tester) async {
         final (services, novel) = await _openNovel(
           tester,
@@ -88,14 +82,14 @@ void main() {
           findsOneWidget,
         );
 
-        // The pencil edits the scene currently being read, even after a page turn.
-        await tester.tap(findAction('上一幕'));
+        // The pencil edits the chapter currently being read, even after a page turn.
+        await tester.tap(findAction('上一章'));
         await tester.pumpAndSettle();
         expect(
           find.textContaining('雾从港口升起。', findRichText: true),
           findsOneWidget,
         );
-        await tester.tap(find.byKey(const Key('reader-edit-scene')));
+        await tester.tap(find.byKey(const Key('reader-edit-chapter')));
         await tester.pumpAndSettle();
         final controller = tester
             .widget<QuillEditor>(find.byType(QuillEditor))
@@ -118,8 +112,8 @@ void main() {
           findsOneWidget,
         );
         final story = await services.repository.getStory(novel.activeBranchId);
-        expect(story.scenes.first.content.text.trim(), '雾从港口散去。');
-        expect(story.scenes.last.content.text.trim(), '灯塔熄灭了。');
+        expect(story.chapters.first.content.text.trim(), '雾从港口散去。');
+        expect(story.chapters.last.content.text.trim(), '灯塔熄灭了。');
 
         if (!wide) {
           await tester.binding.handlePopRoute();
@@ -139,14 +133,14 @@ void main() {
     );
   }
 
-  testWidgets('the full-screen reading shortcut also offers scene editing', (
+  testWidgets('the full-screen reading shortcut also offers chapter editing', (
     tester,
   ) async {
     await _openNovel(tester, size: const Size(390, 844));
     await tester.tap(find.byKey(const Key('open-reader')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('reader-edit-scene')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('reader-edit-scene')));
+    expect(find.byKey(const Key('reader-edit-chapter')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('reader-edit-chapter')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('manuscript-editor')), findsOneWidget);
     await tester.tap(findAction('保存并返回'));
@@ -213,40 +207,6 @@ void main() {
     );
   }
 
-  testWidgets(
-    'continue writing opens the last scene; ask the assistant switches section',
-    (tester) async {
-      await _openNovel(tester, size: const Size(390, 844));
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('resume-writing')),
-          matching: find.text('继续写作 · 灯塔'),
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('问助手'));
-      await tester.pumpAndSettle();
-      expect(_selected(tester), 2);
-      expect(find.byKey(const Key('agent-input')), findsOneWidget);
-
-      await _section(tester, '正文');
-      await tester.tap(find.byKey(const Key('resume-writing')));
-      await tester.pumpAndSettle();
-      expect(findAction('保存并返回'), findsOneWidget);
-      // The editor opened on the last scene, not the first.
-      expect(
-        find.descendant(
-          of: find.byWidgetPredicate((w) => w is FHeader),
-          matching: find.text('灯塔'),
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(findAction('保存并返回'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    },
-  );
-
   testWidgets('every section fits a small phone at double text size', (
     tester,
   ) async {
@@ -279,7 +239,7 @@ void main() {
         size: const Size(390, 844),
       );
       await _section(tester, '助手');
-      expect(find.text('检查最近几个场景里人物的动机是否一致'), findsOneWidget);
+      expect(find.text('检查最近几个章节里人物的动机是否一致'), findsOneWidget);
       await tester.tap(find.text('梳理目前埋下的伏笔，哪些还没有回收'));
       await tester.pump();
       expect(
@@ -326,17 +286,12 @@ void main() {
     final novel = await repo.createNovel(title: '候选测试');
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('原来的正文'),
     );
     await repo.createProposal(
       branchId: novel.activeBranchId,
-      sceneId: scene.id,
-      baseRevisionId: scene.revisionId,
+      chapterId: chapter.id,
+      baseRevisionId: chapter.revisionId,
       content: ManuscriptContent.plainText('候选的新正文'),
     );
     await tester.pumpWidget(SillyDraftApp(services: services));
@@ -354,14 +309,13 @@ void main() {
 
   for (final wide in [false, true]) {
     testWidgets(
-      '${wide ? 'desktop docks' : 'phone floats'} the assistant from the editor at this scene',
+      '${wide ? 'desktop docks' : 'phone floats'} the assistant from the editor at this chapter',
       (tester) async {
         await _openNovel(
           tester,
           size: wide ? const Size(1400, 900) : const Size(390, 844),
         );
-        await tester.tap(find.byKey(const Key('resume-writing')));
-        await tester.pumpAndSettle();
+        await editChapter(tester, '灯塔');
         await tester.tap(find.byKey(const Key('editor-assistant')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('agent-input')), findsOneWidget);
@@ -394,4 +348,80 @@ void main() {
       },
     );
   }
+
+  testWidgets('the outline adds and renames standalone chapters', (
+    tester,
+  ) async {
+    final (services, novel) = await _openNovel(
+      tester,
+      size: const Size(390, 844),
+    );
+    await tester.tap(find.text('新增章节'));
+    await tester.pumpAndSettle();
+    final titleInput = find.descendant(
+      of: find.byType(AppDialog),
+      matching: find.byType(EditableText),
+    );
+    await tester.enterText(titleInput, '第三章 来信');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('manuscript-editor')), findsOneWidget);
+    await tester.tap(findAction('保存并返回'));
+    await tester.pumpAndSettle();
+    final beforeRename = await services.repository.getStory(
+      novel.activeBranchId,
+    );
+    expect(beforeRename.chapters.map((chapter) => chapter.title), [
+      '码头',
+      '灯塔',
+      '第三章 来信',
+    ]);
+
+    await tester.tap(findAction('章节操作').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重命名章节'));
+    await tester.pumpAndSettle();
+    await tester.enterText(titleInput, '第三章 旧友来信');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    final renamed = await services.repository.getStory(novel.activeBranchId);
+    expect(renamed.chapters, hasLength(3));
+    expect(renamed.chapters.last.id, beforeRename.chapters.last.id);
+    expect(renamed.chapters.last.title, '第三章 旧友来信');
+    expect(find.text('第三章 旧友来信'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a chapter is deleted from its menu after confirming', (
+    tester,
+  ) async {
+    final (services, novel) = await _openNovel(
+      tester,
+      size: const Size(1280, 900),
+    );
+    await tester.tap(findAction('章节操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除章节'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('本章会从当前分支删除'), findsOneWidget);
+    await tester.tap(find.text('删除章节').last);
+    await tester.pumpAndSettle();
+    expect(
+      (await services.repository.getStory(novel.activeBranchId)).chapters
+          .map((c) => c.title),
+      ['灯塔'],
+    );
+    await tester.tap(findAction('章节操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除章节'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除章节').last);
+    await tester.pumpAndSettle();
+    expect(
+      (await services.repository.getStory(novel.activeBranchId)).chapters,
+      isEmpty,
+    );
+    expect(find.text('先创建一个章节，开始你的故事。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

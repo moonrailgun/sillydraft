@@ -26,9 +26,9 @@ final _directionsProvider =
       return (task: task, current: await repo.taskSourcesCurrent(task.id));
     });
 
-/// Under the last scene: three ways the story could go on, proposed from the
+/// Under the last chapter: three ways the story could go on, proposed from the
 /// whole text. Picking one writes the next chapter along it, with the
-/// branch's preset and cards, and turns to it ([onOpenScene]) to read as it
+/// branch's preset and cards, and turns to it ([onOpenChapter]) to read as it
 /// is written; it joins the book by itself once done.
 ///
 /// With [auto], the directions are proposed as soon as this comes into view,
@@ -40,13 +40,13 @@ class StoryDirections extends ConsumerStatefulWidget {
     super.key,
     required this.story,
     this.auto = false,
-    this.onOpenScene,
+    this.onOpenChapter,
   });
   final StorySnapshot story;
   final bool auto;
 
-  /// Shows a scene of the story: the chapter just started.
-  final ValueChanged<String>? onOpenScene;
+  /// Shows a chapter of the story: the chapter just started.
+  final ValueChanged<String>? onOpenChapter;
   @override
   ConsumerState<StoryDirections> createState() => _DirectionsState();
 }
@@ -67,7 +67,7 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
 
   String get _branchId => widget.story.branch.id;
   String get _version =>
-      [for (final s in widget.story.scenes) s.revisionId].join(',');
+      [for (final s in widget.story.chapters) s.revisionId].join(',');
 
   @override
   void didChangeDependencies() {
@@ -102,7 +102,7 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
     if (!widget.auto || _autoFor == _version) return;
     // An empty end is a chapter about to be written, not an end to go on
     // from.
-    if (widget.story.scenes.lastOrNull?.content.text.trim().isEmpty ?? true) {
+    if (widget.story.chapters.lastOrNull?.content.text.trim().isEmpty ?? true) {
       return;
     }
     final box = context.findRenderObject();
@@ -169,14 +169,14 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
   /// Writes the next chapter along [direction], or along [brief] when the
   /// author adjusted it, and turns to it.
   Future<void> _write(Map direction, {String? brief}) => _run(() async {
-    final scene = await startNextChapter(
+    final chapter = await startNextChapter(
       ref,
       widget.story,
       name: '${direction['title']}',
       brief: brief ?? chapterBrief(direction),
     );
     if (mounted) setState(() => _adjusting = null);
-    widget.onOpenScene?.call(scene.id);
+    widget.onOpenChapter?.call(chapter.id);
   });
 
   @override

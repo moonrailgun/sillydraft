@@ -31,13 +31,8 @@ void main() {
       final services = AppServices(repository: repo, secrets: secrets);
       addTearDown(services.close);
       final novel = await repo.createNovel(title: '旁路创作');
-      final chapter = await repo.createChapter(
+      await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('不可混入资料的正文'),
       );
       await tester.pumpWidget(

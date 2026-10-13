@@ -12,8 +12,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'support/finders.dart';
 import 'support/host.dart';
 
-/// A two-chapter book: a long first chapter imported-style (one scene with
-/// the chapter's name) and a short second one.
+/// A two-chapter book: a long first chapter and a short second one.
 Future<(AppServices, Novel)> _open(
   WidgetTester tester, {
   ThemeMode mode = ThemeMode.light,
@@ -30,25 +29,15 @@ Future<(AppServices, Novel)> _open(
   addTearDown(services.close);
   final repo = services.repository;
   final novel = await repo.createNovel(title: '雾港来信');
-  final one = await repo.createChapter(
+  await repo.createChapter(
     branchId: novel.activeBranchId,
-    title: '第一章 码头',
-  );
-  await repo.createScene(
-    branchId: novel.activeBranchId,
-    chapterId: one.id,
     title: '第一章 码头',
     content: ManuscriptContent.plainText(
       List.generate(60, (i) => '第 $i 段：雾从港口升起，灯塔的光一下一下扫过海面。').join('\n'),
     ),
   );
-  final two = await repo.createChapter(
+  await repo.createChapter(
     branchId: novel.activeBranchId,
-    title: '第二章 灯塔',
-  );
-  await repo.createScene(
-    branchId: novel.activeBranchId,
-    chapterId: two.id,
     title: '第二章 灯塔',
     content: ManuscriptContent.plainText('灯塔熄灭了。'),
   );
@@ -158,33 +147,38 @@ void main() {
   });
 
   testWidgets(
-    'tapping the sides turns pages across scenes; the middle shows the bars',
+    'tapping anywhere shows or hides the bars without turning pages',
     (tester) async {
       await _open(tester);
       final scroll = _scroll(tester);
       expect(findAction('阅读设置').hitTestable(), findsOneWidget);
 
       await _tapAt(tester, .9);
-      expect(scroll.offset, greaterThan(300));
-      // Turning a page puts the bars away.
+      expect(scroll.offset, 0);
       expect(findAction('阅读设置').hitTestable(), findsNothing);
-
-      await _tapAt(tester, .5);
-      expect(findAction('阅读设置').hitTestable(), findsOneWidget);
-      await _tapAt(tester, .5);
-
-      // Page to the end of the long scene, then on into the next.
-      for (var i = 0; i < 20 && _shownTitle(tester) == '第一章 码头'; i++) {
-        await _tapAt(tester, .9);
-      }
-      expect(_shownTitle(tester), '第二章 灯塔');
-      // Back from the top of a scene lands at the end of the previous one.
       await _tapAt(tester, .1);
-      expect(_shownTitle(tester), '第一章 码头');
-      expect(scroll.offset, scroll.position.maxScrollExtent);
+      expect(scroll.offset, 0);
+      expect(findAction('阅读设置').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('keyboard pages across chapters', (tester) async {
+    await _open(tester);
+    final scroll = _scroll(tester);
+    // Page to the end of the long chapter, then on into the next.
+    for (var i = 0; i < 20 && _shownTitle(tester) == '第一章 码头'; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+      await tester.pumpAndSettle();
+    }
+    expect(_shownTitle(tester), '第二章 灯塔');
+    // Back from the top of a chapter lands at the end of the previous one.
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.pumpAndSettle();
+    expect(_shownTitle(tester), '第一章 码头');
+    expect(scroll.offset, scroll.position.maxScrollExtent);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('keyboard pages forward and back', (tester) async {
     await _open(tester);
@@ -198,12 +192,12 @@ void main() {
     expect(scroll.offset, lessThan(after));
   });
 
-  testWidgets('contents show imported chapters once and jump', (tester) async {
+  testWidgets('contents show chapters once and jump', (tester) async {
     await _open(tester);
     await tester.tap(findAction('目录'));
     await tester.pumpAndSettle();
     expect(find.text('共 2 章'), findsOneWidget);
-    // One row per chapter, not a chapter row plus a same-named scene row.
+    // One row per chapter.
     expect(
       find.descendant(of: find.byType(AppSheet), matching: find.text('第一章 码头')),
       findsOneWidget,
@@ -250,9 +244,9 @@ void main() {
   testWidgets('progress counts the whole book', (tester) async {
     await _open(tester);
     expect(find.text('全书 0.0%'), findsOneWidget);
-    await tester.tap(findAction('下一幕'));
+    await tester.tap(findAction('下一章'));
     await tester.pumpAndSettle();
-    // The short last scene fits on screen, so the book is finished.
+    // The short last chapter fits on screen, so the book is finished.
     expect(find.text('全书 100.0%'), findsOneWidget);
   });
 }

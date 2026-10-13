@@ -106,13 +106,8 @@ void main() {
         await dir!.delete(recursive: true);
       });
       final n = await services.repository.createNovel(title: '可以导出的小说');
-      final c = await services.repository.createChapter(
+      final s = await services.repository.createChapter(
         branchId: n.activeBranchId,
-        title: '第一章',
-      );
-      final s = await services.repository.createScene(
-        branchId: n.activeBranchId,
-        chapterId: c.id,
         content: ManuscriptContent.plainText('海雾升起。'),
       );
       final files = _Files();
@@ -131,9 +126,9 @@ void main() {
       expect(files.exported!.filename, endsWith('.txt'));
       expect(utf8.decode(files.exported!.bytes), contains('海雾升起。'));
       expect(
-        (await services.repository.getScene(
+        (await services.repository.getChapter(
           branchId: s.branchId,
-          sceneId: s.id,
+          chapterId: s.id,
         )).revisionId,
         s.revisionId,
       );

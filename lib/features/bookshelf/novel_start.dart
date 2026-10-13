@@ -40,7 +40,7 @@ class NovelStartOptions extends StatelessWidget {
           key: const Key('start-blank'),
           icon: FLucideIcons.squarePen,
           title: '空白作品',
-          subtitle: '填写书名和设定，从第一幕写起',
+          subtitle: '填写书名和设定，从第一章写起',
           onTap: () => choose(startBlankNovel),
         ),
         _option(
@@ -48,7 +48,7 @@ class NovelStartOptions extends StatelessWidget {
           key: const Key('start-card'),
           icon: FLucideIcons.userRound,
           title: '从角色卡开始',
-          subtitle: '用 SillyTavern 角色卡（PNG、JSON、CHARX），选一个开场作为第一幕',
+          subtitle: '用 SillyTavern 角色卡（PNG、JSON、CHARX），选一个开场作为第一章',
           onTap: () => choose(startFromCard),
         ),
         _option(
@@ -383,10 +383,7 @@ class _NovelImportState extends ConsumerState<NovelImportScreen> {
     final tail = chapters.length > 12
         ? chapters.skip(chapters.length - 3).toList()
         : const <ImportedChapter>[];
-    int count(ImportedChapter c) => c.scenes.fold(
-      0,
-      (sum, s) => sum + s.text.replaceAll(RegExp(r'\s'), '').length,
-    );
+    int count(ImportedChapter c) => c.text.replaceAll(RegExp(r'\s'), '').length;
     Widget chapter(ImportedChapter c) => FItem(
       prefix: const Icon(FLucideIcons.fileText),
       title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),

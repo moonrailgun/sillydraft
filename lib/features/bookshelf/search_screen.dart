@@ -21,17 +21,17 @@ final _searchProvider = FutureProvider.autoDispose.family<List<_Match>, String>(
         matches.add(_Match(novel: novel, excerpt: novel.synopsis));
       }
       final story = await repository.getStory(novel.activeBranchId);
-      for (final scene in story.scenes) {
-        final text = scene.content.text.replaceAll('\ufffc', '〔插画〕');
+      for (final chapter in story.chapters) {
+        final text = chapter.content.text.replaceAll('\ufffc', '〔插画〕');
         final index = text.toLowerCase().indexOf(needle);
-        if (index >= 0 || scene.title.toLowerCase().contains(needle)) {
+        if (index >= 0 || chapter.title.toLowerCase().contains(needle)) {
           // Slice by characters for display, preserving surrogate pairs.
           final prefix = index <= 0 ? '' : text.substring(0, index);
           final start = (prefix.runes.length - 24).clamp(0, text.runes.length);
           matches.add(
             _Match(
               novel: novel,
-              scene: scene,
+              chapter: chapter,
               branch: story.branch.name,
               excerpt: String.fromCharCodes(text.runes.skip(start).take(180)),
             ),
@@ -48,11 +48,11 @@ class _Match {
   const _Match({
     required this.novel,
     required this.excerpt,
-    this.scene,
+    this.chapter,
     this.branch,
   });
   final Novel novel;
-  final Scene? scene;
+  final Chapter? chapter;
   final String excerpt;
   final String? branch;
 }
@@ -102,7 +102,7 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
                 builder: (matches) => matches.isEmpty
                     ? Center(
                         child: Text(
-                          _query.trim().isEmpty ? '输入书名、场景名或正文内容' : '没有找到相关内容',
+                          _query.trim().isEmpty ? '输入书名、章节名或正文内容' : '没有找到相关内容',
                           style: context.theme.typography.body.sm.copyWith(
                             color: context.theme.colors.mutedForeground,
                           ),
@@ -115,12 +115,12 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
                           final match = matches[index];
                           return FItem(
                             prefix: Icon(
-                              match.scene == null
+                              match.chapter == null
                                   ? FLucideIcons.book
                                   : FLucideIcons.fileText,
                             ),
                             title: Text(
-                              '${match.novel.title}${match.scene == null ? '' : ' · ${match.scene!.title}'}${match.novel.archived ? '（已归档）' : ''}',
+                              '${match.novel.title}${match.chapter == null ? '' : ' · ${match.chapter!.title}'}${match.novel.archived ? '（已归档）' : ''}',
                             ),
                             subtitle: Text(
                               '${match.branch == null ? '' : '${match.branch}\n'}${match.excerpt}',
@@ -130,9 +130,9 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
                             onPress: () => Navigator.push(
                               context,
                               MaterialPageRoute<void>(
-                                builder: (_) => match.scene == null
+                                builder: (_) => match.chapter == null
                                     ? NovelWorkspace(novelId: match.novel.id)
-                                    : EditorScreen(scene: match.scene!),
+                                    : EditorScreen(chapter: match.chapter!),
                               ),
                             ),
                           );

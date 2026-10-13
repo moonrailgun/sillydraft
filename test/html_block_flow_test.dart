@@ -212,7 +212,7 @@ void main() {
       await tester.tap(find.byKey(const Key('fake-switch')));
       await tester.pumpAndSettle();
       final story = await repo.getStory(novel.activeBranchId);
-      expect(story.scenes.single.content.text.trim(), '[重塑仙缘]');
+      expect(story.chapters.single.content.text.trim(), '[重塑仙缘]');
       expect(
         (await repo.getSetting(
           'writing/${novel.activeBranchId}',
@@ -282,7 +282,7 @@ void main() {
     final repo = services.repository;
     final novel = (await repo.listNovels()).single;
     final story = await repo.getStory(novel.activeBranchId);
-    expect(story.scenes.single.content.text.trim(), '[重塑仙缘]');
+    expect(story.chapters.single.content.text.trim(), '[重塑仙缘]');
     expect(
       (await repo.getBranchVariables(novel.activeBranchId)).local['境界'],
       '凡人',
@@ -336,7 +336,7 @@ void _workspaceTests() {
     );
     await tester.pumpWidget(_host(services, NovelWorkspace(novelId: novel.id)));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('故事开场').first);
+    await tester.tap(find.text('第一章').first);
     await tester.pumpAndSettle();
     expect(find.text('FAKE:frontend'), findsOneWidget);
     expect(find.textContaining('开场后的旁白'), findsOneWidget);

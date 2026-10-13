@@ -26,9 +26,13 @@ void main() {
       await tester.enterText(find.byKey(const Key('novel-title')), '雾港来信');
       await tester.tap(find.text('创建小说'));
       await tester.pumpAndSettle();
-      expect((await services.repository.listNovels()).single.title, '雾港来信');
+      final novel = (await services.repository.listNovels()).single;
+      expect(novel.title, '雾港来信');
+      expect(
+        (await services.repository.getStory(novel.activeBranchId)).chapters,
+        hasLength(1),
+      );
       expect(find.text('第一章'), findsWidgets);
-      expect(find.text('第一幕'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );
@@ -42,13 +46,8 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final repo = StoryRepository.memory();
       final novel = await repo.createNovel(title: '独立作品');
-      final chapter = await repo.createChapter(
+      await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '第一章',
-      );
-      await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         title: '渡口',
         content: ManuscriptContent.plainText('雨落在空无一人的渡口。'),
       );

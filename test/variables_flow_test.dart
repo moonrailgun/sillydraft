@@ -145,12 +145,12 @@ void main() {
     expect(replayed.statData['主角']['生命'], 90);
     await _settleToast(tester);
 
-    // The message tab lists scenes with their own editors.
+    // The message tab lists chapters with their own editors.
     await tester.tap(find.text('消息楼层'));
     await tester.pumpAndSettle();
-    final scene = (await repo.getStory(branchId)).scenes.single;
-    expect(find.byKey(Key('scene-card-${scene.id}')), findsOneWidget);
-    expect(find.byKey(Key('reprocess-${scene.id}')), findsOneWidget);
+    final chapter = (await repo.getStory(branchId)).chapters.single;
+    expect(find.byKey(Key('chapter-card-${chapter.id}')), findsOneWidget);
+    expect(find.byKey(Key('reprocess-${chapter.id}')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();

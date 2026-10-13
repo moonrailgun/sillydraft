@@ -9,7 +9,7 @@ import 'support/finders.dart';
 
 void main() {
   testWidgets(
-    'reader bookmarks and restores the current position in a long scene',
+    'reader bookmarks and restores the current position in a long chapter',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -17,13 +17,8 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final repo = StoryRepository.memory();
       final novel = await repo.createNovel(title: '阅读位置测试');
-      final chapter = await repo.createChapter(
+      await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '第一章',
-      );
-      await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         title: '长夜',
         content: ManuscriptContent.plainText(
           List.generate(100, (i) => '第 $i 段：雨落在渡口，远处的灯光渐渐亮起来。').join('\n\n'),

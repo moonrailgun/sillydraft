@@ -40,7 +40,7 @@ class AnalysisReviewScreen extends ConsumerWidget {
           .read(repositoryProvider)
           .listLore(
             task.branchId,
-            throughSceneId: suggestion['sourceSceneId'] as String?,
+            throughChapterId: suggestion['sourceChapterId'] as String?,
           );
       if (!context.mounted) return;
       await showAppDialog<void>(
@@ -141,7 +141,7 @@ class AnalysisReviewScreen extends ConsumerWidget {
                           SelectableText(entry['content'] as String? ?? ''),
                           for (final source
                               in (task.input['sourceRevisions'] as List? ?? []))
-                            if (source['sceneId'] == entry['sourceSceneId'])
+                            if (source['chapterId'] == entry['sourceChapterId'])
                               FAccordion(
                                 children: [
                                   FAccordionItem(

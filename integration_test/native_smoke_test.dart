@@ -66,11 +66,6 @@ void main() {
     final novel = await repository.createNovel(title: '跨端验证 · 雾港来信');
     final chapter = await repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章 · 旧码头',
-    );
-    final scene = await repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '海风里的信',
       content: ManuscriptContent.plainText('傍晚，雾气越过码头。\n她打开了那封没有署名的信。'),
     );
@@ -114,15 +109,15 @@ void main() {
     await tester.tap(findAction('保存并返回'));
     await waitFor(find.byKey(const Key('open-reader')));
     expect(
-      (await repository.getScene(
-        branchId: scene.branchId,
-        sceneId: scene.id,
+      (await repository.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
       )).content.text,
       contains('自己的笔迹'),
     );
-    final saved = await repository.getScene(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+    final saved = await repository.getChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
     );
     final manuscript = ManuscriptContent.fromDelta([
       {'insert': '信的内容'},
@@ -148,8 +143,8 @@ void main() {
       },
     ]);
     final task = await repository.createTask(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
       baseRevisionId: saved.revisionId,
       kind: TaskKind.writing,
       input: {
@@ -172,7 +167,7 @@ void main() {
       rawText: manuscript.text,
     );
     await repository.acceptProposal(
-      (await repository.listProposals(scene.branchId)).single.id,
+      (await repository.listProposals(chapter.branchId)).single.id,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('open-reader')));
@@ -183,9 +178,9 @@ void main() {
       findsOneWidget,
     );
     expect(
-      (await repository.getScene(
-        branchId: scene.branchId,
-        sceneId: scene.id,
+      (await repository.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
       )).content.text,
       contains('暗号仍在信纸上。'),
     );

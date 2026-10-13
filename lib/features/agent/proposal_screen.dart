@@ -9,7 +9,7 @@ import 'agent_providers.dart';
 
 final _comparisonProvider =
     FutureProvider.family<
-      ({DocumentRevision base, Scene current, String before, String after}),
+      ({DocumentRevision base, Chapter current, String before, String after}),
       String
     >((ref, id) async {
       ref.watch(repositoryChangesProvider);
@@ -21,9 +21,9 @@ final _comparisonProvider =
             .content
             .text,
         after: (await repo.presentProposal(proposal.id)).content.text,
-        current: await repo.getScene(
+        current: await repo.getChapter(
           branchId: proposal.branchId,
-          sceneId: proposal.sceneId,
+          chapterId: proposal.chapterId,
         ),
       );
     });

@@ -16,11 +16,11 @@ class LoreScreen extends ConsumerStatefulWidget {
   const LoreScreen({
     super.key,
     required this.branchId,
-    this.throughSceneId,
+    this.throughChapterId,
     this.embedded = false,
   });
   final String branchId;
-  final String? throughSceneId;
+  final String? throughChapterId;
   final bool embedded;
   @override
   ConsumerState<LoreScreen> createState() => _LoreState();
@@ -29,7 +29,7 @@ class LoreScreen extends ConsumerStatefulWidget {
 const _tabLabels = ['资料', '时间线', '关系', '地图'];
 
 class _LoreState extends ConsumerState<LoreScreen> {
-  late String? _through = widget.throughSceneId;
+  late String? _through = widget.throughChapterId;
   LoreKind? _kind;
   int _tab = 0;
   bool _archived = false, _analyzing = false;
@@ -45,12 +45,12 @@ class _LoreState extends ConsumerState<LoreScreen> {
   Future<void> _edit({LoreEntry? entry, LoreKind? kind}) async {
     final story = await ref.read(repositoryProvider).getStory(widget.branchId);
     if (!mounted) return;
-    final anchor = _through ?? story.scenes.lastOrNull?.id;
+    final anchor = _through ?? story.chapters.lastOrNull?.id;
     if (entry?.kind == LoreKind.map && entry?.deleted == false) {
       await Navigator.push(
         context,
         MaterialPageRoute<void>(
-          builder: (_) => StoryMapScreen(entry: entry!, atSceneId: anchor),
+          builder: (_) => StoryMapScreen(entry: entry!, atChapterId: anchor),
         ),
       );
     } else {
@@ -60,7 +60,7 @@ class _LoreState extends ConsumerState<LoreScreen> {
           builder: (_) => LoreEditScreen(
             branchId: widget.branchId,
             entry: entry,
-            atSceneId: anchor,
+            atChapterId: anchor,
             kind: kind ?? _kind ?? LoreKind.world,
           ),
         ),
@@ -170,11 +170,12 @@ class _LoreState extends ConsumerState<LoreScreen> {
             )
             .toList();
         final positions = {
-          for (final (i, s) in (story?.scenes ?? <Scene>[]).indexed) s.id: i,
+          for (final (i, s) in (story?.chapters ?? <Chapter>[]).indexed)
+            s.id: i,
         };
         timeline.sort(
-          (a, b) => (positions[a.atSceneId] ?? -1).compareTo(
-            positions[b.atSceneId] ?? -1,
+          (a, b) => (positions[a.atChapterId] ?? -1).compareTo(
+            positions[b.atChapterId] ?? -1,
           ),
         );
         return _list(timeline, timeline: true);
@@ -252,7 +253,7 @@ class _LoreState extends ConsumerState<LoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scope = (branchId: widget.branchId, sceneId: _through),
+    final scope = (branchId: widget.branchId, chapterId: _through),
         story = ref.watch(storyProvider(widget.branchId));
     return PageScaffold(
       title: '故事资料',
@@ -269,8 +270,10 @@ class _LoreState extends ConsumerState<LoreScreen> {
           () => Navigator.push(
             context,
             MaterialPageRoute<void>(
-              builder: (_) =>
-                  VariablesScreen(branchId: widget.branchId, sceneId: _through),
+              builder: (_) => VariablesScreen(
+                branchId: widget.branchId,
+                chapterId: _through,
+              ),
             ),
           ),
         ),
@@ -311,8 +314,8 @@ class _LoreState extends ConsumerState<LoreScreen> {
               child: AsyncView(
                 value: story,
                 builder: (story) {
-                  String sceneTitle(Scene s) =>
-                      s.title.isEmpty ? '未命名场景' : s.title;
+                  String chapterTitle(Chapter s) =>
+                      s.title.isEmpty ? '未命名章节' : s.title;
                   return FSelect<String>.rich(
                     label: const Text('资料截至哪个故事位置'),
                     hint: '当前故事末尾',
@@ -324,20 +327,20 @@ class _LoreState extends ConsumerState<LoreScreen> {
                     ),
                     format: (id) => id.isEmpty
                         ? '当前故事末尾'
-                        : story.scenes
+                        : story.chapters
                                   .where((s) => s.id == id)
-                                  .map(sceneTitle)
+                                  .map(chapterTitle)
                                   .firstOrNull ??
-                              '未命名场景',
+                              '未命名章节',
                     children: [
                       FSelectItem<String>(
                         title: const Text('当前故事末尾'),
                         value: '',
                       ),
-                      for (final s in story.scenes)
+                      for (final s in story.chapters)
                         FSelectItem<String>(
                           title: Text(
-                            sceneTitle(s),
+                            chapterTitle(s),
                             overflow: TextOverflow.ellipsis,
                           ),
                           value: s.id,

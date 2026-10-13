@@ -79,23 +79,23 @@ String chapterBrief(Map direction) =>
     '保持人物动机与叙事视角一致。只写这一章的正文，不重复已有内容。\n'
     '${direction['summary']}';
 
-/// Writes [scene] from [brief] with the branch's preset, card and books, and
-/// takes the result into the scene as soon as it is written, story state
+/// Writes [chapter] from [brief] with the branch's preset, card and books, and
+/// takes the result into the chapter as soon as it is written, story state
 /// included, so every chapter keeps its own snapshot to fork or roll back
 /// to.
-Future<GenerationTask> writeScene(
+Future<GenerationTask> writeChapter(
   WidgetRef ref,
-  Scene scene, {
+  Chapter chapter, {
   required String brief,
 }) async {
   final services = ref.read(servicesProvider);
   final connection = await services.connectionFor('writing');
   if (connection == null) throw const FormatException('请先在设置里添加写作模型连接。');
-  final profile = await WritingContext.load(services, scene.branchId);
+  final profile = await WritingContext.load(services, chapter.branchId);
   return services.writing.startPrepared(
     await services.writing.prepare(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
       connection: connection,
       brief: brief,
       append: true,
@@ -106,16 +106,16 @@ Future<GenerationTask> writeScene(
       worldBooks: profile.books,
       globalRegex: profile.regex,
       selectedOrderId: profile.selectedOrderId,
-      expectedRevisionId: scene.revisionId,
+      expectedRevisionId: chapter.revisionId,
       autoAccept: true,
     ),
   );
 }
 
-/// Starts the next chapter of [story] along [brief] and returns its scene:
+/// Starts the next chapter of [story] along [brief] and returns its chapter:
 /// a new chapter at the end, or the last one when it is still empty, as an
 /// earlier attempt may have left it.
-Future<Scene> startNextChapter(
+Future<Chapter> startNextChapter(
   WidgetRef ref,
   StorySnapshot story, {
   required String name,
@@ -126,49 +126,33 @@ Future<Scene> startNextChapter(
   if (await services.connectionFor('writing') == null) {
     throw const FormatException('请先在设置里添加写作模型连接。');
   }
-  final last = story.scenes.lastOrNull;
-  final Scene scene;
+  final last = story.chapters.lastOrNull;
+  final Chapter chapter;
   if (last != null && last.content.text.trim().isEmpty) {
-    final chapter = story.chapters.firstWhere((c) => c.id == last.chapterId);
-    final alone = story.scenesInChapter(chapter.id).length == 1;
-    final title = alone
-        ? nextChapterTitle(
-            story.chapters.take(story.chapters.indexOf(chapter)).toList(),
-            name,
-          )
-        : name;
-    if (alone) {
-      await repo.renameChapter(
-        branchId: story.branch.id,
-        chapterId: chapter.id,
-        title: title,
-      );
-    }
-    await repo.renameScene(
+    final title = nextChapterTitle(
+      story.chapters.take(story.chapters.length - 1).toList(),
+      name,
+    );
+    await repo.renameChapter(
       branchId: story.branch.id,
-      sceneId: last.id,
+      chapterId: last.id,
       title: title,
     );
-    scene = await repo.getScene(branchId: story.branch.id, sceneId: last.id);
+    chapter = await repo.getChapter(
+      branchId: story.branch.id,
+      chapterId: last.id,
+    );
   } else {
     final title = nextChapterTitle(story.chapters, name);
-    final chapter = await repo.createChapter(
-      branchId: story.branch.id,
-      title: title,
-    );
-    scene = await repo.createScene(
-      branchId: story.branch.id,
-      chapterId: chapter.id,
-      title: title,
-    );
+    chapter = await repo.createChapter(branchId: story.branch.id, title: title);
   }
-  await writeScene(ref, scene, brief: brief);
-  return scene;
+  await writeChapter(ref, chapter, brief: brief);
+  return chapter;
 }
 
-/// An empty scene being written: the text as it arrives, set like the rest
-/// of the book, which becomes the scene's text once written. A failure, or
-/// a result that could not be taken in because the scene or the story state
+/// An empty chapter being written: the text as it arrives, set like the rest
+/// of the book, which becomes the chapter's text once written. A failure, or
+/// a result that could not be taken in because the chapter or the story state
 /// changed meanwhile, waits here for the author.
 class ChapterDraft extends ConsumerStatefulWidget {
   const ChapterDraft({
@@ -206,9 +190,12 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
   Future<void> _again(ManuscriptProposal? pending) => _run(() async {
     final repo = ref.read(repositoryProvider), task = widget.task;
     if (pending != null) await repo.rejectProposal(pending.id);
-    await writeScene(
+    await writeChapter(
       ref,
-      await repo.getScene(branchId: task.branchId, sceneId: task.sceneId!),
+      await repo.getChapter(
+        branchId: task.branchId,
+        chapterId: task.chapterId!,
+      ),
       brief: task.input['brief'] as String? ?? '',
     );
   });

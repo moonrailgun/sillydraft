@@ -17,13 +17,13 @@ class IllustrationRequestScreen extends ConsumerStatefulWidget {
   const IllustrationRequestScreen({
     super.key,
     required this.branchId,
-    this.sceneId,
+    this.chapterId,
     this.purpose = AssetPurpose.illustration,
     this.referenceIds = const [],
     this.initialPrompt = '',
   });
   final String branchId;
-  final String? sceneId;
+  final String? chapterId;
   final AssetPurpose purpose;
   final List<String> referenceIds;
   final String initialPrompt;
@@ -38,7 +38,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   late final _prompt = TextEditingController(text: widget.initialPrompt);
   late final _references = [...widget.referenceIds];
   late AssetPurpose _purpose = widget.purpose;
-  late String? _sceneId = widget.sceneId;
+  late String? _chapterId = widget.chapterId;
   ModelConnection? _connection;
   List<ModelConnection> _connections = [];
   String _size = '', _quality = '';
@@ -190,7 +190,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
         connection: _connection!,
         name: _name.text,
         request: request,
-        sceneId: _sceneId,
+        chapterId: _chapterId,
         referenceAssetIds: _references,
         purpose: _purpose,
       );
@@ -299,27 +299,27 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                 const SizedBox(height: 16),
                 AsyncView(
                   value: ref.watch(storyProvider(widget.branchId)),
-                  // An empty id stands for "no scene": a standalone asset.
+                  // An empty id stands for "no chapter": a standalone asset.
                   builder: (story) => FSelect<String>.rich(
-                    label: const Text('对应正文场景（可选）'),
+                    label: const Text('对应正文章节（可选）'),
                     control: FSelectControl.lifted(
-                      value: _sceneId ?? '',
+                      value: _chapterId ?? '',
                       onChange: (v) {
                         if (v != null) {
-                          setState(() => _sceneId = v.isEmpty ? null : v);
+                          setState(() => _chapterId = v.isEmpty ? null : v);
                         }
                       },
                     ),
                     format: (id) => id.isEmpty
                         ? '独立素材'
-                        : story.scenes
+                        : story.chapters
                                   .where((s) => s.id == id)
                                   .firstOrNull
                                   ?.title ??
                               '',
                     children: [
                       FSelectItem(title: const Text('独立素材'), value: ''),
-                      for (final s in story.scenes)
+                      for (final s in story.chapters)
                         FSelectItem(
                           title: Text(s.title, overflow: TextOverflow.ellipsis),
                           value: s.id,

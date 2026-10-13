@@ -8,8 +8,8 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 
-/// The wide workspace: tools on the left, the page in the middle and the
-/// outline on the right. Either side folds away without losing its state;
+/// The wide workspace: outline on the left, the page in the middle and the
+/// tools on the right. Either side folds away without losing its state;
 /// dragging a divider, or the arrow keys on it, resizes that side, and the
 /// widths are kept.
 class ResizableWorkspace extends ConsumerStatefulWidget {
@@ -87,29 +87,13 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
         return Row(
           children: [
             Offstage(
-              offstage: !widget.toolsOpen,
+              offstage: !widget.outlineOpen,
               child: SizedBox(
-                key: const Key('workspace-tools'),
-                width: tools,
-                child: widget.tools,
+                key: const Key('workspace-outline'),
+                width: outline,
+                child: widget.outline,
               ),
             ),
-            if (widget.toolsOpen)
-              _Divider(
-                key: const Key('workspace-tools-divider'),
-                label: '工具面板宽度',
-                width: tools,
-                min: _toolsRange.min,
-                max: toolsMax,
-                onResize: (delta) => setState(
-                  () => _tools = ((_tools ?? tools) + delta).clamp(
-                    _toolsRange.min,
-                    toolsMax,
-                  ),
-                ),
-                onEnd: _persist,
-              ),
-            Expanded(child: widget.content),
             if (widget.outlineOpen)
               _Divider(
                 key: const Key('workspace-divider'),
@@ -117,8 +101,6 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
                 width: outline,
                 min: _outlineRange.min,
                 max: _outlineRange.max,
-                // The outline is on the right: dragging left widens it.
-                end: true,
                 onResize: (delta) => setState(
                   () => _outline = ((_outline ?? outline) + delta).clamp(
                     _outlineRange.min,
@@ -127,12 +109,29 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
                 ),
                 onEnd: _persist,
               ),
+            Expanded(child: widget.content),
+            if (widget.toolsOpen)
+              _Divider(
+                key: const Key('workspace-tools-divider'),
+                label: '工具面板宽度',
+                width: tools,
+                min: _toolsRange.min,
+                max: toolsMax,
+                end: true,
+                onResize: (delta) => setState(
+                  () => _tools = ((_tools ?? tools) + delta).clamp(
+                    _toolsRange.min,
+                    toolsMax,
+                  ),
+                ),
+                onEnd: _persist,
+              ),
             Offstage(
-              offstage: !widget.outlineOpen,
+              offstage: !widget.toolsOpen,
               child: SizedBox(
-                key: const Key('workspace-outline'),
-                width: outline,
-                child: widget.outline,
+                key: const Key('workspace-tools'),
+                width: tools,
+                child: widget.tools,
               ),
             ),
           ],

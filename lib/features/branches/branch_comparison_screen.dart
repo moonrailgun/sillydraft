@@ -22,14 +22,15 @@ class BranchComparisonScreen extends ConsumerWidget {
         value: ref.watch(storyProvider(rightId)),
         builder: (right) {
           final theme = context.theme;
-          final leftScenes = {for (final s in left.scenes) s.id: s},
-              rightScenes = {for (final s in right.scenes) s.id: s};
-          final ids = {...leftScenes.keys, ...rightScenes.keys};
+          final leftChapters = {for (final s in left.chapters) s.id: s},
+              rightChapters = {for (final s in right.chapters) s.id: s};
+          final ids = {...leftChapters.keys, ...rightChapters.keys};
           final changed = ids
               .where(
                 (id) =>
-                    leftScenes[id]?.revisionId != rightScenes[id]?.revisionId ||
-                    leftScenes[id]?.title != rightScenes[id]?.title,
+                    leftChapters[id]?.revisionId !=
+                        rightChapters[id]?.revisionId ||
+                    leftChapters[id]?.title != rightChapters[id]?.title,
               )
               .toList();
           Widget panel(String title, String text) => FCard(
@@ -65,12 +66,12 @@ class BranchComparisonScreen extends ConsumerWidget {
           );
           final ll =
                   ref
-                      .watch(loreProvider((branchId: leftId, sceneId: null)))
+                      .watch(loreProvider((branchId: leftId, chapterId: null)))
                       .value ??
                   <LoreEntry>[],
               rr =
                   ref
-                      .watch(loreProvider((branchId: rightId, sceneId: null)))
+                      .watch(loreProvider((branchId: rightId, chapterId: null)))
                       .value ??
                   <LoreEntry>[];
           String describe(LoreEntry? e) => e == null
@@ -89,14 +90,14 @@ class BranchComparisonScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                '正文不同的场景：${changed.length} · 左 ${left.scenes.length} 幕 / 右 ${right.scenes.length} 幕',
+                '正文不同的章节：${changed.length} · 左 ${left.chapters.length} 章 / 右 ${right.chapters.length} 章',
               ),
               for (final id in changed) ...[
                 const SizedBox(height: 20),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    rightScenes[id]?.title ?? leftScenes[id]!.title,
+                    rightChapters[id]?.title ?? leftChapters[id]!.title,
                     style: theme.typography.body.md.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -105,11 +106,11 @@ class BranchComparisonScreen extends ConsumerWidget {
                 pair(
                   panel(
                     left.branch.name,
-                    leftScenes[id]?.content.text ?? '此分支无此场景',
+                    leftChapters[id]?.content.text ?? '此分支无此章节',
                   ),
                   panel(
                     right.branch.name,
-                    rightScenes[id]?.content.text ?? '此分支无此场景',
+                    rightChapters[id]?.content.text ?? '此分支无此章节',
                   ),
                 ),
               ],

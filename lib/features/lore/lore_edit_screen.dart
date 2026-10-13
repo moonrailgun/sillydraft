@@ -13,12 +13,12 @@ class LoreEditScreen extends ConsumerStatefulWidget {
     super.key,
     required this.branchId,
     this.entry,
-    this.atSceneId,
+    this.atChapterId,
     this.kind = LoreKind.world,
   });
   final String branchId;
   final LoreEntry? entry;
-  final String? atSceneId;
+  final String? atChapterId;
   final LoreKind kind;
   @override
   ConsumerState<LoreEditScreen> createState() => _LoreEditState();
@@ -38,7 +38,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       );
   late LoreKind _kind = widget.entry?.kind ?? widget.kind;
   late LoreCertainty _certainty = widget.entry?.certainty ?? LoreCertainty.fact;
-  late String? _sceneId = widget.atSceneId ?? widget.entry?.atSceneId,
+  late String? _chapterId = widget.atChapterId ?? widget.entry?.atChapterId,
       _from = widget.entry?.data['fromId'] as String?,
       _to = widget.entry?.data['toId'] as String?;
   late String _status = widget.entry?.data['status'] as String? ?? 'active';
@@ -57,10 +57,10 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     try {
       final repo = ref.read(repositoryProvider),
           provenance = widget.entry?.provenance ?? {'type': 'manual'};
-      if (_rechecked && provenance['sceneId'] is String) {
-        final source = await repo.getScene(
+      if (_rechecked && provenance['chapterId'] is String) {
+        final source = await repo.getChapter(
           branchId: widget.branchId,
-          sceneId: provenance['sceneId'] as String,
+          chapterId: provenance['chapterId'] as String,
         );
         provenance['revisionId'] = source.revisionId;
         provenance['reviewedAt'] = DateTime.now().toUtc().toIso8601String();
@@ -73,7 +73,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
         name: _name.text,
         content: _content.text,
         certainty: _certainty,
-        atSceneId: _sceneId,
+        atChapterId: _chapterId,
         deleted: deleted,
         data: {
           ...?widget.entry?.data,
@@ -131,7 +131,9 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     final story = ref.watch(storyProvider(widget.branchId));
     final entries =
         ref
-            .watch(loreProvider((branchId: widget.branchId, sceneId: _sceneId)))
+            .watch(
+              loreProvider((branchId: widget.branchId, chapterId: _chapterId)),
+            )
             .value ??
         [];
     Widget endpoint(
@@ -231,20 +233,23 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
             AsyncView(
               value: story,
               builder: (story) => FSelect<String>.rich(
-                key: ValueKey('anchor:$_sceneId'),
-                label: const Text('从哪个场景开始成立'),
+                key: ValueKey('anchor:$_chapterId'),
+                label: const Text('从哪个章节开始成立'),
                 hint: '当前故事末尾',
                 control: FSelectControl<String>.lifted(
-                  value: story.scenes.any((s) => s.id == _sceneId)
-                      ? _sceneId
+                  value: story.chapters.any((s) => s.id == _chapterId)
+                      ? _chapterId
                       : null,
-                  onChange: (v) => setState(() => _sceneId = v),
+                  onChange: (v) => setState(() => _chapterId = v),
                 ),
                 format: (id) =>
-                    story.scenes.where((s) => s.id == id).firstOrNull?.title ??
+                    story.chapters
+                        .where((s) => s.id == id)
+                        .firstOrNull
+                        ?.title ??
                     '',
                 children: [
-                  for (final s in story.scenes)
+                  for (final s in story.chapters)
                     FSelectItem<String>(
                       title: Text(s.title, overflow: TextOverflow.ellipsis),
                       value: s.id,
@@ -315,7 +320,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(
-                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['sceneId'] == null ? '' : ' · 正文场景'}',
+                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['chapterId'] == null ? '' : ' · 正文章节'}',
                 ),
               ),
             const SizedBox(height: 24),

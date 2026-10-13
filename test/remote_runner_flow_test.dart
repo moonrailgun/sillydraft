@@ -131,16 +131,11 @@ void main() {
       final novel = await repo.createNovel(title: '恢复远程结果');
       final chapter = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('作者原稿'),
       );
       final task = await services.writing.generate(
-        branchId: scene.branchId,
-        sceneId: scene.id,
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
         connection: remote(),
         brief: '续写',
       );
@@ -157,13 +152,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('审阅正文候选'), findsOneWidget);
       expect(
-        (await repo.listTasks(branchId: scene.branchId)).single.id,
+        (await repo.listTasks(branchId: chapter.branchId)).single.id,
         task.id,
       );
       expect(
-        (await repo.getScene(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+        (await repo.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
         )).content.text.trim(),
         '作者原稿',
       );

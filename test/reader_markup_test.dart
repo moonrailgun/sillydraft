@@ -208,13 +208,8 @@ void main() {
     addTearDown(services.close);
     final repo = services.repository;
     final novel = await repo.createNovel(title: '雾港来信');
-    final chapter = await repo.createChapter(
+    await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章',
-    );
-    await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '第一章',
       content: ManuscriptContent.plainText('她*回头*说：“走吧。”'),
     );

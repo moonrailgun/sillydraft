@@ -49,8 +49,8 @@ const _tools = [
 /// and picked from there, because it decides what every section shows.
 ///
 /// On a phone the sections take turns. A wide screen is laid out as
-/// tools | page | outline: the assistant, lore or images on the left, the
-/// scene being read always in the middle, and the outline on the right.
+/// outline | page | tools: the outline on the left, the chapter being read
+/// always in the middle, and the assistant, lore or images on the right.
 /// Either side folds away and stays as the author left it.
 class NovelWorkspace extends ConsumerStatefulWidget {
   const NovelWorkspace({
@@ -68,7 +68,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   String? _selected;
   late var _section = widget.initialSection;
 
-  /// The tool on the left of a wide screen: the assistant until another is
+  /// The tool on the right of a wide screen: the assistant until another is
   /// picked.
   late var _tool = widget.initialSection == WorkspaceSection.manuscript
       ? WorkspaceSection.agent
@@ -136,7 +136,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   Future<void> _push(Widget page) =>
       Navigator.push(context, MaterialPageRoute<void>(builder: (_) => page));
 
-  void _edit(Scene scene) => _push(EditorScreen(scene: scene));
+  void _edit(Chapter chapter) => _push(EditorScreen(chapter: chapter));
   Future<void> _addChapter(StorySnapshot story) async {
     final name = await askText(
       context,
@@ -145,29 +145,12 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
     );
     if (name == null || !mounted) return;
     try {
-      await ref
+      final chapter = await ref
           .read(repositoryProvider)
           .createChapter(branchId: story.branch.id, title: name);
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
-  Future<void> _addScene(StorySnapshot story, String? chapterId) async {
-    if (chapterId == null) return;
-    final name = await askText(context, title: '新增场景', initial: '新的场景');
-    if (name == null || !mounted) return;
-    try {
-      final scene = await ref
-          .read(repositoryProvider)
-          .createScene(
-            branchId: story.branch.id,
-            chapterId: chapterId,
-            title: name,
-          );
       if (mounted) {
-        setState(() => _selected = scene.id);
-        _edit(scene);
+        setState(() => _selected = chapter.id);
+        _edit(chapter);
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -186,8 +169,8 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   Widget _buildStory(StorySnapshot story) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final selected =
-        story.scenes.where((s) => s.id == _selected).firstOrNull ??
-        story.scenes.firstOrNull;
+        story.chapters.where((s) => s.id == _selected).firstOrNull ??
+        story.chapters.firstOrNull;
     final pending =
         ref.watch(pendingReviewCountProvider(story.branch.id)).value ?? 0;
     final destinations = <NavDestination>[
@@ -214,7 +197,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       WorkspaceSection.agent => AgentPanel(
         key: ValueKey('agent:$branchKey'),
         branchId: branchKey,
-        focusSceneId: wide ? selected?.id : null,
+        focusChapterId: wide ? selected?.id : null,
       ),
       WorkspaceSection.gallery => IllustrationGallery(
         key: ValueKey('gallery:$branchKey'),
@@ -307,8 +290,8 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               HeaderIconAction(
                 key: const Key('workspace-outline-toggle'),
                 icon: open.outline
-                    ? FLucideIcons.panelRightClose
-                    : FLucideIcons.panelRightOpen,
+                    ? FLucideIcons.panelLeftClose
+                    : FLucideIcons.panelLeftOpen,
                 tooltip: open.outline ? '收起目录' : '显示目录',
                 onPress: () => _panes(outline: !open.outline),
               ),
@@ -424,22 +407,22 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
 
   /// The page of a wide screen: the reader itself, with every reading
   /// feature, kept in step with the outline on both sides.
-  Widget _page(StorySnapshot story, Scene? selected) => selected == null
-      ? const Center(child: Text('选择一个场景'))
+  Widget _page(StorySnapshot story, Chapter? selected) => selected == null
+      ? const Center(child: Text('选择一个章节'))
       : ReaderScreen(
           key: ValueKey('reader:${story.branch.id}'),
           branchId: story.branch.id,
           embedded: true,
-          sceneId: _selected,
-          onSceneChanged: (scene) {
-            if (_selected != scene.id) setState(() => _selected = scene.id);
+          chapterId: _selected,
+          onChapterChanged: (chapter) {
+            if (_selected != chapter.id) setState(() => _selected = chapter.id);
           },
           onEdit: _edit,
         );
 
-  /// The table of contents. On wide screens picking a scene shows it on the
+  /// The table of contents. On wide screens picking a chapter shows it on the
   /// page beside it.
-  Widget _outline(StorySnapshot story, Scene? selected, bool wide) {
+  Widget _outline(StorySnapshot story, Chapter? selected, bool wide) {
     final theme = context.theme;
     final muted = theme.typography.body.xs.copyWith(
       color: theme.colors.mutedForeground,
@@ -448,11 +431,6 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         ref.watch(settingProvider('goal/${story.novel.id}')).value?['words']
             as int? ??
         0;
-    // Resume where the author most likely left off: the scene they picked,
-    // else the end of the story.
-    final resume =
-        story.scenes.where((s) => s.id == _selected).firstOrNull ??
-        story.scenes.lastOrNull;
     final outline = ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -490,53 +468,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               ),
             ),
           ),
-        if (resume != null) ...[
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              FButton(
-                key: const Key('resume-writing'),
-                mainAxisSize: MainAxisSize.min,
-                onPress: () => _edit(resume),
-                prefix: const Icon(FLucideIcons.squarePen),
-                child: Flexible(
-                  child: Text(
-                    '继续写作 · ${resume.title.isEmpty ? '未命名场景' : resume.title}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              FButton(
-                variant: FButtonVariant.outline,
-                mainAxisSize: MainAxisSize.min,
-                onPress: () => _go(WorkspaceSection.agent),
-                prefix: const Icon(FLucideIcons.sparkles),
-                child: const Text('问助手'),
-              ),
-            ],
-          ),
-        ],
         const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '正文目录',
-                style: theme.typography.body.md.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colors.foreground,
-                ),
-              ),
-            ),
-            IconAction(
-              icon: FLucideIcons.listPlus,
-              tooltip: '新增章节',
-              onPress: () => _addChapter(story),
-            ),
-          ],
+        Text(
+          '正文目录',
+          style: theme.typography.body.md.copyWith(
+            fontWeight: FontWeight.w600,
+            color: theme.colors.foreground,
+          ),
         ),
         if (story.chapters.isEmpty)
           const Padding(
@@ -544,68 +482,34 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             child: Text('先创建一个章节，开始你的故事。'),
           ),
         for (final chapter in story.chapters)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: FCard(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    FItem(
-                      title: Text(
-                        chapter.title,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      suffix: MenuAction(
-                        tooltip: '章节操作',
-                        entries: [
-                          menuEntry(
-                            '新增场景',
-                            () => _addScene(story, chapter.id),
-                            icon: FLucideIcons.filePlus,
-                          ),
-                          menuEntry(
-                            '重命名章节',
-                            () => _renameChapter(story, chapter),
-                            icon: FLucideIcons.pencil,
-                          ),
-                        ],
-                      ),
-                    ),
-                    for (final scene in story.scenesInChapter(chapter.id))
-                      FItem(
-                        selected: wide && selected?.id == scene.id,
-                        prefix: const Icon(FLucideIcons.fileText),
-                        title: Text(
-                          scene.title.isEmpty ? '未命名场景' : scene.title,
-                        ),
-                        subtitle: Text(
-                          '${countCharacters(scene.content.text)} 字',
-                        ),
-                        suffix: IconAction(
-                          icon: FLucideIcons.squarePen,
-                          tooltip: '编辑正文',
-                          onPress: () => _edit(scene),
-                        ),
-                        onPress: () {
-                          if (wide) {
-                            setState(() => _selected = scene.id);
-                          } else {
-                            _push(
-                              ReaderScreen(
-                                branchId: story.branch.id,
-                                sceneId: scene.id,
-                                onEdit: _edit,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                  ],
+          FItem(
+            selected: wide && selected?.id == chapter.id,
+            prefix: const Icon(FLucideIcons.fileText),
+            title: Text(chapter.title.isEmpty ? '未命名章节' : chapter.title),
+            subtitle: Text('${countCharacters(chapter.content.text)} 字'),
+            suffix: MenuAction(
+              tooltip: '章节操作',
+              entries: [
+                menuEntry(
+                  '重命名章节',
+                  () => _renameChapter(story, chapter),
+                  icon: FLucideIcons.pencil,
                 ),
-              ),
+              ],
             ),
+            onPress: () {
+              if (wide) {
+                setState(() => _selected = chapter.id);
+              } else {
+                _push(
+                  ReaderScreen(
+                    branchId: story.branch.id,
+                    chapterId: chapter.id,
+                    onEdit: _edit,
+                  ),
+                );
+              }
+            },
           ),
         const SizedBox(height: 90),
       ],
@@ -621,13 +525,8 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           child: SafeArea(
             child: FloatingAction(
               icon: FLucideIcons.plus,
-              label: story.chapters.isEmpty ? '新增章节' : '新增场景',
-              onPress: () => story.chapters.isEmpty
-                  ? _addChapter(story)
-                  : _addScene(
-                      story,
-                      selected?.chapterId ?? story.chapters.last.id,
-                    ),
+              label: '新增章节',
+              onPress: () => _addChapter(story),
             ),
           ),
         ),

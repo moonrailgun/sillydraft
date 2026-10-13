@@ -18,17 +18,12 @@ void main() {
       final novel = await repo.createNovel(title: '候选测试');
       final chapter = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('原来的正文'),
       );
       final proposal = await repo.createProposal(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
-        baseRevisionId: scene.revisionId,
+        chapterId: chapter.id,
+        baseRevisionId: chapter.revisionId,
         content: ManuscriptContent.plainText('候选的新正文'),
       );
       Widget app() => ProviderScope(
@@ -50,17 +45,17 @@ void main() {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
       expect(
-        (await repo.getScene(
+        (await repo.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text.trim(),
         '原来的正文',
       );
       expect(find.text('采纳到正文'), findsOneWidget);
-      await repo.saveScene(
+      await repo.saveChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
-        expectedRevisionId: scene.revisionId,
+        chapterId: chapter.id,
+        expectedRevisionId: chapter.revisionId,
         content: ManuscriptContent.plainText('作者刚刚修改的正文'),
       );
       await tester.pumpAndSettle();
@@ -76,9 +71,9 @@ void main() {
         ProposalStatus.rejected,
       );
       expect(
-        (await repo.getScene(
+        (await repo.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text.trim(),
         '作者刚刚修改的正文',
       );

@@ -14,3 +14,12 @@ Finder findAction(Pattern label, {bool skipOffstage = true}) =>
       description: 'control labelled "$label"',
       skipOffstage: skipOffstage,
     );
+
+/// Opens [chapter] from the workspace outline in the editor, by way of the
+/// reader's 编辑本章.
+Future<void> editChapter(WidgetTester tester, String chapter) async {
+  await tester.tap(find.widgetWithText(FItem, chapter).first);
+  await tester.pumpAndSettle();
+  await tester.tap(findAction('编辑本章'));
+  await tester.pumpAndSettle();
+}

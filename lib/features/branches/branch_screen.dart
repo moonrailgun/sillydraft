@@ -26,7 +26,7 @@ class BranchScreen extends ConsumerStatefulWidget {
 }
 
 class _BranchState extends ConsumerState<BranchScreen> {
-  String? _source, _scene;
+  String? _source, _chapter;
   bool _endings = false, _busy = false;
   int _count = 3;
   Future<void> _fork(String source) async {
@@ -37,13 +37,13 @@ class _BranchState extends ConsumerState<BranchScreen> {
       final branch = await repo.forkBranch(
         branchId: source,
         name: name,
-        atSceneId: _scene,
+        atChapterId: _chapter,
       );
       await repo.setActiveBranch(branch.id);
       if (mounted) {
         setState(() {
           _source = branch.id;
-          _scene = null;
+          _chapter = null;
         });
       }
     } catch (e) {
@@ -245,7 +245,7 @@ class _BranchState extends ConsumerState<BranchScreen> {
                       value: source,
                       onChange: (v) => setState(() {
                         _source = v;
-                        _scene = null;
+                        _chapter = null;
                       }),
                     ),
                     format: (id) => byId[id]?.name ?? '',
@@ -261,20 +261,20 @@ class _BranchState extends ConsumerState<BranchScreen> {
                       // The empty id stands for the end of the story.
                       String title(String id) => id.isEmpty
                           ? '当前故事末尾'
-                          : switch (story.scenes
+                          : switch (story.chapters
                                 .where((s) => s.id == id)
                                 .firstOrNull) {
                               null => '',
-                              final s when s.title.isEmpty => '未命名场景',
+                              final s when s.title.isEmpty => '未命名章节',
                               final s => s.title,
                             };
                       return FSelect<String>.rich(
-                        key: ValueKey('cutoff:$source:$_scene'),
+                        key: ValueKey('cutoff:$source:$_chapter'),
                         label: const Text('分叉位置'),
                         control: FSelectControl<String>.lifted(
-                          value: _scene ?? '',
+                          value: _chapter ?? '',
                           onChange: (v) => setState(
-                            () => _scene = v == null || v.isEmpty ? null : v,
+                            () => _chapter = v == null || v.isEmpty ? null : v,
                           ),
                         ),
                         format: title,
@@ -283,7 +283,7 @@ class _BranchState extends ConsumerState<BranchScreen> {
                             title: Text(title('')),
                             value: '',
                           ),
-                          for (final s in story.scenes)
+                          for (final s in story.chapters)
                             FSelectItem<String>(
                               title: Text(
                                 title(s.id),

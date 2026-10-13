@@ -17,14 +17,14 @@ import '../agent/writing_request_screen.dart';
 import '../agent/task_screen.dart';
 
 class EditorScreen extends ConsumerStatefulWidget {
-  const EditorScreen({super.key, required this.scene});
-  final Scene scene;
+  const EditorScreen({super.key, required this.chapter});
+  final Chapter chapter;
   @override
   ConsumerState<EditorScreen> createState() => _EditorState();
 }
 
 class _EditorState extends ConsumerState<EditorScreen> {
-  late Scene _scene;
+  late Chapter _chapter;
   late QuillController _controller;
   final _focus = FocusNode(), _scroll = ScrollController();
   final _editorKey = GlobalKey<EditorState>();
@@ -43,9 +43,9 @@ class _EditorState extends ConsumerState<EditorScreen> {
   @override
   void initState() {
     super.initState();
-    _scene = widget.scene;
+    _chapter = widget.chapter;
     _controller = QuillController(
-      document: Document.fromJson(_scene.content.delta),
+      document: Document.fromJson(_chapter.content.delta),
       selection: const TextSelection.collapsed(offset: 0),
     );
     _saved = _content.encoded;
@@ -90,13 +90,13 @@ class _EditorState extends ConsumerState<EditorScreen> {
       final content = _content;
       if (mounted) setState(() => _error = null);
       try {
-        final saved = await _services.repository.saveScene(
-          branchId: _scene.branchId,
-          sceneId: _scene.id,
-          expectedRevisionId: _scene.revisionId,
+        final saved = await _services.repository.saveChapter(
+          branchId: _chapter.branchId,
+          chapterId: _chapter.id,
+          expectedRevisionId: _chapter.revisionId,
           content: content,
         );
-        _scene = saved;
+        _chapter = saved;
         _saved = content.encoded;
       } catch (error) {
         if (mounted) setState(() => _error = error);
@@ -119,9 +119,9 @@ class _EditorState extends ConsumerState<EditorScreen> {
   Future<void> _saveProposal() async {
     try {
       await _services.repository.createProposal(
-        branchId: _scene.branchId,
-        sceneId: _scene.id,
-        baseRevisionId: _scene.revisionId,
+        branchId: _chapter.branchId,
+        chapterId: _chapter.id,
+        baseRevisionId: _chapter.revisionId,
         content: _content,
         summary: '保留发生冲突的本地编辑',
       );
@@ -137,8 +137,8 @@ class _EditorState extends ConsumerState<EditorScreen> {
     try {
       await _flush();
       final history = await _services.repository.listRevisions(
-        branchId: _scene.branchId,
-        sceneId: _scene.id,
+        branchId: _chapter.branchId,
+        chapterId: _chapter.id,
       );
       if (!mounted) return;
       await showAppSheet<void>(
@@ -168,7 +168,7 @@ class _EditorState extends ConsumerState<EditorScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                suffix: version.id == _scene.revisionId
+                suffix: version.id == _chapter.revisionId
                     ? FBadge(
                         variant: FBadgeVariant.secondary,
                         child: const Text('当前'),
@@ -181,13 +181,13 @@ class _EditorState extends ConsumerState<EditorScreen> {
                           try {
                             final restored = await _services.repository
                                 .restoreRevision(
-                                  branchId: _scene.branchId,
-                                  sceneId: _scene.id,
-                                  expectedRevisionId: _scene.revisionId,
+                                  branchId: _chapter.branchId,
+                                  chapterId: _chapter.id,
+                                  expectedRevisionId: _chapter.revisionId,
                                   revisionId: version.id,
                                 );
                             if (!mounted) return;
-                            _scene = restored;
+                            _chapter = restored;
                             _controller.document = Document.fromJson(
                               restored.content.delta,
                             );
@@ -216,13 +216,13 @@ class _EditorState extends ConsumerState<EditorScreen> {
     try {
       await _flush();
       if (!mounted) return;
-      final end = selection.end.clamp(0, _scene.content.text.length - 1);
+      final end = selection.end.clamp(0, _chapter.content.text.length - 1);
       final start = selection.start.clamp(0, end);
       final task = await Navigator.push<GenerationTask>(
         context,
         MaterialPageRoute(
           builder: (_) => WritingRequestScreen(
-            scene: _scene,
+            chapter: _chapter,
             rangeStart: end > start ? start : null,
             rangeEnd: end > start ? end : null,
           ),
@@ -240,26 +240,26 @@ class _EditorState extends ConsumerState<EditorScreen> {
     }
   }
 
-  /// Picks up a candidate the author accepted elsewhere for this scene, as
+  /// Picks up a candidate the author accepted elsewhere for this chapter, as
   /// long as nothing typed here is still unsaved.
   Future<void> _reloadAccepted() async {
     if (_saving != null || _content.encoded != _saved) return;
-    final latest = await _services.repository.getScene(
-      branchId: _scene.branchId,
-      sceneId: _scene.id,
+    final latest = await _services.repository.getChapter(
+      branchId: _chapter.branchId,
+      chapterId: _chapter.id,
     );
     if (mounted &&
         _saving == null &&
-        latest.revisionId != _scene.revisionId &&
+        latest.revisionId != _chapter.revisionId &&
         _content.encoded == _saved) {
-      _scene = latest;
+      _chapter = latest;
       _controller.document = Document.fromJson(latest.content.delta);
       _saved = _content.encoded;
       setState(() {});
     }
   }
 
-  /// The assistant, reading the story up to this scene. Docked beside the
+  /// The assistant, reading the story up to this chapter. Docked beside the
   /// manuscript when there is room, otherwise a large floating window.
   Future<void> _askAssistant(bool dock) async {
     try {
@@ -272,8 +272,8 @@ class _EditorState extends ConsumerState<EditorScreen> {
       setState(() => _floating = true);
       await showAssistantSheet(
         context,
-        branchId: _scene.branchId,
-        sceneId: _scene.id,
+        branchId: _chapter.branchId,
+        chapterId: _chapter.id,
       );
       if (mounted) setState(() => _floating = false);
       await _reloadAccepted();
@@ -305,20 +305,20 @@ class _EditorState extends ConsumerState<EditorScreen> {
         context,
         MaterialPageRoute(
           builder: (_) =>
-              IllustrationGallery(branchId: _scene.branchId, picker: true),
+              IllustrationGallery(branchId: _chapter.branchId, picker: true),
         ),
       );
       if (asset == null) return;
-      final scene = await _services.repository.insertIllustration(
-        branchId: _scene.branchId,
-        sceneId: _scene.id,
-        expectedRevisionId: _scene.revisionId,
+      final chapter = await _services.repository.insertIllustration(
+        branchId: _chapter.branchId,
+        chapterId: _chapter.id,
+        expectedRevisionId: _chapter.revisionId,
         assetId: asset.id,
         offset: offset,
       );
       if (mounted) {
-        _scene = scene;
-        _controller.document = Document.fromJson(scene.content.delta);
+        _chapter = chapter;
+        _controller.document = Document.fromJson(chapter.content.delta);
         _saved = _content.encoded;
         setState(() {});
       }
@@ -355,7 +355,7 @@ class _EditorState extends ConsumerState<EditorScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _scene.title.isEmpty ? '正文编辑' : _scene.title,
+                  _chapter.title.isEmpty ? '正文编辑' : _chapter.title,
                   style: theme.typography.body.md.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.3,
@@ -435,9 +435,9 @@ class _EditorState extends ConsumerState<EditorScreen> {
                 SizedBox(
                   width: 420,
                   child: AgentPanel(
-                    key: ValueKey('agent:${_scene.id}'),
-                    branchId: _scene.branchId,
-                    sceneId: _scene.id,
+                    key: ValueKey('agent:${_chapter.id}'),
+                    branchId: _chapter.branchId,
+                    chapterId: _chapter.id,
                   ),
                 ),
               ],

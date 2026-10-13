@@ -3,7 +3,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 
-typedef LoreScope = ({String branchId, String? sceneId});
+typedef LoreScope = ({String branchId, String? chapterId});
 final loreProvider = FutureProvider.family<List<LoreEntry>, LoreScope>((
   ref,
   scope,
@@ -13,7 +13,7 @@ final loreProvider = FutureProvider.family<List<LoreEntry>, LoreScope>((
       .watch(repositoryProvider)
       .listLore(
         scope.branchId,
-        throughSceneId: scope.sceneId,
+        throughChapterId: scope.chapterId,
         includeDeleted: true,
       );
 });

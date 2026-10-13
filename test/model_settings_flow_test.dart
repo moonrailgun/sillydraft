@@ -80,18 +80,13 @@ void main() {
       final novel = await services.repository.createNovel(title: '模型切换');
       final chapter = await services.repository.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await services.repository.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('港口'),
       );
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: testHost(WritingRequestScreen(scene: scene)),
+          child: testHost(WritingRequestScreen(chapter: chapter)),
         ),
       );
       await tester.pumpAndSettle();
@@ -110,7 +105,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('开始生成候选'), findsNothing);
       expect(
-        await services.repository.listTasks(branchId: scene.branchId),
+        await services.repository.listTasks(branchId: chapter.branchId),
         isEmpty,
       );
     },

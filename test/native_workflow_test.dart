@@ -21,7 +21,7 @@ void main() {
     });
   }
 
-  Future<({AppServices services, Novel novel, Scene scene})> fixture(
+  Future<({AppServices services, Novel novel, Chapter chapter})> fixture(
     WidgetTester tester,
   ) async {
     final services = AppServices(
@@ -36,15 +36,10 @@ void main() {
     final novel = await services.repository.createNovel(title: '桌面工作区');
     final chapter = await services.repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章',
-    );
-    final scene = await services.repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '港口',
       content: ManuscriptContent.plainText('潮声'),
     );
-    return (services: services, novel: novel, scene: scene);
+    return (services: services, novel: novel, chapter: chapter);
   }
 
   Future<void> shortcut(
@@ -68,8 +63,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(f.novel.title));
       await tester.pumpAndSettle();
-      await tester.tap(findAction('编辑正文'));
-      await tester.pumpAndSettle();
+      await editChapter(tester, '港口');
       tester.testTextInput.updateEditingValue(
         const TextEditingValue(
           text: '新写的正文\n',
@@ -78,9 +72,9 @@ void main() {
       );
       await tester.pump();
       expect(
-        (await f.services.repository.getScene(
-          branchId: f.scene.branchId,
-          sceneId: f.scene.id,
+        (await f.services.repository.getChapter(
+          branchId: f.chapter.branchId,
+          chapterId: f.chapter.id,
         )).content.text.trim(),
         '潮声',
       );
@@ -89,9 +83,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 10));
       }
       expect(
-        (await f.services.repository.getScene(
-          branchId: f.scene.branchId,
-          sceneId: f.scene.id,
+        (await f.services.repository.getChapter(
+          branchId: f.chapter.branchId,
+          chapterId: f.chapter.id,
         )).content.text.trim(),
         '新写的正文',
       );
@@ -142,34 +136,39 @@ void main() {
     },
     variant: TargetPlatformVariant({TargetPlatform.windows}),
   );
-  testWidgets(
-    'desktop outline resizes and the chosen width survives reopening',
-    (tester) async {
-      desktop(tester);
-      final f = await fixture(tester);
-      await tester.pumpWidget(SillyDraftApp(services: f.services));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(f.novel.title));
-      await tester.pumpAndSettle();
-      final divider = find.byKey(const Key('workspace-divider')),
-          outline = find.byKey(const Key('workspace-outline'));
-      expect(divider, findsOneWidget);
-      final before = tester.getSize(outline).width;
-      // The outline is on the right: dragging its divider left widens it.
-      await tester.drag(divider, const Offset(-90, 0));
-      await tester.pumpAndSettle();
-      expect(tester.getSize(outline).width, greaterThan(before + 60));
-      final width = tester.getSize(outline).width;
-      await tester.tap(find.byType(AppBackButton));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(f.novel.title));
-      await tester.pumpAndSettle();
-      expect(tester.getSize(outline).width, closeTo(width, 1));
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    },
-    variant: TargetPlatformVariant({TargetPlatform.windows}),
-  );
+  for (final (pane, dividerKey, drag) in [
+    ('outline', 'workspace-divider', 90.0),
+    ('tools', 'workspace-tools-divider', -90.0),
+  ]) {
+    testWidgets(
+      'desktop $pane resizes and the chosen width survives reopening',
+      (tester) async {
+        desktop(tester);
+        final f = await fixture(tester);
+        await tester.pumpWidget(SillyDraftApp(services: f.services));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(f.novel.title));
+        await tester.pumpAndSettle();
+        final divider = find.byKey(Key(dividerKey)),
+            panel = find.byKey(Key('workspace-$pane'));
+        expect(divider, findsOneWidget);
+        final before = tester.getSize(panel).width;
+        // Each pane widens when its divider moves towards the page.
+        await tester.drag(divider, Offset(drag, 0));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(panel).width, greaterThan(before + 60));
+        final width = tester.getSize(panel).width;
+        await tester.tap(find.byType(AppBackButton));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(f.novel.title));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(panel).width, closeTo(width, 1));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+      variant: TargetPlatformVariant({TargetPlatform.windows}),
+    );
+  }
   testWidgets(
     'reader Ctrl F searches the open branch without opening global search',
     (tester) async {
@@ -198,7 +197,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('找到 1 个场景'), findsOneWidget);
+      expect(find.text('找到 1 个章节'), findsOneWidget);
       expect(find.byKey(const Key('global-search-field')), findsNothing);
     },
     variant: TargetPlatformVariant({TargetPlatform.windows}),

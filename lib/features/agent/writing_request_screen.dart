@@ -14,19 +14,19 @@ import '../settings/model_select.dart';
 class WritingRequestScreen extends ConsumerStatefulWidget {
   const WritingRequestScreen({
     super.key,
-    required this.scene,
+    required this.chapter,
     this.rangeStart,
     this.rangeEnd,
     this.initialBrief,
     this.rewrite = false,
   });
-  final Scene scene;
+  final Chapter chapter;
   final int? rangeStart, rangeEnd;
 
   /// Text to start the brief with, e.g. what an HTML interface sent.
   final String? initialBrief;
 
-  /// Start in whole-scene rewrite mode instead of appending.
+  /// Start in whole-chapter rewrite mode instead of appending.
   final bool rewrite;
   @override
   ConsumerState<WritingRequestScreen> createState() => _RequestState();
@@ -90,13 +90,13 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
       final services = ref.read(servicesProvider),
           profile = await WritingContext.load(
             ref.read(servicesProvider),
-            widget.scene.branchId,
+            widget.chapter.branchId,
           );
       final connection = _connection ?? await services.connectionFor('writing');
       if (connection == null) throw const FormatException('请先在设置里添加写作模型连接。');
       final draft = await services.writing.prepare(
-        branchId: widget.scene.branchId,
-        sceneId: widget.scene.id,
+        branchId: widget.chapter.branchId,
+        chapterId: widget.chapter.id,
         connection: connection,
         brief: _brief.text.trim().isEmpty
             ? '继续推进当前故事，保持人物动机与叙事视角一致。'
@@ -112,7 +112,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         selectedOrderId: profile.selectedOrderId,
         rangeStart: widget.rangeStart,
         rangeEnd: widget.rangeEnd,
-        expectedRevisionId: widget.scene.revisionId,
+        expectedRevisionId: widget.chapter.revisionId,
       );
       if (mounted) setState(() => _draft = draft);
     } catch (e) {
@@ -148,7 +148,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             Text(
-              widget.scene.title,
+              widget.chapter.title,
               style: theme.typography.body.xl.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -163,7 +163,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                 children: [
                   for (final (append, label) in const [
                     (true, '续写追加'),
-                    (false, '改写整幕'),
+                    (false, '改写整章'),
                   ])
                     ChoicePill(
                       label: label,
@@ -180,7 +180,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: SelectableText(
-                    widget.scene.content.text.substring(
+                    widget.chapter.content.text.substring(
                       widget.rangeStart!,
                       widget.rangeEnd!,
                     ),
@@ -228,7 +228,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                       context,
                       MaterialPageRoute<void>(
                         builder: (_) =>
-                            PresetScreen(branchId: widget.scene.branchId),
+                            PresetScreen(branchId: widget.chapter.branchId),
                       ),
                     );
                     if (mounted) setState(() => _draft = null);
@@ -245,7 +245,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                       context,
                       MaterialPageRoute<void>(
                         builder: (_) => WritingProfileScreen(
-                          branchId: widget.scene.branchId,
+                          branchId: widget.chapter.branchId,
                         ),
                       ),
                     );

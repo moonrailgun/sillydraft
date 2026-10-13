@@ -164,18 +164,18 @@ void main() {
 
     // The opening page's own button: switch to the second greeting.
     await controller.runJavaScript('document.getElementById("start").click()');
-    Future<String> sceneText() async =>
+    Future<String> chapterText() async =>
         (await repository.getStory(novel.activeBranchId))
-            .scenes
+            .chapters
             .first
             .content
             .text
             .trim();
-    var text = await sceneText();
+    var text = await chapterText();
     final deadline = DateTime.now().add(const Duration(seconds: 15));
     while (text != '[重塑仙缘]' && DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 200));
-      text = await sceneText();
+      text = await chapterText();
     }
     expect(text, '[重塑仙缘]');
     expect(
@@ -218,10 +218,10 @@ void main() {
     }
     expect(variables.local['stat_data'], contains('凡人'));
 
-    // `/sys … | /cut 0 | /trigger` opens a rewrite request for scene 0 with
+    // `/sys … | /cut 0 | /trigger` opens a rewrite request for chapter 0 with
     // the text as the brief; nothing generates by itself.
     await second.runJavaScript('document.getElementById("send").click()');
-    await waitFor(() => find.text('改写整幕').evaluate().isNotEmpty);
+    await waitFor(() => find.text('改写整章').evaluate().isNotEmpty);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('writing-brief')))
@@ -334,7 +334,7 @@ void main() {
     while (text != '[重塑仙缘]' && DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 200));
       text = (await repository.getStory(novel.activeBranchId))
-          .scenes
+          .chapters
           .first
           .content
           .text

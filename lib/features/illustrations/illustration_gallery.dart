@@ -291,7 +291,7 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
                       child: Text(
                         _archived
                             ? '暂无归档图片'
-                            : '导入图片，或为人物、场景和地图生成插画。\n图片保存在本地，随时可以插入正文。',
+                            : '导入图片，或为人物、章节和地图生成插画。\n图片保存在本地，随时可以插入正文。',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: context.theme.colors.mutedForeground,

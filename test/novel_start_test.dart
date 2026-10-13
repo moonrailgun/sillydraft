@@ -89,14 +89,7 @@ void main() {
     await tester.pumpAndSettle();
     final novel = (await services.repository.listNovels()).single;
     expect(novel.synopsis, contains('一封信改变了港口'));
-    // The workspace opens where the story stops.
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('resume-writing')),
-        matching: find.text('继续写作 · 第二章 灯塔'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('正文目录'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

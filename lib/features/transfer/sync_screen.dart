@@ -452,7 +452,7 @@ class SyncConflictComparison extends ConsumerWidget {
                     FItem(
                       title: Text(label),
                       subtitle: Text(
-                        '${story.branch.name} · ${story.scenes.length} 个场景',
+                        '${story.branch.name} · ${story.chapters.length} 个章节',
                       ),
                       suffix: IconAction(
                         icon: FLucideIcons.externalLink,

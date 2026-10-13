@@ -42,7 +42,7 @@ final _readerStoryProvider = FutureProvider.family<_ReaderBook, String>((
 ) async {
   final story = await ref.watch(storyProvider(branchId).future);
   final pages = await Future.wait(
-    story.scenes.map(
+    story.chapters.map(
       (s) => ref.watch(_revisionPresentationProvider(s.revisionId).future),
     ),
   );
@@ -53,33 +53,34 @@ final _readerStoryProvider = FutureProvider.family<_ReaderBook, String>((
 /// Characters a reader gets through per minute, for time-left estimates.
 const _charactersPerMinute = 500;
 
-String _sceneTitle(Scene scene) => scene.title.isEmpty ? '未命名场景' : scene.title;
+String _chapterTitle(Chapter chapter) =>
+    chapter.title.isEmpty ? '未命名章节' : chapter.title;
 
 /// The book reader: an immersive page with the controls tucked away. Tap the
 /// middle to show them; tap the sides (or use the keyboard) to turn pages.
 ///
 /// [embedded] makes it a pane inside the workspace: the bars stay, it does
-/// not grab keyboard focus, [sceneId] follows the outline selection and
-/// [onSceneChanged] reports page turns back, so the outline and the reader
+/// not grab keyboard focus, [chapterId] follows the outline selection and
+/// [onChapterChanged] reports page turns back, so the outline and the reader
 /// are one view of the manuscript.
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({
     super.key,
     required this.branchId,
     this.embedded = false,
-    this.sceneId,
-    this.onSceneChanged,
+    this.chapterId,
+    this.onChapterChanged,
     this.onEdit,
   });
   final String branchId;
   final bool embedded;
 
-  /// The scene to show; null opens where reading last stopped.
-  final String? sceneId;
-  final ValueChanged<Scene>? onSceneChanged;
+  /// The chapter to show; null opens where reading last stopped.
+  final String? chapterId;
+  final ValueChanged<Chapter>? onChapterChanged;
 
-  /// Shows an edit action for the scene being read.
-  final ValueChanged<Scene>? onEdit;
+  /// Shows an edit action for the chapter being read.
+  final ValueChanged<Chapter>? onEdit;
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderState();
 }
@@ -88,7 +89,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     with SingleTickerProviderStateMixin {
   final _scroll = ScrollController();
 
-  /// Bumped when the page's height changes, e.g. a new scene is laid out,
+  /// Bumped when the page's height changes, e.g. a new chapter is laid out,
   /// so progress is recomputed even though the offset did not move.
   final _metrics = ValueNotifier(0);
   final _textKey = GlobalKey(), _viewportKey = GlobalKey();
@@ -112,7 +113,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   bool _hasSelection = false;
   Duration? _lastTick;
 
-  /// Scene picked on the progress slider but not yet opened.
+  /// Chapter picked on the progress slider but not yet opened.
   double? _seeking;
 
   // Tap detection that does not compete with text selection gestures.
@@ -126,10 +127,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   /// Whether [_style] holds the stored setting yet, not the defaults.
   bool _styleLoaded = false;
 
-  /// A scene to turn to once the story includes it: a chapter just started.
+  /// A chapter to turn to once the story includes it: a chapter just started.
   String? _openWhenLoaded;
 
-  /// Relays events between the HTML blocks of the scene being read.
+  /// Relays events between the HTML blocks of the chapter being read.
   final _bus = HtmlEventBus();
 
   bool get _mobile =>
@@ -146,9 +147,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   @override
   void didUpdateWidget(ReaderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final target = widget.sceneId;
-    if (target == null || target == oldWidget.sceneId) return;
-    final index = _story?.scenes.indexWhere((s) => s.id == target) ?? -1;
+    final target = widget.chapterId;
+    if (target == null || target == oldWidget.chapterId) return;
+    final index = _story?.chapters.indexWhere((s) => s.id == target) ?? -1;
     if (index >= 0 && index != _index) _go(index);
   }
 
@@ -192,11 +193,11 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   Future<void> _saveProgress() async {
     final story = _story;
-    if (story == null || story.scenes.isEmpty || !_scroll.hasClients) return;
+    if (story == null || story.chapters.isEmpty || !_scroll.hasClients) return;
     final extent = _scroll.position.maxScrollExtent;
     await _services.repository.setReadingProgress(
       branchId: widget.branchId,
-      sceneId: story.scenes[_index.clamp(0, story.scenes.length - 1)].id,
+      chapterId: story.chapters[_index.clamp(0, story.chapters.length - 1)].id,
       fraction: extent <= 0 ? 0 : (_scroll.offset / extent).clamp(0, 1),
     );
   }
@@ -209,8 +210,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         .read(repositoryProvider)
         .getReadingProgress(widget.branchId);
     if (!mounted) return;
-    final index = story.scenes.indexWhere(
-      (s) => s.id == (widget.sceneId ?? progress?['sceneId']),
+    final index = story.chapters.indexWhere(
+      (s) => s.id == (widget.chapterId ?? progress?['chapterId']),
     );
     setState(() {
       _style = ReaderStyle.fromJson(prefs);
@@ -218,11 +219,11 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       if (index >= 0) _index = index;
     });
     // Only a remembered place counts as a choice; starting at the first
-    // scene for lack of one must not make the outline treat it as picked.
-    if (widget.onSceneChanged != null && index >= 0) {
-      final shown = story.scenes[index];
+    // chapter for lack of one must not make the outline treat it as picked.
+    if (widget.onChapterChanged != null && index >= 0) {
+      final shown = story.chapters[index];
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onSceneChanged!(shown);
+        if (mounted) widget.onChapterChanged!(shown);
       });
     }
     _awake(_style.keepAwake);
@@ -293,15 +294,15 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     return _document?.sourceOffset(offset) ?? offset;
   }
 
-  /// Opens scene [index], at its start, at [offset] in its text, or at its
+  /// Opens chapter [index], at its start, at [offset] in its text, or at its
   /// end when paging backwards into it.
   void _go(int index, {int offset = 0, bool atEnd = false}) {
-    if (_story == null || index < 0 || index >= _story!.scenes.length) return;
+    if (_story == null || index < 0 || index >= _story!.chapters.length) return;
     setState(() {
       _index = index;
       _seeking = null;
     });
-    widget.onSceneChanged?.call(_story!.scenes[index]);
+    widget.onChapterChanged?.call(_story!.chapters[index]);
     if (_scroll.hasClients) _scroll.jumpTo(0);
     if (offset > 0 || atEnd) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -317,7 +318,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
           TextPosition(
             offset:
                 _document?.displayOffset(offset) ??
-                offset.clamp(0, _story!.scenes[index].content.text.length),
+                offset.clamp(0, _story!.chapters[index].content.text.length),
           ),
           Rect.zero,
         );
@@ -334,14 +335,14 @@ class _ReaderState extends ConsumerState<ReaderScreen>
           .read(repositoryProvider)
           .setReadingProgress(
             branchId: widget.branchId,
-            sceneId: _story!.scenes[index].id,
+            chapterId: _story!.chapters[index].id,
             fraction: 0,
           ),
     );
   }
 
   /// One screen forwards or backwards, keeping a line and a half of overlap;
-  /// past either end of a scene, on into the next or previous one.
+  /// past either end of a chapter, on into the next or previous one.
   void _page(int direction) {
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
@@ -349,7 +350,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       position.viewportDimension * .5,
       position.viewportDimension - _style.fontSize * _style.lineHeight * 1.5,
     );
-    final last = (_story?.scenes.length ?? 1) - 1;
+    final last = (_story?.chapters.length ?? 1) - 1;
     if (direction > 0) {
       if (position.pixels >= position.maxScrollExtent - 1) {
         if (_index < last) _go(_index + 1);
@@ -396,7 +397,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     if (previous == null || !_scroll.hasClients) return;
     final position = _scroll.position;
     if (position.pixels >= position.maxScrollExtent - .5) {
-      final last = (_story?.scenes.length ?? 1) - 1;
+      final last = (_story?.chapters.length ?? 1) - 1;
       if (_index < last) {
         _go(_index + 1);
       } else {
@@ -420,7 +421,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   /// A quick tap that is not part of selecting text, scrolling or pressing a
   /// button shows or hides the bars.
-  void _pointerUp(PointerUpEvent event, double width) {
+  void _pointerUp(PointerUpEvent event) {
     final consumed = _consumed;
     _consumed = false;
     final down = _down, at = _downAt;
@@ -439,7 +440,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   /// Wraps controls inside the page so tapping them does not also toggle the bars.
-  Widget _noTurn(Widget child) =>
+  Widget _noTap(Widget child) =>
       Listener(onPointerDown: (_) => _consumed = true, child: child);
 
   Future<void> _preferences() async {
@@ -448,33 +449,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   Future<void> _contents(StorySnapshot story) async {
-    // Imported books have one scene per chapter with the same name; show
-    // those as one row.
-    final rows = <({String title, int? scene, bool header})>[];
-    for (final chapter in story.chapters) {
-      final scenes = story.scenesInChapter(chapter.id);
-      if (scenes.length == 1 &&
-          (scenes.single.title == chapter.title ||
-              scenes.single.title.isEmpty)) {
-        rows.add((
-          title: chapter.title,
-          scene: story.scenes.indexOf(scenes.single),
-          header: false,
-        ));
-        continue;
-      }
-      rows.add((title: chapter.title, scene: null, header: true));
-      for (final s in scenes) {
-        rows.add((
-          title: _sceneTitle(s),
-          scene: story.scenes.indexOf(s),
-          header: false,
-        ));
-      }
-    }
     const extent = 52.0;
-    final current = rows.indexWhere((r) => r.scene == _index);
-    final nested = rows.any((r) => r.header);
     await showAppSheet<void>(
       context: context,
       builder: (context) {
@@ -512,51 +487,28 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                   // Thousands of chapters: build only what is visible and
                   // open on the one being read.
                   controller: ScrollController(
-                    initialScrollOffset: math.max(0, (current - 3) * extent),
+                    initialScrollOffset: math.max(0, (_index - 3) * extent),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   itemExtent: extent,
-                  itemCount: rows.length,
+                  itemCount: story.chapters.length,
                   itemBuilder: (context, i) {
-                    final row = rows[i];
-                    if (row.header) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Align(
-                          alignment: AlignmentDirectional.centerStart,
-                          child: Text(
-                            row.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.typography.body.sm.copyWith(
-                              color: theme.colors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                    final here = i == _index;
+                    return Align(
+                      child: FItem(
+                        selected: here,
+                        title: Text(
+                          _chapterTitle(story.chapters[i]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      );
-                    }
-                    final here = row.scene == _index;
-                    return Padding(
-                      padding: EdgeInsetsDirectional.only(
-                        start: nested ? 16 : 0,
-                      ),
-                      child: Align(
-                        child: FItem(
-                          selected: here,
-                          title: Text(
-                            row.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          suffix: here
-                              ? const Icon(FLucideIcons.bookOpen, size: 18)
-                              : null,
-                          onPress: () {
-                            _go(row.scene!);
-                            Navigator.pop(context);
-                          },
-                        ),
+                        suffix: here
+                            ? const Icon(FLucideIcons.bookOpen, size: 18)
+                            : null,
+                        onPress: () {
+                          _go(i);
+                          Navigator.pop(context);
+                        },
                       ),
                     );
                   },
@@ -569,9 +521,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     );
   }
 
-  String _snippet(Scene? scene, int offset) {
-    if (scene == null) return '';
-    final text = scene.content.text;
+  String _snippet(Chapter? chapter, int offset) {
+    if (chapter == null) return '';
+    final text = chapter.content.text;
     final start = offset.clamp(0, text.length);
     return text
         .substring(start, math.min(text.length, start + 60))
@@ -585,7 +537,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         .read(repositoryProvider)
         .listBookmarks(story.branch.id);
     if (!mounted) return;
-    final scenes = {for (final s in story.scenes) s.id: s};
+    final chapters = {for (final s in story.chapters) s.id: s};
     await showAppSheet<void>(
       context: context,
       mainAxisMaxRatio: .7,
@@ -613,13 +565,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
                     onPress: () async {
-                      final scene = story.scenes[_index];
+                      final chapter = story.chapters[_index];
                       await ref
                           .read(repositoryProvider)
                           .addBookmark(
                             branchId: story.branch.id,
-                            sceneId: scene.id,
-                            label: _sceneTitle(scene),
+                            chapterId: chapter.id,
+                            label: _chapterTitle(chapter),
                             offset: _currentTextOffset(),
                           );
                       if (context.mounted) Navigator.pop(context);
@@ -643,13 +595,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                 prefix: const Icon(FLucideIcons.bookmark),
                 title: Text(mark.label),
                 subtitle: Text(
-                  '${_snippet(scenes[mark.sceneId], mark.offset)}\n${dateLabel(mark.createdAt)}',
+                  '${_snippet(chapters[mark.chapterId], mark.offset)}\n${dateLabel(mark.createdAt)}',
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
                 onPress: () {
                   _go(
-                    story.scenes.indexWhere((s) => s.id == mark.sceneId),
+                    story.chapters.indexWhere((s) => s.id == mark.chapterId),
                     offset: mark.offset,
                   );
                   Navigator.pop(context);
@@ -672,26 +624,26 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   Future<void> _search(StorySnapshot story) async {
     final query = await askText(context, title: '搜索正文', label: '关键词');
     if (query == null || query.isEmpty || !mounted) return;
-    final matches = story.scenes
+    final matches = story.chapters
         .where((s) => s.content.text.contains(query))
         .toList();
     await showAppSheet<void>(
       context: context,
-      title: '找到 ${matches.length} 个场景',
+      title: '找到 ${matches.length} 个章节',
       mainAxisMaxRatio: .7,
       builder: (context) => ListView.builder(
         shrinkWrap: true,
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         itemCount: matches.length,
         itemBuilder: (context, i) {
-          final scene = matches[i];
-          final text = scene.content.text, at = text.indexOf(query);
+          final chapter = matches[i];
+          final text = chapter.content.text, at = text.indexOf(query);
           final count = query.allMatches(text).length;
           return FItem(
             title: Text(
               count > 1
-                  ? '${_sceneTitle(scene)} · $count 处'
-                  : _sceneTitle(scene),
+                  ? '${_chapterTitle(chapter)} · $count 处'
+                  : _chapterTitle(chapter),
             ),
             subtitle: Text(
               text.substring(math.max(0, at - 20)).replaceAll('\n', ' '),
@@ -699,7 +651,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               overflow: TextOverflow.ellipsis,
             ),
             onPress: () {
-              _go(story.scenes.indexOf(scene), offset: at);
+              _go(story.chapters.indexOf(chapter), offset: at);
               Navigator.pop(context);
             },
           );
@@ -716,7 +668,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       _story = story;
       if (!_initialized) unawaited(_initialize(story));
       if (_openWhenLoaded case final id?) {
-        final at = story.scenes.indexWhere((s) => s.id == id);
+        final at = story.chapters.indexWhere((s) => s.id == id);
         if (at >= 0) {
           _openWhenLoaded = null;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -726,27 +678,27 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       }
       final theme = _pageTheme;
       final background = theme.background, foreground = theme.foreground;
-      if (story.scenes.isEmpty) {
+      if (story.chapters.isEmpty) {
         return PageScaffold(
           title: story.novel.title,
           body: const Center(child: Text('这部作品还没有正文。')),
         );
       }
-      _index = _index.clamp(0, story.scenes.length - 1);
-      final scene = story.scenes[_index];
+      _index = _index.clamp(0, story.chapters.length - 1);
+      final chapter = story.chapters[_index];
       final htmlEnabled =
           ref.watch(settingProvider('html')).value?['render'] != false;
       _document = ReaderDocument.build(
         _displayRules
             ? book.pages[_index]
-            : ManuscriptPresentation.identity(scene.content),
+            : ManuscriptPresentation.identity(chapter.content),
         fontSize: _style.fontSize,
         paragraphSpacing: _style.paragraphSpacing,
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,
         italicColor: _style.dimItalics ? theme.italic : null,
         html: htmlEnabled
-            ? (block, index) => _htmlBlock(book, scene, block, index)
+            ? (block, index) => _htmlBlock(book, chapter, block, index)
             : null,
         image: (uri) {
           if (uri == null || !uri.startsWith('asset:')) {
@@ -764,14 +716,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _measureBars();
       });
-      // Where each scene starts in the whole book, for overall progress.
-      final lengths = [for (final s in story.scenes) s.content.text.length];
+      // Where each chapter starts in the whole book, for overall progress.
+      final lengths = [for (final s in story.chapters) s.content.text.length];
       final before = lengths.take(_index).fold(0, (a, b) => a + b);
       final total = math.max(1, lengths.fold(0, (a, b) => a + b));
-      final chapter = story.chapters
-          .where((c) => c.id == scene.chapterId)
-          .firstOrNull;
-      final sameTitle = chapter == null || chapter.title == scene.title;
       // The controls follow the page: light chrome on a light page, dark on
       // a dark one, whatever the rest of the app uses.
       final ui = appTheme(theme.dark ? Brightness.dark : Brightness.light);
@@ -820,9 +768,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                             data: IconThemeData(color: foreground),
                             child: _reading(
                               story,
-                              scene,
                               chapter,
-                              sameTitle,
                               foreground,
                               before,
                               total,
@@ -839,7 +785,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                             ),
                           ),
                         ),
-                      _topBar(story, book, scene, background, ui),
+                      _topBar(story, book, chapter, background, ui),
                       _bottomBar(story, background, ui),
                       if (_ticker.isActive)
                         Positioned(
@@ -861,9 +807,14 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     },
   );
 
-  /// An HTML block of the scene: a web view the page's scripts drive
+  /// An HTML block of the chapter: a web view the page's scripts drive
   /// through the 酒馆助手-style bridge. Taps inside it never turn pages.
-  Widget _htmlBlock(_ReaderBook book, Scene scene, HtmlBlock block, int index) {
+  Widget _htmlBlock(
+    _ReaderBook book,
+    Chapter chapter,
+    HtmlBlock block,
+    int index,
+  ) {
     final width = (MediaQuery.sizeOf(context).width - _style.margin * 2).clamp(
       0.0,
       704.0,
@@ -884,9 +835,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
             blockIndex: index,
           )
         : null;
-    return _noTurn(
+    return _noTap(
       HtmlBlockView(
-        key: ValueKey('html:${scene.id}:$index:${block.source.hashCode}'),
+        key: ValueKey('html:${chapter.id}:$index:${block.source.hashCode}'),
         block: block,
         width: width,
         bridge: bridge,
@@ -897,22 +848,22 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   /// A page asked for text to be sent or generation to start (`/send`,
   /// `/trigger`, `/cut`). The author sees the request first; `/cut` of a
-  /// scene becomes a rewrite of that scene so the interface can replace
+  /// chapter becomes a rewrite of that chapter so the interface can replace
   /// itself with prose.
   Future<void> _onWritingRequest(TavernWritingRequest request) async {
     final story = _story;
-    if (story == null || story.scenes.isEmpty || !mounted) return;
+    if (story == null || story.chapters.isEmpty || !mounted) return;
     final target = request.rewriteMessageId;
-    final scene = target == null
-        ? story.scenes.last
-        : story.scenes[(target < 0 ? story.scenes.length + target : target)
-              .clamp(0, story.scenes.length - 1)];
+    final chapter = target == null
+        ? story.chapters.last
+        : story.chapters[(target < 0 ? story.chapters.length + target : target)
+              .clamp(0, story.chapters.length - 1)];
     _showChrome(true);
     final task = await Navigator.push<GenerationTask>(
       context,
       MaterialPageRoute(
         builder: (_) => WritingRequestScreen(
-          scene: scene,
+          chapter: chapter,
           initialBrief: request.brief,
           rewrite: target != null,
         ),
@@ -930,25 +881,23 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   /// progress and the time, like a printed book.
   Widget _reading(
     StorySnapshot story,
-    Scene scene,
-    Chapter? chapter,
-    bool sameTitle,
+    Chapter chapter,
     Color foreground,
     int before,
     int total,
   ) {
     final faint = foreground.withValues(alpha: .5);
     final small = TextStyle(color: faint, fontSize: 12);
-    final last = _index == story.scenes.length - 1;
-    // An empty scene being written shows the text as it arrives; while it
+    final last = _index == story.chapters.length - 1;
+    // An empty chapter being written shows the text as it arrives; while it
     // is written, or waits to be taken in, the story has no end to offer.
-    final draft = scene.content.text.trim().isNotEmpty
+    final draft = chapter.content.text.trim().isNotEmpty
         ? null
         : (ref.watch(tasksProvider(widget.branchId)).value ?? const [])
               .where(
                 (t) =>
                     [TaskKind.writing, TaskKind.rewrite].contains(t.kind) &&
-                    t.sceneId == scene.id,
+                    t.chapterId == chapter.id,
               )
               .firstOrNull;
     final writing =
@@ -969,7 +918,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               children: [
                 Expanded(
                   child: Text(
-                    sameTitle ? _sceneTitle(scene) : chapter!.title,
+                    _chapterTitle(chapter),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: small,
@@ -992,118 +941,102 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                   _metrics.value++;
                   return false;
                 },
-                child: LayoutBuilder(
-                  builder: (context, constraints) => Listener(
-                    key: _textAreaKey,
-                    // Blank page below a short scene turns pages too.
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: _pointerDown,
-                    onPointerUp: (e) => _pointerUp(e, constraints.maxWidth),
-                    child: SelectionArea(
-                      onSelectionChanged: (content) =>
-                          _hasSelection = content?.plainText.isNotEmpty == true,
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: 704 + _style.margin * 2,
+                child: Listener(
+                  key: _textAreaKey,
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _pointerDown,
+                  onPointerUp: _pointerUp,
+                  child: SelectionArea(
+                    onSelectionChanged: (content) =>
+                        _hasSelection = content?.plainText.isNotEmpty == true,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: 704 + _style.margin * 2,
+                        ),
+                        child: SingleChildScrollView(
+                          key: _viewportKey,
+                          controller: _scroll,
+                          padding: EdgeInsets.fromLTRB(
+                            _style.margin,
+                            24 + _barOverlap.top,
+                            _style.margin,
+                            48 + _barOverlap.bottom,
                           ),
-                          child: SingleChildScrollView(
-                            key: _viewportKey,
-                            controller: _scroll,
-                            padding: EdgeInsets.fromLTRB(
-                              _style.margin,
-                              24 + _barOverlap.top,
-                              _style.margin,
-                              48 + _barOverlap.bottom,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                if (!sameTitle) ...[
-                                  Text(
-                                    chapter!.title,
-                                    style: TextStyle(
-                                      color: foreground.withValues(alpha: .6),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                Text(
-                                  _sceneTitle(scene),
-                                  style: TextStyle(
-                                    fontSize: _style.fontSize + 6,
-                                    fontWeight: FontWeight.w600,
-                                    color: foreground,
-                                    fontFamily: _style.font.family,
-                                    fontFamilyFallback: _style.font.fallback,
-                                  ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                _chapterTitle(chapter),
+                                style: TextStyle(
+                                  fontSize: _style.fontSize + 6,
+                                  fontWeight: FontWeight.w600,
+                                  color: foreground,
+                                  fontFamily: _style.font.family,
+                                  fontFamilyFallback: _style.font.fallback,
                                 ),
-                                SizedBox(height: _style.fontSize * 1.5),
-                                if (draft != null)
-                                  ChapterDraft(
-                                    key: ValueKey('draft:${draft.id}'),
-                                    task: draft,
-                                    prose: (text) => _prose(text, foreground),
-                                    controls: _noTurn,
-                                  )
-                                else
-                                  Text.rich(
-                                    _document!.span,
-                                    key: _textKey,
-                                    textAlign: _style.justify
-                                        ? TextAlign.justify
-                                        : TextAlign.start,
-                                    style: _style.body(foreground),
-                                  ),
-                                const SizedBox(height: 36),
-                                if (!writing)
-                                  Text(
-                                    last ? '— 当前正文结束 —' : '— 本幕完 —',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: faint,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                const SizedBox(height: 16),
-                                if (!last)
-                                  Center(
-                                    child: _noTurn(
-                                      FButton(
-                                        key: const Key('reader-next-scene'),
-                                        variant: FButtonVariant.secondary,
-                                        mainAxisSize: MainAxisSize.min,
-                                        onPress: () => _go(_index + 1),
-                                        prefix: const Icon(
-                                          FLucideIcons.arrowDown,
-                                        ),
-                                        child: Flexible(
-                                          child: Text(
-                                            '下一幕：${_sceneTitle(story.scenes[_index + 1])}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                              ),
+                              SizedBox(height: _style.fontSize * 1.5),
+                              if (draft != null)
+                                ChapterDraft(
+                                  key: ValueKey('draft:${draft.id}'),
+                                  task: draft,
+                                  prose: (text) => _prose(text, foreground),
+                                  controls: _noTap,
+                                )
+                              else
+                                Text.rich(
+                                  _document!.span,
+                                  key: _textKey,
+                                  textAlign: _style.justify
+                                      ? TextAlign.justify
+                                      : TextAlign.start,
+                                  style: _style.body(foreground),
+                                ),
+                              const SizedBox(height: 36),
+                              if (!writing)
+                                Text(
+                                  last ? '— 当前正文结束 —' : '— 本章完 —',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: faint, fontSize: 13),
+                                ),
+                              const SizedBox(height: 16),
+                              if (!last)
+                                Center(
+                                  child: _noTap(
+                                    FButton(
+                                      key: const Key('reader-next-chapter'),
+                                      variant: FButtonVariant.secondary,
+                                      mainAxisSize: MainAxisSize.min,
+                                      onPress: () => _go(_index + 1),
+                                      prefix: const Icon(
+                                        FLucideIcons.arrowDown,
+                                      ),
+                                      child: Flexible(
+                                        child: Text(
+                                          '下一章：${_chapterTitle(story.chapters[_index + 1])}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
-                                  )
-                                else if (!writing) ...[
-                                  const SizedBox(height: 16),
-                                  _noTurn(
-                                    StoryDirections(
-                                      story: story,
-                                      onOpenScene: (id) =>
-                                          setState(() => _openWhenLoaded = id),
-                                      // Not before the author's own setting
-                                      // is known.
-                                      auto:
-                                          _styleLoaded && _style.autoDirections,
-                                    ),
                                   ),
-                                ],
+                                )
+                              else if (!writing) ...[
+                                const SizedBox(height: 16),
+                                _noTap(
+                                  StoryDirections(
+                                    story: story,
+                                    onOpenChapter: (id) =>
+                                        setState(() => _openWhenLoaded = id),
+                                    // Not before the author's own setting
+                                    // is known.
+                                    auto: _styleLoaded && _style.autoDirections,
+                                  ),
+                                ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -1119,9 +1052,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               listenable: Listenable.merge([_scroll, _metrics]),
               builder: (context, _) {
                 final fraction = _fraction();
-                final scene = story.scenes[_index];
+                final chapter = story.chapters[_index];
                 final overall =
-                    (before + fraction * scene.content.text.length) / total;
+                    (before + fraction * chapter.content.text.length) / total;
                 return Row(
                   children: [
                     Text(
@@ -1166,7 +1099,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   /// Measures [_barOverlap] against the area the text scrolls in, which a
-  /// short scene does not shrink, so the room is the same in every scene.
+  /// short chapter does not shrink, so the room is the same in every chapter.
   /// Sizes are taken from layout, which the bars' slide does not change, so
   /// the room stays put as they come and go.
   void _measureBars() {
@@ -1215,7 +1148,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   Widget _topBar(
     StorySnapshot story,
     _ReaderBook book,
-    Scene scene,
+    Chapter chapter,
     Color background,
     FThemeData ui,
   ) {
@@ -1239,7 +1172,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         ),
         child: FHeader.nested(
           title: Text(
-            widget.embedded ? _sceneTitle(scene) : story.novel.title,
+            widget.embedded ? _chapterTitle(chapter) : story.novel.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1247,10 +1180,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
           suffixes: [
             if (widget.onEdit case final edit?)
               HeaderIconAction(
-                key: const Key('reader-edit-scene'),
-                tooltip: '编辑本幕',
+                key: const Key('reader-edit-chapter'),
+                tooltip: '编辑本章',
                 icon: FLucideIcons.pencil,
-                onPress: () => edit(scene),
+                onPress: () => edit(chapter),
               ),
             HeaderIconAction(
               tooltip: '搜索正文',
@@ -1267,7 +1200,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                   () => _bookmarks(story),
                   icon: FLucideIcons.bookmark,
                 ),
-                if (book.pages[_index].content != scene.content)
+                if (book.pages[_index].content != chapter.content)
                   menuEntry(
                     _displayRules ? '显示原正文' : '应用显示正则',
                     () => setState(() => _displayRules = !_displayRules),
@@ -1284,12 +1217,12 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   Widget _bottomBar(StorySnapshot story, Color background, FThemeData ui) {
-    final count = story.scenes.length;
+    final count = story.chapters.length;
     final seeking = _seeking;
     final shown = seeking?.round() ?? _index;
-    final scene = story.scenes[_index];
+    final chapter = story.chapters[_index];
     final left =
-        ((1 - _fraction()) * scene.content.text.length / _charactersPerMinute)
+        ((1 - _fraction()) * chapter.content.text.length / _charactersPerMinute)
             .ceil();
     final night = _pageTheme.dark;
     return _slideIn(
@@ -1316,8 +1249,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               children: [
                 Text(
                   seeking != null
-                      ? '${shown + 1} / $count · ${_sceneTitle(story.scenes[shown])}'
-                      : '${_index + 1} / $count · 本幕约剩 ${math.max(left, 0)} 分钟',
+                      ? '${shown + 1} / $count · ${_chapterTitle(story.chapters[shown])}'
+                      : '${_index + 1} / $count · 本章约剩 ${math.max(left, 0)} 分钟',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ui.typography.body.xs.copyWith(
@@ -1327,7 +1260,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                 Row(
                   children: [
                     IconAction(
-                      tooltip: '上一幕',
+                      tooltip: '上一章',
                       icon: FLucideIcons.chevronLeft,
                       onPress: _index > 0 ? () => _go(_index - 1) : null,
                     ),
@@ -1345,14 +1278,14 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                 max: (count - 1).toDouble(),
                                 divisions: count - 1,
                                 semanticLabel: (v) =>
-                                    '第 ${v.round() + 1} 幕，共 $count 幕',
+                                    '第 ${v.round() + 1} 章，共 $count 章',
                                 onChanged: (v) => setState(() => _seeking = v),
                                 onChangeEnd: (v) => _go(v.round()),
                               ),
                             ),
                     ),
                     IconAction(
-                      tooltip: '下一幕',
+                      tooltip: '下一章',
                       icon: FLucideIcons.chevronRight,
                       onPress: _index < count - 1
                           ? () => _go(_index + 1)
@@ -1413,7 +1346,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         ),
       ),
     );
-    return _noTurn(
+    return _noTap(
       DecoratedBox(
         key: const Key('reader-autoscroll'),
         decoration: BoxDecoration(

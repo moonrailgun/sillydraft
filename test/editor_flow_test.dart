@@ -22,19 +22,13 @@ void main() {
         branchId: novel.activeBranchId,
         title: '第一章',
       );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
-        title: '第一幕',
-      );
       final services = AppServices(repository: repo, secrets: MemorySecrets());
       addTearDown(services.close);
       await tester.pumpWidget(SillyDraftApp(services: services));
       await tester.pumpAndSettle();
       await tester.tap(find.text('中文输入测试'));
       await tester.pumpAndSettle();
-      await tester.tap(findAction('编辑正文'));
-      await tester.pumpAndSettle();
+      await editChapter(tester, '第一章');
       expect(tester.testTextInput.hasAnyClients, isTrue);
       // An IME inserts at the current cursor; it does not remove Quill's existing
       // final paragraph separator when composing in an empty document.
@@ -60,11 +54,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(findAction('保存并返回'));
       await tester.pumpAndSettle();
-      final saved = await repo.getScene(
+      final saved = await repo.getChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
       );
       expect(saved.content.text.trim(), '雨落在渡口。');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       expect(find.text('6 字'), findsOneWidget);
       await tester.tap(find.byKey(const Key('open-reader')));
       await tester.pumpAndSettle();
@@ -78,7 +74,7 @@ void main() {
   testWidgets('the toolbar bolds the selection and keeps it selected', (
     tester,
   ) async {
-    final (repo, scene) = await _openEditor(
+    final (repo, chapter) = await _openEditor(
       tester,
       content: ManuscriptContent.plainText('雨落在渡口。'),
     );
@@ -109,9 +105,9 @@ void main() {
 
     await tester.tap(findAction('保存并返回'));
     await tester.pumpAndSettle();
-    final saved = await repo.getScene(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+    final saved = await repo.getChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
     );
     expect(saved.content.delta.first, {
       'insert': '雨落',
@@ -153,7 +149,7 @@ void main() {
   testWidgets('heading and find work on the manuscript from the toolbar', (
     tester,
   ) async {
-    final (repo, scene) = await _openEditor(
+    final (repo, chapter) = await _openEditor(
       tester,
       size: const Size(1280, 900),
       content: ManuscriptContent.plainText('雾起。\n雾散。'),
@@ -211,9 +207,9 @@ void main() {
 
     await tester.tap(findAction('保存并返回'));
     await tester.pumpAndSettle();
-    final saved = await repo.getScene(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+    final saved = await repo.getChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
     );
     expect(saved.content.text.trim(), '雾起。\n雾散。');
     expect(tester.takeException(), isNull);
@@ -223,8 +219,8 @@ void main() {
 QuillController _quill(WidgetTester tester) =>
     tester.widget<QuillEditor>(find.byType(QuillEditor)).controller;
 
-/// Opens the editor on the only scene of a new novel.
-Future<(StoryRepository, Scene)> _openEditor(
+/// Opens the editor on the only chapter of a new novel.
+Future<(StoryRepository, Chapter)> _openEditor(
   WidgetTester tester, {
   Size size = const Size(390, 844),
   ManuscriptContent? content,
@@ -238,11 +234,6 @@ Future<(StoryRepository, Scene)> _openEditor(
   final chapter = await repo.createChapter(
     branchId: novel.activeBranchId,
     title: '第一章',
-  );
-  final scene = await repo.createScene(
-    branchId: novel.activeBranchId,
-    chapterId: chapter.id,
-    title: '第一幕',
     content: content,
   );
   final services = AppServices(repository: repo, secrets: MemorySecrets());
@@ -255,7 +246,6 @@ Future<(StoryRepository, Scene)> _openEditor(
   await tester.pumpAndSettle();
   await tester.tap(find.text('工具栏测试'));
   await tester.pumpAndSettle();
-  await tester.tap(findAction('编辑正文'));
-  await tester.pumpAndSettle();
-  return (repo, scene);
+  await editChapter(tester, '第一章');
+  return (repo, chapter);
 }
