@@ -89,6 +89,8 @@ void main() {
     expect(find.text('已自定义 · 已自动保存'), findsOneWidget);
 
     // Prompt manager: add an entry.
+    await tester.tap(find.text('提示词管理'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('prompt-add')));
     await tester.tap(find.byKey(const Key('prompt-add')));
     await tester.pumpAndSettle();
