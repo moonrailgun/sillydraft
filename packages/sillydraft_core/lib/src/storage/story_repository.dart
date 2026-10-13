@@ -20,6 +20,7 @@ import '../st/world_book.dart';
 import '../mvu/mvu_service.dart';
 import 'database.dart';
 import '../transfer/project_snapshot.dart';
+import '../transfer/manuscript_import.dart';
 
 part 'manuscript_store.dart';
 part 'branch_store.dart';
@@ -33,6 +34,7 @@ part 'lore_store.dart';
 part 'lore_review_store.dart';
 part 'variable_store.dart';
 part 'card_start_store.dart';
+part 'manuscript_import_store.dart';
 part 'asset_store.dart';
 part 'project_store.dart';
 part 'display_store.dart';

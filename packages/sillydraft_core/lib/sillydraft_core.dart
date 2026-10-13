@@ -4,6 +4,7 @@ export 'src/transfer/publication_exporter.dart';
 export 'src/transfer/project_snapshot.dart';
 export 'src/transfer/project_backup.dart';
 export 'src/transfer/project_sync.dart';
+export 'src/transfer/manuscript_import.dart';
 
 export 'src/model/manuscript.dart';
 export 'src/model/manuscript_presentation.dart';
