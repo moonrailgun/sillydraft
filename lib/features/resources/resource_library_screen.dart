@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart' show MaterialPageRoute, SelectableText;
+import 'package:flutter/material.dart' show MaterialPageRoute;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -14,6 +14,7 @@ import '../../app/widgets.dart';
 import 'writing_profile.dart';
 import 'card_start_screen.dart';
 import 'preset_prompt_editor.dart';
+import 'resource_preview.dart';
 
 const resourceLabels = {
   ResourceKind.character: '角色卡',
@@ -90,10 +91,7 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
                 ),
               const Text('未知字段会保留；连接凭据不会自动启用。原文件加密保存。'),
               const SizedBox(height: 16),
-              SelectableText(
-                _previewJson(preview.raw),
-                style: DefaultTextStyle.of(context).style,
-              ),
+              JsonTreeView(preview.raw),
             ],
           ),
           actions: [
@@ -325,13 +323,7 @@ class ResourceDetailScreen extends ConsumerWidget {
         final preset = resource.kind == ResourceKind.preset
             ? PresetImporter().decode(resource.data)
             : null;
-        final json = SelectableText(
-          _previewJson(resource.data),
-          style: theme.typography.body.sm.copyWith(
-            fontFamily: 'monospace',
-            color: theme.colors.foreground,
-          ),
-        );
+        final json = JsonTreeView(resource.data);
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -741,11 +733,4 @@ class _PresetPreviewState extends State<_PresetPreview> {
 String _shortValue(Object? value) {
   final text = value is String ? value : jsonEncode(value);
   return text.length > 40 ? '${text.substring(0, 40)}…' : text;
-}
-
-String _previewJson(Map<String, dynamic> value) {
-  final text = _jsonFormat.convert(value);
-  return text.length > 24000
-      ? '${text.substring(0, 24000)}\n… 预览已截短，完整内容仍可编辑和导出。'
-      : text;
 }
