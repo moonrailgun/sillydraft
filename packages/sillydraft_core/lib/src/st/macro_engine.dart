@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 
 import 'import_types.dart';
+import 'variable_codec.dart';
 
 /// A task-local evaluator. Mutations are returned with the proposal, never
 /// committed by previewing or compiling a request.
@@ -96,6 +97,7 @@ final class MacroEngine {
           args.map((s) => _render(s, level + 1, null)).toList(),
           token.body,
           start,
+          prefix: name.startsWith('format_') ? _linePrefix(out) : '',
         );
       }
       out.write(transform == null ? value : transform(value));
@@ -122,13 +124,35 @@ final class MacroEngine {
     return negate ? !truth : truth;
   }
 
+  /// Text already written on the current output line, which 酒馆助手's
+  /// `format_*_variable` macros use to indent multi-line YAML.
+  static String _linePrefix(StringBuffer out) {
+    final text = out.toString();
+    return text.substring(text.lastIndexOf('\n') + 1);
+  }
+
+  static final _variableMacro = RegExp(
+    r'^(get|format)_(message|chat|character|preset|global)_variable(_quoted)?$',
+  );
+
   String _evaluate(
     String name,
     List<String> args,
     String original,
-    int position,
-  ) {
+    int position, {
+    String prefix = '',
+  }) {
     if (values.containsKey(name) && args.isEmpty) return values[name]!;
+    final variable = _variableMacro.firstMatch(name);
+    if (variable != null) {
+      return _variableMacroValue(
+        variable.group(1)!,
+        variable.group(2)!,
+        args.isEmpty ? '' : args.first,
+        quoted: variable.group(3) != null,
+        prefix: prefix,
+      );
+    }
     if (name.startsWith('//') || name == 'noop') return '';
     if (name.startsWith('.') && args.isEmpty) {
       return local[name.substring(1)] ?? '';
@@ -198,6 +222,132 @@ final class MacroEngine {
       }
     }
     return _unknown(original, '未支持的宏：$name');
+  }
+
+  /// 酒馆助手's `{{get_X_variable::path}}` and `{{format_X_variable::path}}`
+  /// macro-likes, which MVU cards use to put their state into prompts.
+  /// `message` and `chat` read this task's local variables, `global` the
+  /// global ones; character and preset variables are not kept here. Keys
+  /// starting with `$` are omitted, strings pass through, anything else is
+  /// JSON (`get`) or YAML indented to the line (`format`).
+  String _variableMacroValue(
+    String kind,
+    String type,
+    String path, {
+    required bool quoted,
+    required String prefix,
+  }) {
+    final store = switch (type) {
+      'global' => decodeVariables(global),
+      'message' || 'chat' => decodeVariables(local),
+      _ => <String, dynamic>{},
+    };
+    final value = _withoutDollarKeys(_lookup(store, _htmlUnescape(path)));
+    if (kind == 'get') {
+      return value is String ? value : jsonEncode(value);
+    }
+    final text = value is String
+        ? value
+        : _yaml(value, 0, quoted: quoted).trimRight();
+    return text.replaceAll('\n', '\n${' ' * prefix.length}');
+  }
+
+  static Object? _lookup(Object? root, String path) {
+    if (path.trim().isEmpty) return root;
+    Object? current = root;
+    for (final part
+        in path.split(RegExp(r'\.|\[|\]\.?')).where((p) => p.isNotEmpty)) {
+      final key = part.replaceAll(RegExp(r'''^["']|["']\$'''), '');
+      if (current is Map) {
+        current = current[key];
+      } else if (current is List) {
+        final index = int.tryParse(key);
+        current = index != null && index >= 0 && index < current.length
+            ? current[index]
+            : null;
+      } else {
+        return null;
+      }
+    }
+    return current;
+  }
+
+  static Object? _withoutDollarKeys(Object? value) {
+    if (value is Map) {
+      return {
+        for (final entry in value.entries)
+          if (!entry.key.toString().startsWith(r'$'))
+            entry.key.toString(): _withoutDollarKeys(entry.value),
+      };
+    }
+    if (value is List) return value.map(_withoutDollarKeys).toList();
+    return value;
+  }
+
+  static String _htmlUnescape(String text) => text
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&');
+
+  static final _plainUnsafe = RegExp(
+    r'''^[\s\-?:,\[\]{}#&*!|>'"%@`]|: |\s#|[:\s]$|^(true|false|null|~|yes|no|on|off)$|^[-+]?(\d[\d_]*\.?\d*([eE][-+]?\d+)?|\.\d+|0x[0-9a-fA-F]+)$''',
+    caseSensitive: false,
+  );
+
+  /// A compact YAML dump in the style of the `yaml` npm package with
+  /// literal block quotes, enough for prompts to read.
+  static String _yaml(Object? value, int indent, {required bool quoted}) {
+    final pad = ' ' * indent;
+    String scalar(Object? v) {
+      if (v == null) return 'null';
+      if (v is bool || v is num) return v.toString();
+      if (v is Map) return '{}';
+      if (v is List) return '[]';
+      final text = v.toString();
+      if (text.contains('\n')) {
+        final lines = text.trimRight().split('\n');
+        return '|-\n${lines.map((l) => '$pad  $l').join('\n')}';
+      }
+      if (quoted || text.isEmpty || _plainUnsafe.hasMatch(text)) {
+        return jsonEncode(text);
+      }
+      return text;
+    }
+
+    // The quoted variant quotes strings but keeps keys plain.
+    String key(String k) =>
+        k.isEmpty || _plainUnsafe.hasMatch(k) ? jsonEncode(k) : k;
+    if (value is Map) {
+      if (value.isEmpty) return '{}';
+      final lines = <String>[];
+      for (final entry in value.entries) {
+        final v = entry.value;
+        if ((v is Map && v.isNotEmpty) || (v is List && v.isNotEmpty)) {
+          lines.add('$pad${key(entry.key.toString())}:');
+          lines.add(_yaml(v, indent + 2, quoted: quoted));
+        } else {
+          lines.add('$pad${key(entry.key.toString())}: ${scalar(v)}');
+        }
+      }
+      return lines.join('\n');
+    }
+    if (value is List) {
+      if (value.isEmpty) return '[]';
+      final lines = <String>[];
+      for (final item in value) {
+        if ((item is Map && item.isNotEmpty) ||
+            (item is List && item.isNotEmpty)) {
+          final nested = _yaml(item, indent + 2, quoted: quoted);
+          lines.add('$pad- ${nested.trimLeft()}');
+        } else {
+          lines.add('$pad- ${scalar(item)}');
+        }
+      }
+      return lines.join('\n');
+    }
+    return '$pad${scalar(value)}';
   }
 
   String _unknown(String raw, String message) {
