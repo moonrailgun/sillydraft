@@ -42,4 +42,7 @@ export 'src/st/resource_library.dart';
 export 'src/model/display_context.dart';
 export 'src/mvu/mvu_path.dart';
 export 'src/mvu/mvu_value.dart';
+export 'src/mvu/mvu_schema.dart';
 export 'src/mvu/mvu_commands.dart';
+export 'src/mvu/mvu_data.dart';
+export 'src/mvu/mvu_init.dart';

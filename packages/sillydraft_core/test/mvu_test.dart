@@ -1,6 +1,37 @@
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
+const _initVar = '''
+世界:
+  当前时间: 未知
+  遭遇冷却: 20
+  动向: {}
+主角:
+  姓名: 未知
+  生命: 100
+  好感度: [33, "好感度说明，范围 0-100"]
+  储物袋:
+    - \$__META_EXTENSIBLE__\$
+    - 灵石
+人物:
+  \$meta:
+    extensible: true
+    template:
+      好感: 0
+      关系阶段: 陌生
+绝色榜: {}
+\$器灵台词: []
+''';
+
+MvuData _data() {
+  final data = MvuData();
+  MvuInit.load(data, [
+    const MvuInitEntry(book: 'b', comment: '[initvar]', content: _initVar),
+  ]);
+  MvuInit.finalizeSchema(data);
+  return data;
+}
+
 void main() {
   group('value parsing', () {
     test('parameters split on top-level commas only', () {
@@ -124,6 +155,143 @@ _.remove('物品', '剑');
       expect(commands[2].args, ['["人物"]', '"新人"', '{"好感":1}']);
       expect(commands[3].args, ['["\$器灵台词"]', '"-"', '"哟"']);
       expect(commands.every((c) => c.fromJsonPatch), isTrue);
+    });
+  });
+
+  group('updater', () {
+    test('set honours value-with-description pairs and number coercion', () {
+      final data = _data();
+      final result = MvuUpdater.apply('''
+_.set('主角.好感度', 33, 35);//相谈甚欢
+_.set('主角.生命', "80");
+_.set('主角.不存在', 1);
+_.set('世界.当前时间', '元会历·3726年');
+''', data);
+      expect(result.modified, isTrue);
+      expect(data.statData['主角']['好感度'], [35, '好感度说明，范围 0-100']);
+      expect(data.statData['主角']['生命'], 80);
+      expect(data.statData['世界']['当前时间'], '元会历·3726年');
+      expect(result.errors, hasLength(1));
+      expect(result.errors.single, contains('主角.不存在'));
+      expect(data.displayData['主角']['好感度'], '33->35 (相谈甚欢)');
+      expect(data.deltaData['主角']['生命'], '100->80 ');
+      expect(data.deltaData['主角'], isNot(contains('姓名')));
+      expect(data.displayData['主角']['姓名'], '未知');
+    });
+
+    test('insert respects extensible markers, templates and delete rules', () {
+      final data = _data();
+      expect(
+        ((((data.schema['properties']['主角'] as Map)['properties']
+                as Map)['储物袋'])
+            as Map)['extensible'],
+        isTrue,
+      );
+      expect(data.statData['主角']['储物袋'], ['灵石']);
+      final result = MvuUpdater.apply('''
+_.insert('主角.储物袋', '飞剑');
+_.insert('人物', '温月清', {"好感": 5});
+_.insert('世界.动向', '魔宗异动', {"阶段": "起"});
+_.remove('主角.储物袋', '灵石');
+_.delete('人物.温月清.关系阶段');
+''', data);
+      expect(data.statData['主角']['储物袋'], ['飞剑']);
+      expect(data.statData['人物']['温月清'], {'好感': 5, '关系阶段': '陌生'});
+      expect(data.statData['世界']['动向'], isEmpty);
+      expect(result.errors, hasLength(2));
+      expect(result.errors.first, contains('不可扩展'));
+      expect(result.errors.last, contains('必需'));
+      expect(
+        (((data.schema['properties']['人物'] as Map)['properties'] as Map)['温月清']
+            as Map)['type'],
+        'object',
+      );
+    });
+
+    test('add handles numbers and ISO dates; move relocates values', () {
+      final data = _data();
+      data.statData['时间'] = '2026-10-13T08:00:00.000Z';
+      MvuInit.finalizeSchema(data);
+      final result = MvuUpdater.apply('''
+_.add('主角.好感度', 2);
+_.add('世界.遭遇冷却', -1);//冷却
+_.add('时间', 60 * 60 * 1000);
+_.add('主角.姓名', 1);
+<JSONPatch>[{"op":"move","from":"/主角/姓名","path":"/主角/道号"}]</JSONPatch>
+''', data);
+      expect(data.statData['主角']['好感度'][0], 35);
+      expect(data.statData['世界']['遭遇冷却'], 19);
+      expect(data.statData['时间'], '2026-10-13T09:00:00.000Z');
+      expect(data.statData['主角'], isNot(contains('姓名')));
+      expect(data.statData['主角']['道号'], '未知');
+      expect(data.deltaData['世界']['遭遇冷却'], '20->19 (冷却)');
+      expect(result.errors.single, contains('不能做加法'));
+    });
+
+    test('records round-trip through stored string variables', () {
+      final data = _data();
+      final stored = data.toStored();
+      expect(MvuData.presentIn(stored), isTrue);
+      final back = MvuData.fromStored({...stored, 'mood': '平静'})!;
+      expect(back.statData, data.statData);
+      expect(back.schema, data.schema);
+      expect(MvuData.fromStored({'mood': '平静'}), isNull);
+    });
+  });
+
+  group('init var', () {
+    test('merges books in order, keeps existing keys, unwraps fences', () {
+      final data = MvuData(
+        statData: {
+          'existing': 'keep',
+          '悠纪': {'喵': '1'},
+        },
+      );
+      final errors = <String>[];
+      final loaded = MvuInit.load(data, [
+        const MvuInitEntry(
+          book: 'a',
+          comment: 'alpha [initvar]',
+          content: '{"悠纪":{"喵":"1","喵呜":"2"},"new_key":"new","list":[1,2]}',
+        ),
+        const MvuInitEntry(
+          book: 'a',
+          comment: '[INITVAR] block',
+          content:
+              '<initvar>\n```json\n{"block":"yes","list":[]}\n```\n</initvar>',
+        ),
+        const MvuInitEntry(
+          book: 'a',
+          comment: 'skip',
+          content: '{"ignored":1}',
+        ),
+        const MvuInitEntry(
+          book: 'b',
+          comment: '[initvar]',
+          content: 'bad: [unclosed',
+        ),
+      ], errors: errors);
+      expect(loaded, isTrue);
+      expect(data.statData, {
+        '悠纪': {'喵': '1'},
+        'existing': 'keep',
+        'new_key': 'new',
+        'list': <Object?>[],
+        'block': 'yes',
+      });
+      expect(data.initializedLorebooks.keys, ['a', 'b']);
+      expect(errors.single, contains('b'));
+      expect(MvuInit.load(data, const []), isFalse);
+    });
+
+    test('opening <initvar> blocks override the book', () {
+      expect(
+        MvuInit.openingOverride(
+          '文字<initvar>\n{"a": 1}\n</initvar>再来<initvar>b: 2</initvar>',
+        ),
+        {'a': 1, 'b': 2},
+      );
+      expect(MvuInit.openingOverride('没有'), isNull);
     });
   });
 }
