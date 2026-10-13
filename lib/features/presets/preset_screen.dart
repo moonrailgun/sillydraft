@@ -310,6 +310,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     final text = kind == PresetKind.textCompletion || kind == PresetKind.bundle;
     final assistant = _setting?[assistantUsesPresetKey] != false;
     final assistantCapable = chat || kind == PresetKind.promptPack;
+    final regex = DisplayContext.regexRulesOf(_draft?['extensions']);
     return PopScope(
       canPop: _pendingWrites == 0 && _saveError == null && !_busy,
       onPopInvokedWithResult: (didPop, _) async {
@@ -505,6 +506,40 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                         }),
                                       ),
                                     ),
+                                  if (regex.isNotEmpty)
+                                    FTabEntry(
+                                      label: const Text('预设正则'),
+                                      child: Builder(
+                                        builder: (_) => ListView(
+                                          key: const PageStorageKey(
+                                            'preset-regex',
+                                          ),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 32,
+                                          ),
+                                          children: [
+                                            Text(
+                                              '启用 ${regex.where((r) => r['disabled'] != true).length} / ${regex.length}',
+                                            ),
+                                            const SizedBox(height: 4),
+                                            const Text(
+                                              '开关自动保存到当前分支，后续生成使用新设置。已有生成章节仍使用生成时的规则。',
+                                            ),
+                                            const SizedBox(height: 8),
+                                            FTileGroup(
+                                              children: [
+                                                for (
+                                                  var i = 0;
+                                                  i < regex.length;
+                                                  i++
+                                                )
+                                                  _regexTile(regex[i], i),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   FTabEntry(
                                     label: const Text('兼容提示'),
                                     child: Builder(
@@ -558,6 +593,28 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
   void _setAssistant(bool value) {
     setState(() => _setting![assistantUsesPresetKey] = value);
     _persist();
+  }
+
+  FTile _regexTile(Map<String, dynamic> rule, int index) {
+    final rawName = rule['scriptName'];
+    final name = rawName is String && rawName.trim().isNotEmpty
+        ? rawName
+        : '正则 ${index + 1}';
+    final enabled = rule['disabled'] != true;
+    final stages = [
+      if (rule['markdownOnly'] == true) '正文显示',
+      if (rule['promptOnly'] == true) '模型提示词',
+      if (rule['markdownOnly'] != true && rule['promptOnly'] != true) '文本处理',
+    ];
+    // ST 1.19.0 (06bde939), extensions/regex/index.js: enabled = !disabled.
+    void toggle(bool value) => _changed(() => rule['disabled'] = !value);
+    return FTile(
+      key: Key('preset-regex-$index'),
+      title: _wrapped(name),
+      subtitle: _wrapped('${enabled ? '已启用' : '已停用'} · ${stages.join('、')}'),
+      suffix: FSwitch(semanticsLabel: name, value: enabled, onChange: toggle),
+      onPress: () => toggle(!enabled),
+    );
   }
 
   Widget _slider(_Sampler s) {

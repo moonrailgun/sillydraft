@@ -158,6 +158,148 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('preset regex toggles persist only in this branch', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final branch = novel.activeBranchId;
+    final data = {
+      ..._preset,
+      'extensions': {
+        'unknown': {'keep': true},
+        'regex_scripts': [
+          {
+            'id': 'status',
+            'scriptName': '顶部状态栏美化',
+            'disabled': true,
+            'markdownOnly': true,
+            'findRegex': r'/\[STATUS\](.*?)\[\/STATUS\]/gs',
+            'replaceString': '<b>\$1</b>',
+            'placement': [2],
+            'unknown': 'keep',
+          },
+          {
+            'id': 'prompt',
+            'promptOnly': true,
+            'findRegex': '/雾/g',
+            'replaceString': '雾气',
+            'placement': [1],
+          },
+        ],
+      },
+    };
+    final original = await services.library.import(
+      Uint8List.fromList(utf8.encode(jsonEncode(data))),
+      filename: 'fog.json',
+      kind: ResourceKind.preset,
+    );
+    await repo.setSetting('writing/$branch', {'presetId': original.id});
+    final other = await repo.forkBranch(branchId: branch, name: '另一条线');
+    // Prime the display cache before changing the profile.
+    expect((await repo.displayContext(branch)).rules.first['disabled'], true);
+
+    Widget panel() => ProviderScope(
+      overrides: [servicesProvider.overrideWithValue(services)],
+      child: testHost(PresetScreen(branchId: branch)),
+    );
+    final status = find.byKey(const Key('preset-regex-0'));
+    final prompt = find.byKey(const Key('preset-regex-1'));
+    bool enabled(Finder row) => tester
+        .widget<FSwitch>(
+          find.descendant(of: row, matching: find.byType(FSwitch)),
+        )
+        .value;
+
+    await tester.pumpWidget(panel());
+    await tester.pumpAndSettle();
+    expect(find.text('预设正则'), findsOneWidget);
+    await tester.tap(find.text('预设正则'));
+    await tester.pumpAndSettle();
+    expect(find.text('启用 1 / 2'), findsOneWidget);
+    expect(find.text('顶部状态栏美化'), findsOneWidget);
+    expect(find.text('正则 2'), findsOneWidget);
+    expect(enabled(status), isFalse);
+    expect(enabled(prompt), isTrue, reason: 'missing disabled defaults to on');
+    expect(find.textContaining('已有生成章节仍使用生成时的规则'), findsOneWidget);
+
+    await tester.ensureVisible(status);
+    await tester.tap(
+      find.descendant(of: status, matching: find.byType(FSwitch)),
+    );
+    await tester.pumpAndSettle();
+    expect(enabled(status), isTrue);
+    final expected = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+    DisplayContext.regexRulesOf(expected['extensions']).first['disabled'] =
+        false;
+    final setting = (await repo.getSetting('writing/$branch'))!;
+    expect(
+      (setting['presetOverrides'] as Map)[original.id],
+      expected,
+      reason:
+          'only the disabled flag changes; order and unknown fields survive',
+    );
+    expect((await repo.getResource(original.id)).data, data);
+    expect(await repo.getSetting('writing/${other.id}'), {
+      'presetId': original.id,
+    });
+    final writing = await WritingContext.load(services, branch);
+    expect(
+      writing.preset?.raw,
+      expected,
+      reason: 'subsequent generation uses it',
+    );
+    final shown = ManuscriptPresentation.fromRules(
+      ManuscriptContent.plainText('[STATUS]晴天[/STATUS]'),
+      rules: (await repo.displayContext(branch)).rules,
+      macros: MacroEngine(values: {}, clock: DateTime.utc(2026), seed: 0),
+    );
+    expect(shown.content.text.trim(), '<b>晴天</b>');
+
+    // Reopening keeps the saved state; the switch itself can turn it off.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(panel());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('预设正则'));
+    await tester.pumpAndSettle();
+    expect(enabled(status), isTrue);
+    await tester.ensureVisible(status);
+    await tester.tap(
+      find.descendant(of: status, matching: find.byType(FSwitch)),
+    );
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse);
+    expect(
+      (await repo.getSetting('writing/$branch'))!['presetOverrides'],
+      isNull,
+    );
+    await tester.tap(
+      find.descendant(of: status, matching: find.byType(FSwitch)),
+    );
+    await tester.pumpAndSettle();
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(const Key('preset-reset'))),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('preset-reset')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复').last);
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse);
+    expect((await repo.displayContext(branch)).rules.first['disabled'], true);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('preset edits autosave only to this branch and can be reset', (
     tester,
   ) async {
