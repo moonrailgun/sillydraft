@@ -27,7 +27,8 @@ final class HtmlBlock {
   });
 
   /// Range in the text this block replaces, including the trailing newline
-  /// of the last line when there is one.
+  /// of the last line when there is one. Text after a closing fence on the
+  /// same line is not part of the block.
   final int start, end;
 
   /// The HTML to render: the inside of the fence, or the raw run.
@@ -132,8 +133,11 @@ abstract final class HtmlBlocks {
       if (fence != null) {
         final marker = fence.group(1)!,
             language = fence.group(2)!.toLowerCase();
+        // As in showdown, a line that starts with the fence closes it; the
+        // rest of that line (`</think>` replaced by a page, then `<game>`)
+        // stays prose.
         final close = RegExp(
-          '^[ \\t]{0,3}${RegExp.escape(marker[0])}{${marker.length},}[ \\t]*\$',
+          '^[ \\t]{0,3}${RegExp.escape(marker[0])}{${marker.length},}',
         );
         var cursor = lineEnd + 1,
             contentEnd = text.length,
@@ -141,9 +145,15 @@ abstract final class HtmlBlocks {
         while (cursor <= text.length && cursor > 0) {
           var next = text.indexOf('\n', cursor);
           if (next < 0) next = text.length;
-          if (close.hasMatch(text.substring(cursor, next))) {
+          final closing = close.firstMatch(text.substring(cursor, next));
+          if (closing != null) {
             contentEnd = max(lineEnd + 1, cursor - 1);
-            blockEnd = next < text.length ? next + 1 : next;
+            final rest = cursor + closing.end;
+            blockEnd = text.substring(rest, next).trim().isNotEmpty
+                ? rest
+                : next < text.length
+                ? next + 1
+                : next;
             break;
           }
           if (next >= text.length) break;

@@ -47,6 +47,19 @@ void main() {
       },
     );
 
+    test('a closing fence followed by text closes, as in showdown', () {
+      // A regex wraps `<think>` in a page; the reply's `<game>` follows it
+      // on the same line. Unclosed, the fence would swallow the chapter.
+      final text = '```\n$_page\n```<game>正文</game>\n```\n$_page\n```\n';
+      final blocks = HtmlBlocks.find(text);
+      expect(blocks, hasLength(2));
+      expect(blocks.first.source, _page);
+      expect(
+        text.substring(blocks.first.end, blocks.last.start),
+        '<game>正文</game>\n',
+      );
+    });
+
     test('an unclosed fence extends to the end of the text', () {
       final text = '```html\n<p>未关闭';
       final block = HtmlBlocks.find(text).single;
