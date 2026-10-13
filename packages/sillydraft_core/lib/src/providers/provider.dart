@@ -1,8 +1,26 @@
 import 'dart:convert';
 
 import '../st/import_types.dart';
+import 'comfy_workflow.dart';
 
-enum ModelProtocol { openAICompatible, anthropic, gemini, sillyDraftRunner }
+enum ModelKind { text, image, both }
+
+enum ModelProtocol {
+  openAICompatible,
+  comfyUI,
+  anthropic,
+  gemini,
+  sillyDraftRunner,
+
+  /// The author's own Claude Code login, run as a local `claude -p` process.
+  claudeCode,
+
+  /// The author's own Codex login, run as a local `codex exec` process.
+  codexCli;
+
+  /// Desktop subscriptions driven through an installed command-line tool.
+  bool get isLocalCli => this == claudeCode || this == codexCli;
+}
 
 final class ModelConnection extends JsonSource {
   ModelConnection({
@@ -10,24 +28,49 @@ final class ModelConnection extends JsonSource {
     required String name,
     required String baseUrl,
     required String model,
+    List<String>? models,
+    ModelKind? kind,
+    ComfyWorkflow? comfyWorkflow,
     ModelProtocol protocol = ModelProtocol.openAICompatible,
     String outputTokenParameter = 'max_tokens',
     List<String> extraParameters = const [],
     int contextWindow = 32768,
     int maxOutputTokens = 2048,
     bool allowInsecureHttp = false,
+    String command = '',
   }) : super({
          'id': id,
          'name': name,
          'baseUrl': baseUrl,
          'model': model,
+         'models': ?models,
+         if (kind != null) 'kind': kind.name,
+         if (comfyWorkflow != null) 'comfyWorkflow': comfyWorkflow.raw,
          'protocol': protocol.name,
          'outputTokenParameter': outputTokenParameter,
          'extraParameters': extraParameters,
          'contextWindow': contextWindow,
          'maxOutputTokens': maxOutputTokens,
          'allowInsecureHttp': allowInsecureHttp,
+         if (command.isNotEmpty) 'command': command,
        }) {
+    if (id.isEmpty || model.trim().isEmpty) {
+      throw const FormatException('模型配置缺少标识或模型名称');
+    }
+    if (models != null &&
+        (!models.contains(model) ||
+            models.any((m) => m.trim().isEmpty || m != m.trim()) ||
+            models.toSet().length != models.length)) {
+      throw const FormatException('模型列表须包含当前模型，且不能有空白或重复项');
+    }
+    if (protocol.isLocalCli) {
+      // Local tools have no endpoint; an explicit command must be a path, not
+      // a shell snippet, because it is executed directly.
+      if (command.contains(RegExp(r'[\r\n\x00]'))) {
+        throw const FormatException('命令路径无效');
+      }
+      return;
+    }
     final uri = Uri.tryParse(baseUrl);
     if (uri == null ||
         !['http', 'https'].contains(uri.scheme) ||
@@ -36,9 +79,6 @@ final class ModelConnection extends JsonSource {
         uri.hasQuery ||
         uri.hasFragment) {
       throw const FormatException('模型地址须为不含凭据或查询参数的 HTTP(S) 地址');
-    }
-    if (id.isEmpty || model.trim().isEmpty) {
-      throw const FormatException('模型配置缺少标识或模型名称');
     }
     if (protocol == ModelProtocol.sillyDraftRunner &&
         uri.scheme == 'http' &&
@@ -58,6 +98,17 @@ final class ModelConnection extends JsonSource {
     name: map['name'] as String,
     baseUrl: map['baseUrl'] as String,
     model: map['model'] as String,
+    models: map.containsKey('models')
+        ? stringList(map['models'], 'models')
+        : null,
+    kind: map['kind'] == null
+        ? null
+        : ModelKind.values.byName(map['kind'] as String),
+    comfyWorkflow: map['comfyWorkflow'] == null
+        ? null
+        : ComfyWorkflow.fromJson(
+            jsonObject(map['comfyWorkflow'], 'ComfyUI 工作流'),
+          ),
     protocol: ModelProtocol.values.byName(
       map['protocol'] as String? ?? 'openAICompatible',
     ),
@@ -67,11 +118,27 @@ final class ModelConnection extends JsonSource {
     contextWindow: map['contextWindow'] as int? ?? 32768,
     maxOutputTokens: map['maxOutputTokens'] as int? ?? 2048,
     allowInsecureHttp: map['allowInsecureHttp'] as bool? ?? false,
+    command: map['command'] as String? ?? '',
   );
   String get id => raw['id'] as String;
   String get name => raw['name'] as String;
   String get baseUrl => raw['baseUrl'] as String;
   String get model => raw['model'] as String;
+  List<String> get models =>
+      raw['models'] == null ? [model] : stringList(raw['models'], 'models');
+  ModelKind get kind => protocol.isLocalCli
+      ? ModelKind.text
+      : protocol == ModelProtocol.comfyUI
+      ? ModelKind.image
+      : ModelKind.values.byName(raw['kind'] as String? ?? 'both');
+  ComfyWorkflow? get comfyWorkflow => raw['comfyWorkflow'] == null
+      ? null
+      : ComfyWorkflow.fromJson(raw['comfyWorkflow'] as Map<String, dynamic>);
+  bool get supportsText => kind != ModelKind.image;
+  bool get supportsImages => kind != ModelKind.text;
+
+  ModelConnection withModel(String model) =>
+      ModelConnection.fromJson({...raw, 'model': model});
   ModelProtocol get protocol =>
       ModelProtocol.values.byName(raw['protocol'] as String);
   String get outputTokenParameter => raw['outputTokenParameter'] as String;
@@ -80,6 +147,9 @@ final class ModelConnection extends JsonSource {
   int get contextWindow => raw['contextWindow'] as int;
   int get maxOutputTokens => raw['maxOutputTokens'] as int;
   bool get allowInsecureHttp => raw['allowInsecureHttp'] as bool;
+
+  /// Explicit executable for a local CLI connection; empty means look it up.
+  String get command => raw['command'] as String? ?? '';
 }
 
 final class ProviderRequest extends JsonSource {

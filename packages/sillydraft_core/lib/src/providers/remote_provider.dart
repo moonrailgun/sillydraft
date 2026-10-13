@@ -266,6 +266,9 @@ final class RemoteModelProvider implements ModelProvider, RemoteJobControl {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
+    if (!config.supportsText) {
+      throw const ProviderException('model_kind', '此连接仅支持生图，请选择文本模型');
+    }
     if (request.tools.isNotEmpty) {
       throw const ProviderException('remote_agent_tools', '远程执行器不接管本地编辑工具');
     }
