@@ -45,6 +45,15 @@ void main() {
     );
   });
 
+  test('continue_prefill is noted as ignored, not refused', () {
+    final diagnostics = provider.validateParameters(
+      ProviderRequest(parameters: {'continue_prefill': true}),
+    );
+    expect(diagnostics.map((d) => (d.code, d.severity)), [
+      ('continue_prefill_ignored', DiagnosticSeverity.warning),
+    ]);
+  });
+
   ProviderRequest request({List<Map<String, dynamic>> tools = const []}) =>
       ProviderRequest(
         messages: [

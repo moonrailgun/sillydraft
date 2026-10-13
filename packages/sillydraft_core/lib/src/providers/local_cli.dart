@@ -58,11 +58,10 @@ final class LocalCliProvider implements ModelProvider {
         ),
       );
     }
-    for (final key in [
-      'assistant_prefill',
-      'claude_assistant_prefill',
-      'continue_prefill',
-    ]) {
+    if (request.parameters['continue_prefill'] == true) {
+      diagnostics.add(continuePrefillIgnored);
+    }
+    for (final key in ['assistant_prefill', 'claude_assistant_prefill']) {
       final value = request.parameters[key];
       if (value != null && value != false && value != '') {
         diagnostics.add(

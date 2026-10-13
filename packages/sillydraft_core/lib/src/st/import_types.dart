@@ -21,6 +21,16 @@ final class CompatibilityDiagnostic {
   };
 }
 
+/// ST's `continue_prefill` only applies when "continue" resumes a half-written
+/// reply as an assistant prefill; SillyDraft writes new text after the
+/// chapter instead, so the switch has nothing to act on.
+const continuePrefillIgnored = CompatibilityDiagnostic(
+  'continue_prefill_ignored',
+  '续写预填（continue_prefill）在 SillyDraft 中不生效：这里不会接着半截回复续写，'
+      '新内容总是写在正文之后，已忽略此项。',
+  path: 'continue_prefill',
+);
+
 /// Keeps a deep, immutable snapshot while permitting callers to edit a copy.
 class JsonSource {
   JsonSource(Map<String, dynamic> value) : _json = jsonEncode(value);

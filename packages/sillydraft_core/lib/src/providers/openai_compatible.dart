@@ -79,12 +79,11 @@ final class OpenAICompatibleProvider implements ModelProvider {
 
   @override
   List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) {
-    final diagnostics = <CompatibilityDiagnostic>[];
-    for (final key in [
-      'assistant_prefill',
-      'claude_assistant_prefill',
-      'continue_prefill',
-    ]) {
+    final diagnostics = <CompatibilityDiagnostic>[
+      if (request.parameters['continue_prefill'] == true)
+        continuePrefillIgnored,
+    ];
+    for (final key in ['assistant_prefill', 'claude_assistant_prefill']) {
       final value = request.parameters[key];
       if (value != null &&
           value != false &&
