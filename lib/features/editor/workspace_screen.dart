@@ -405,6 +405,38 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
     }
   }
 
+  Future<void> _deleteChapter(StorySnapshot story, Chapter chapter) async {
+    final confirm = await confirmAction(
+      context,
+      title: '删除“${chapter.title}”？',
+      message:
+          '本章会从当前分支删除，连同它的候选、书签、变量记录和编辑会话，不能撤销。'
+          '本章里记下的资料会保留，改挂到上一章末尾；其他分支不受影响。',
+      confirmLabel: '删除章节',
+      destructive: true,
+    );
+    if (!confirm || !mounted) return;
+    try {
+      final services = ref.read(servicesProvider), branchId = story.branch.id;
+      for (final task in await services.repository.activeChapterTasks(
+        branchId: branchId,
+        chapterId: chapter.id,
+      )) {
+        await services.runner.cancel(task.id);
+        await services.runner.wait(task.id);
+      }
+      await services.repository.deleteChapter(
+        branchId: branchId,
+        chapterId: chapter.id,
+      );
+      if (mounted && _selected == chapter.id) {
+        setState(() => _selected = null);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   /// The page of a wide screen: the reader itself, with every reading
   /// feature, kept in step with the outline on both sides.
   Widget _page(StorySnapshot story, Chapter? selected) => selected == null
@@ -494,6 +526,12 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                   '重命名章节',
                   () => _renameChapter(story, chapter),
                   icon: FLucideIcons.pencil,
+                ),
+                menuEntry(
+                  '删除章节',
+                  () => _deleteChapter(story, chapter),
+                  icon: FLucideIcons.trash2,
+                  destructive: true,
                 ),
               ],
             ),
