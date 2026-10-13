@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -65,8 +66,8 @@ class GlobalSearchScreen extends ConsumerStatefulWidget {
 class _SearchState extends ConsumerState<GlobalSearchScreen> {
   String _query = '';
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('搜索作品与正文')),
+  Widget build(BuildContext context) => PageScaffold(
+    title: '搜索作品与正文',
     body: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
@@ -74,15 +75,25 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.all(20),
-              child: TextField(
+              child: FTextField(
                 key: const Key('global-search-field'),
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '搜索所有作品的当前分支',
-                  prefixIcon: Icon(Icons.search),
-                  helperText: '包含已归档作品；最多显示 200 条结果。',
+                label: const Text('搜索所有作品的当前分支'),
+                description: const Text('包含已归档作品；最多显示 200 条结果。'),
+                prefixBuilder: (context, style, variants) =>
+                    FTextField.prefixIconBuilder(
+                      context,
+                      style,
+                      variants,
+                      const Icon(FLucideIcons.search),
+                    ),
+                control: FTextFieldControl.managed(
+                  onChange: (value) {
+                    if (value.text != _query) {
+                      setState(() => _query = value.text);
+                    }
+                  },
                 ),
-                onChanged: (value) => setState(() => _query = value),
               ),
             ),
             Expanded(
@@ -92,17 +103,21 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
                     ? Center(
                         child: Text(
                           _query.trim().isEmpty ? '输入书名、场景名或正文内容' : '没有找到相关内容',
+                          style: context.theme.typography.body.sm.copyWith(
+                            color: context.theme.colors.mutedForeground,
+                          ),
                         ),
                       )
                     : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         itemCount: matches.length,
                         itemBuilder: (context, index) {
                           final match = matches[index];
-                          return ListTile(
-                            leading: Icon(
+                          return FItem(
+                            prefix: Icon(
                               match.scene == null
-                                  ? Icons.book_outlined
-                                  : Icons.notes,
+                                  ? FLucideIcons.book
+                                  : FLucideIcons.fileText,
                             ),
                             title: Text(
                               '${match.novel.title}${match.scene == null ? '' : ' · ${match.scene!.title}'}${match.novel.archived ? '（已归档）' : ''}',
@@ -112,7 +127,7 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
                               maxLines: 4,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            onTap: () => Navigator.push(
+                            onPress: () => Navigator.push(
                               context,
                               MaterialPageRoute<void>(
                                 builder: (_) => match.scene == null
