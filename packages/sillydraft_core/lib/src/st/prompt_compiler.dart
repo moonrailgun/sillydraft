@@ -54,7 +54,11 @@ final class PresetInput {
     Map<String, String> localVariables = const {},
     Map<String, String> globalVariables = const {},
     List<Map<String, dynamic>> globalRegex = const [],
+    List<PromptMessage>? conversation,
   }) : history = List.unmodifiable(history),
+       conversation = conversation == null
+           ? null
+           : List.unmodifiable(conversation),
        worldBooks = List.unmodifiable(worldBooks),
        localVariables = Map.unmodifiable(localVariables),
        globalVariables = Map.unmodifiable(globalVariables),
@@ -66,6 +70,10 @@ final class PresetInput {
   final DateTime clock;
   final CharacterCard? card;
   final List<ContextScene> history;
+
+  /// A chat to use as `chatHistory` instead of story scenes and [brief], for
+  /// the editing assistant. Its last user message is the current input.
+  final List<PromptMessage>? conversation;
   final List<ScopedWorldBook> worldBooks;
   final Map<String, String> localVariables, globalVariables;
   final String _globalRegex;
@@ -158,9 +166,21 @@ final class PromptCompiler {
         'persona': input.persona,
         'mesexamples': card?.examples ?? '',
         'input': input.brief,
-        'lastmessage': filtered.lastOrNull?.content ?? '',
+        'lastmessage':
+            input.conversation?.lastOrNull?.content ??
+            filtered.lastOrNull?.content ??
+            '',
         'lastusermessage': input.brief,
-        'lastcharmessage': filtered.lastOrNull?.content ?? '',
+        'lastcharmessage':
+            (input.conversation == null
+                ? filtered.lastOrNull?.content
+                : input.conversation!
+                      .lastWhere(
+                        (m) => m.role == 'assistant',
+                        orElse: () => const PromptMessage('assistant', ''),
+                      )
+                      .content) ??
+            '',
         'charprompt': card?.systemPrompt ?? '',
         'charjailbreak': card?.postHistoryInstructions ?? '',
         'original': '',
@@ -176,7 +196,29 @@ final class PromptCompiler {
       card: _rules(card?.extensions),
     );
     final history = <PromptMessage>[];
-    for (final (i, scene) in filtered.indexed) {
+    final conversation = input.conversation;
+    if (conversation != null) {
+      trace.add('chat_history:conversation:${conversation.length}');
+      for (final (i, message) in conversation.indexed) {
+        // Same regex placements ST uses for chat: 1 user input, 2 AI output.
+        final placement = message.role == 'user' ? 1 : 2;
+        history.add(
+          PromptMessage(
+            message.role,
+            regex.apply(
+              message.content,
+              placement: placement,
+              stage: RegexStage.prompt,
+              macros: macros,
+              depth: conversation.length - 1 - i,
+            ),
+            source: message.source,
+          ),
+        );
+      }
+    }
+    for (final (i, scene)
+        in (conversation == null ? filtered : const <ContextScene>[]).indexed) {
       history.add(
         PromptMessage(
           'assistant',
@@ -193,7 +235,8 @@ final class PromptCompiler {
     }
     // App-created editing instructions are the current user message. Editor
     // conversation, task logs, and unaccepted proposals are never an input here.
-    if (input.generationType != 'continue' || input.brief.isNotEmpty) {
+    if (conversation == null &&
+        (input.generationType != 'continue' || input.brief.isNotEmpty)) {
       final original = regex.apply(
         input.brief,
         placement: 1,

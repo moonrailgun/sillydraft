@@ -1,7 +1,14 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
+
 import '../model/task.dart';
 import '../providers/provider.dart';
 import '../st/card_importer.dart';
+import '../st/import_types.dart';
 import '../st/preset_importer.dart';
+import '../st/prompt_compiler.dart';
 import '../st/world_book_engine.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
@@ -24,6 +31,10 @@ final class EditorAgent {
     int? selectedOrderId,
     List<ScopedWorldBook> worldBooks = const [],
     List<Map<String, dynamic>> globalRegex = const [],
+
+    /// A chat-completion preset to assemble the conversation with, as ST
+    /// would. The editor's own rules and tools stay first and authoritative.
+    ImportedPreset? chatPreset,
 
     /// Enabled Agent Skills. Their names and descriptions are offered to the
     /// model; `/skill-name` at the start of [message] loads one directly.
@@ -88,15 +99,90 @@ final class EditorAgent {
     // Tool exchanges stay in the durable conversation log. A new user turn
     // includes textual discussion; its tool loop starts afresh, so an interrupted
     // old call cannot create an invalid or implicitly replayed wire exchange.
-    final request = ProviderRequest(
+    final chat = [
+      for (final m in messages)
+        if (['user', 'assistant'].contains(m.role) && m.content.isNotEmpty)
+          PromptMessage(m.role, m.content, source: 'agent-message:${m.id}'),
+    ];
+    var request = ProviderRequest(
       messages: [
         {'role': 'system', 'content': instructions},
         ...skillMessages,
-        for (final m in messages)
-          if (['user', 'assistant'].contains(m.role) && m.content.isNotEmpty)
-            {'role': m.role, 'content': m.content},
+        for (final m in chat) m.toJson(),
       ],
     );
+    Map<String, dynamic>? presetRecord;
+    if (chatPreset != null) {
+      if (![PresetKind.chat, PresetKind.promptPack].contains(chatPreset.kind)) {
+        throw const FormatException(
+          '助手对话只能使用聊天补全预设或提示词包；文本补全模板不能与编辑工具一起使用。'
+          '可在预设页关闭“助手对话使用此预设”。',
+        );
+      }
+      final variables = await repository.getBranchVariables(
+        branchId,
+        throughSceneId: scenes.lastOrNull?.id,
+      );
+      final compiled = PromptCompiler().compile(
+        PresetInput(
+          preset: chatPreset,
+          branchId: branchId,
+          throughPosition: cutoff,
+          brief: message.trim(),
+          clock: DateTime.now().toUtc(),
+          randomSeed: Random.secure().nextInt(1 << 31),
+          card: card,
+          userName: userName,
+          persona: persona,
+          selectedOrderId: selectedOrderId,
+          worldBooks: worldBooks,
+          globalRegex: globalRegex,
+          localVariables: variables.local,
+          globalVariables: variables.global,
+          conversation: chat,
+        ),
+      );
+      final errors = compiled.diagnostics.where(
+        (d) => d.severity == DiagnosticSeverity.error,
+      );
+      if (errors.isNotEmpty) {
+        throw FormatException(
+          '预设无法用于助手对话：${errors.map((d) => d.message).join('；')}',
+        );
+      }
+      // Prefill would put words in the assistant's mouth before a tool loop;
+      // the editor cannot honour it, so it is dropped and recorded.
+      final dropped = compiled.parameters.keys
+          .where((k) => k.endsWith('_prefill'))
+          .toList();
+      request = ProviderRequest(
+        messages: [
+          {
+            'role': 'system',
+            'content':
+                '$editorInstructions$focusNote\n以下由作者选择的预设决定你的语气、身份与写作偏好；'
+                '但工具权限、只能提出候选、不能自行采纳等编辑规则始终以本段为准。'
+                '${skillCatalog(skills)}',
+          },
+          ...skillMessages,
+          for (final m in compiled.messages) m.toJson(),
+        ],
+        parameters: {
+          for (final e in compiled.parameters.entries)
+            if (!dropped.contains(e.key)) e.key: e.value,
+        },
+      );
+      // Variable side effects in an editing chat are not story events.
+      presetRecord = {
+        'name': chatPreset.name,
+        'hash': sha256
+            .convert(utf8.encode(jsonEncode(chatPreset.exportJson())))
+            .toString(),
+        'trace': compiled.trace,
+        'diagnostics': compiled.diagnostics.map((d) => d.toJson()).toList(),
+        'droppedParameters': dropped,
+      };
+    }
     return runner.start(
       branchId: branchId,
       kind: TaskKind.agent,
@@ -105,6 +191,7 @@ final class EditorAgent {
         'request': request.raw,
         'conversationId': conversationId,
         'throughSceneId': throughSceneId,
+        'agentPreset': ?presetRecord,
         if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
         if (active.isNotEmpty) 'activeSkills': active,
         'editSceneId': scenes.lastOrNull?.id,
