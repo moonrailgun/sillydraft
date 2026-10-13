@@ -205,10 +205,23 @@ class _PresetPromptState extends State<PresetPromptEditor> {
                       onTap: () => toggle(!enabled),
                       child: FSwitch(
                         leadingLabel: true,
-                        label: Text(prompt['name'] as String? ?? id),
-                        description: Text(
-                          '$id · ${prompt['role'] ?? 'system'}${marker ? ' · 动态标记' : ''}'
-                          '${prompt['injection_position'] == 1 ? ' · 深度 ${prompt['injection_depth'] ?? 4}' : ''}',
+                        label: Text.rich(
+                          TextSpan(
+                            text: prompt['name'] as String? ?? id,
+                            children: [
+                              TextSpan(
+                                text:
+                                    '  $id · ${prompt['role'] ?? 'system'}${marker ? ' · 动态标记' : ''}'
+                                    '${prompt['injection_position'] == 1 ? ' · 深度 ${prompt['injection_depth'] ?? 4}' : ''}',
+                                style: theme.typography.body.sm.copyWith(
+                                  color: theme.colors.mutedForeground,
+                                  fontWeight: FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         value: enabled,
                         onChange: toggle,
