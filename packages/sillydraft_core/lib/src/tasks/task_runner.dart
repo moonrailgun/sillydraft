@@ -297,7 +297,7 @@ final class TaskRunner {
           variables = applied.variables;
           mvuResult = applied.result;
         }
-        await repository.completeWritingTask(
+        final done = await repository.completeWritingTask(
           task.id,
           content: content,
           rawText: text.toString(),
@@ -306,6 +306,15 @@ final class TaskRunner {
           variableResult: variables,
           mvuResult: mvuResult,
         );
+        // Accepting commits the scene's story state with it, so each scene
+        // written this way keeps its own snapshot to fork or roll back to.
+        // A conflict leaves the candidate for the author to review.
+        final proposal = done.result['proposalId'];
+        if (input['autoAccept'] == true && proposal is String) {
+          try {
+            await repository.acceptProposal(proposal);
+          } on Object catch (_) {}
+        }
       } else {
         final result = _structuredResult(task.kind, text.toString());
         await repository.updateTask(

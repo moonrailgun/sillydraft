@@ -56,6 +56,7 @@ final class WritingService {
     int? rangeStart,
     int? rangeEnd,
     String? expectedRevisionId,
+    bool autoAccept = false,
   }) async => startPrepared(
     await prepare(
       branchId: branchId,
@@ -74,6 +75,7 @@ final class WritingService {
       rangeStart: rangeStart,
       rangeEnd: rangeEnd,
       expectedRevisionId: expectedRevisionId,
+      autoAccept: autoAccept,
     ),
   );
 
@@ -119,6 +121,10 @@ final class WritingService {
     );
   }
 
+  /// Builds a writing request for [sceneId]. With [autoAccept] the result
+  /// is accepted into the scene as soon as it is written, story state
+  /// included, instead of waiting in review; if the scene or the variables
+  /// changed meanwhile it stays a candidate.
   Future<PreparedWriting> prepare({
     required String branchId,
     required String sceneId,
@@ -136,6 +142,7 @@ final class WritingService {
     int? rangeStart,
     int? rangeEnd,
     String? expectedRevisionId,
+    bool autoAccept = false,
   }) async {
     final authorBrief = brief;
     final story = await repository.getStory(branchId);
@@ -292,6 +299,7 @@ final class WritingService {
             {'id': entry.id, 'revisionId': entry.revisionId},
         ],
         'append': append,
+        if (autoAccept) 'autoAccept': true,
         if (rangeStart != null)
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
         'selectedOrderId': ?selectedOrderId,
