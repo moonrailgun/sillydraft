@@ -224,8 +224,14 @@ void main() {
     await waitFor(() => find.text('改写整章').evaluate().isNotEmpty);
     expect(
       tester
-          .widget<TextField>(find.byKey(const Key('writing-brief')))
-          .controller!
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const Key('writing-brief')),
+              matching: find.byType(EditableText),
+              matchRoot: true,
+            ),
+          )
+          .controller
           .text,
       '[仙缘已定] 道号：玖神',
     );

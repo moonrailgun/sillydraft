@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:sillydraft/app/theme.dart';
 import 'package:sillydraft/app/widgets.dart';
 
@@ -7,7 +8,12 @@ import 'package:sillydraft/app/widgets.dart';
 Widget testHost(Widget home, {Brightness brightness = Brightness.light}) =>
     MaterialApp(
       theme: sdkMaterialTheme(brightness),
-      localizationsDelegates: FLocalizations.localizationsDelegates,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        ...FLocalizations.localizationsDelegates,
+      ],
       supportedLocales: FLocalizations.supportedLocales,
       builder: (context, child) => FTheme(
         data: appTheme(brightness),
