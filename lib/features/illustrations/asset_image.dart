@@ -1,10 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/services.dart';
+import '../../app/widgets.dart';
 
 final _assetFileProvider =
     FutureProvider.family<File, ({String id, bool thumbnail})>((
@@ -46,7 +47,7 @@ class AssetImageView extends ConsumerWidget {
         loading: () => SizedBox(
           height: height ?? 160,
           width: width,
-          child: const Center(child: CircularProgressIndicator()),
+          child: const Center(child: FCircularProgress()),
         ),
         error: (_, _) => _missing(context),
       );

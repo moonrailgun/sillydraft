@@ -1,5 +1,6 @@
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -33,10 +34,12 @@ class IllustrationGallery extends ConsumerStatefulWidget {
     required this.branchId,
     this.picker = false,
     this.purpose = AssetPurpose.illustration,
+    this.embedded = false,
   });
   final String branchId;
   final bool picker;
   final AssetPurpose purpose;
+  final bool embedded;
   @override
   ConsumerState<IllustrationGallery> createState() => _GalleryState();
 }
@@ -49,22 +52,28 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
           .read(repositoryProvider)
           .listResources(kind: ResourceKind.character);
       if (!mounted) return;
-      final card = await showModalBottomSheet<LibraryResource>(
+      final card = await showAppSheet<LibraryResource>(
         context: context,
-        builder: (context) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const ListTile(title: Text('提取角色卡中的图片')),
-              if (cards.isEmpty) const ListTile(title: Text('请先在创作资源库导入角色卡')),
-              for (final c in cards)
-                ListTile(
-                  title: Text(c.name),
-                  subtitle: Text(c.filename),
-                  onTap: () => Navigator.pop(context, c),
+        title: '提取角色卡中的图片',
+        builder: (context) => ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [
+            if (cards.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                child: Text(
+                  '请先在创作资源库导入角色卡',
+                  style: TextStyle(color: context.theme.colors.mutedForeground),
                 ),
-            ],
-          ),
+              ),
+            for (final c in cards)
+              FItem(
+                title: Text(c.name),
+                subtitle: Text(c.filename),
+                onPress: () => Navigator.pop(context, c),
+              ),
+          ],
         ),
       );
       if (card == null || !mounted) return;
@@ -78,14 +87,11 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
         resources: services.library,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result.warnings.isEmpty
-                  ? '已找到 ${result.assets.length} 张卡片图片（含已有素材）'
-                  : '部分图片无法导入：${result.warnings.join('；')}',
-            ),
-          ),
+        toast(
+          context,
+          result.warnings.isEmpty
+              ? '已找到 ${result.assets.length} 张卡片图片（含已有素材）'
+              : '部分图片无法导入：${result.warnings.join('；')}',
         );
       }
     } catch (e) {
@@ -147,65 +153,75 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
     }
   }
 
+  /// A header action, or a plain icon button in the workspace's title row.
+  Widget _action({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback? onPress,
+  }) => widget.embedded
+      ? IconAction(tooltip: tooltip, icon: icon, onPress: onPress)
+      : HeaderIconAction(tooltip: tooltip, icon: icon, onPress: onPress);
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.picker ? '选择图片' : '插图与素材'),
-      actions: [
-        IconButton(
-          tooltip: '提取角色卡图片',
-          onPressed: _busy ? null : _cardArtwork,
-          icon: const Icon(Icons.portrait_outlined),
-        ),
-        IconButton(
-          tooltip: '导入图片',
-          onPressed: _busy ? null : _import,
-          icon: const Icon(Icons.add_photo_alternate_outlined),
-        ),
-        IconButton(
-          tooltip: '生成插画',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => IllustrationRequestScreen(
-                branchId: widget.branchId,
-                purpose: widget.purpose,
-              ),
+  Widget build(BuildContext context) => PageScaffold(
+    title: widget.picker ? '选择图片' : '插图与素材',
+    embedded: widget.embedded,
+    actions: [
+      _action(
+        tooltip: '提取角色卡图片',
+        icon: FLucideIcons.squareUser,
+        onPress: _busy ? null : _cardArtwork,
+      ),
+      _action(
+        tooltip: '导入图片',
+        icon: FLucideIcons.imagePlus,
+        onPress: _busy ? null : _import,
+      ),
+      _action(
+        tooltip: '生成插画',
+        icon: FLucideIcons.sparkles,
+        onPress: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => IllustrationRequestScreen(
+              branchId: widget.branchId,
+              purpose: widget.purpose,
             ),
           ),
-          icon: const Icon(Icons.auto_awesome_outlined),
         ),
-      ],
-    ),
+      ),
+    ],
     body: SafeArea(
       top: false,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_busy) const LinearProgressIndicator(),
+          if (_busy) const FProgress(),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                ChoiceChip(
-                  label: const Text('全部'),
+                ChoicePill(
+                  label: '全部',
                   selected: _purpose == null,
-                  onSelected: (_) => setState(() => _purpose = null),
+                  onPress: () => setState(() => _purpose = null),
                 ),
                 for (final p in AssetPurpose.values)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
-                    child: ChoiceChip(
-                      label: Text(assetPurposeLabels[p]!),
+                    child: ChoicePill(
+                      label: assetPurposeLabels[p]!,
                       selected: _purpose == p,
-                      onSelected: (_) => setState(() => _purpose = p),
+                      onPress: () => setState(() => _purpose = p),
                     ),
                   ),
                 const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('已归档'),
+                ChoicePill(
+                  label: '已归档',
+                  icon: FLucideIcons.archive,
                   selected: _archived,
-                  onSelected: (v) => setState(() => _archived = v),
+                  onPress: () => setState(() => _archived = !_archived),
                 ),
               ],
             ),
@@ -219,31 +235,41 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
                     .toList();
                 return images.isEmpty
                     ? const SizedBox()
-                    : ExpansionTile(
-                        title: Text('生图任务 · ${images.length}'),
-                        children: [
-                          SizedBox(
-                            height: 220,
-                            child: ListView(
-                              children: [
-                                for (final t in images)
-                                  ListTile(
-                                    title: Text(
-                                      t.input['name'] as String? ?? '插画',
-                                    ),
-                                    subtitle: Text(taskStatusLabels[t.status]!),
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            TaskScreen(taskId: t.id),
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: FAccordion(
+                          children: [
+                            FAccordionItem(
+                              title: Text('生图任务 · ${images.length}'),
+                              child: SizedBox(
+                                height: 220,
+                                child: ListView(
+                                  children: [
+                                    for (final t in images)
+                                      FItem(
+                                        title: Text(
+                                          t.input['name'] as String? ?? '插画',
+                                        ),
+                                        subtitle: Text(
+                                          taskStatusLabels[t.status]!,
+                                        ),
+                                        suffix: const Icon(
+                                          FLucideIcons.chevronRight,
+                                        ),
+                                        onPress: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute<void>(
+                                            builder: (_) =>
+                                                TaskScreen(taskId: t.id),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                              ],
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       );
               },
             ),
@@ -267,12 +293,16 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
                             ? '暂无归档图片'
                             : '导入图片，或为人物、场景和地图生成插画。\n图片保存在本地，随时可以插入正文。',
                         textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.theme.colors.mutedForeground,
+                        ),
                       ),
                     ),
                   );
                 }
+                final theme = context.theme;
                 return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 400,
                     mainAxisExtent: 260,
@@ -282,10 +312,10 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
                   itemCount: entries.length,
                   itemBuilder: (_, i) {
                     final asset = entries[i];
-                    return Card(
+                    return FCard(
                       clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => _open(asset),
+                      child: FTappable(
+                        onPress: () => _open(asset),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -306,15 +336,16 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
                                     asset.name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium,
+                                    style: theme.typography.body.md.copyWith(
+                                      color: theme.colors.foreground,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                   Text(
                                     '${assetPurposeLabels[asset.purpose]} · ${asset.width} × ${asset.height}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall,
+                                    style: theme.typography.body.xs.copyWith(
+                                      color: theme.colors.mutedForeground,
+                                    ),
                                   ),
                                 ],
                               ),

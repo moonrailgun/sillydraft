@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute, SelectableText;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -75,20 +76,19 @@ class IllustrationDetail extends ConsumerWidget {
       final story = await ref.read(repositoryProvider).getStory(branchId);
       if (!context.mounted) return;
       if (story.scenes.isEmpty) throw const FormatException('请先创建正文场景');
-      final scene = await showModalBottomSheet<Scene>(
+      final scene = await showAppSheet<Scene>(
         context: context,
-        builder: (context) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const ListTile(title: Text('插入到场景末尾')),
-              for (final s in story.scenes)
-                ListTile(
-                  title: Text(s.title),
-                  onTap: () => Navigator.pop(context, s),
-                ),
-            ],
-          ),
+        title: '插入到场景末尾',
+        builder: (context) => ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [
+            for (final s in story.scenes)
+              FItem(
+                title: Text(s.title),
+                onPress: () => Navigator.pop(context, s),
+              ),
+          ],
         ),
       );
       if (scene == null) return;
@@ -101,10 +101,7 @@ class IllustrationDetail extends ConsumerWidget {
             assetId: asset.id,
             offset: scene.content.text.length - 1,
           );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('插画已加入正文')));
-      }
+      if (context.mounted) toast(context, '插画已加入正文');
     } catch (e) {
       if (context.mounted) showError(context, e);
     }
@@ -113,37 +110,33 @@ class IllustrationDetail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AsyncView(
     value: ref.watch(assetProvider(assetId)),
-    builder: (asset) => Scaffold(
-      appBar: AppBar(
-        title: Text(asset.name),
-        actions: [
-          IconButton(
-            tooltip: '导出图片',
-            onPressed: () => _export(context, ref, asset),
-            icon: const Icon(Icons.ios_share),
-          ),
-          IconButton(
-            tooltip: asset.archived ? '恢复图片' : '归档图片',
-            onPressed: () async {
-              try {
-                await ref
-                    .read(repositoryProvider)
-                    .archiveAsset(asset.id, archived: !asset.archived);
-                if (context.mounted && Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
-              } catch (e) {
-                if (context.mounted) showError(context, e);
+    builder: (asset) => PageScaffold(
+      title: asset.name,
+      actions: [
+        HeaderIconAction(
+          tooltip: '导出图片',
+          icon: FLucideIcons.share,
+          onPress: () => _export(context, ref, asset),
+        ),
+        HeaderIconAction(
+          tooltip: asset.archived ? '恢复图片' : '归档图片',
+          icon: asset.archived
+              ? FLucideIcons.archiveRestore
+              : FLucideIcons.archive,
+          onPress: () async {
+            try {
+              await ref
+                  .read(repositoryProvider)
+                  .archiveAsset(asset.id, archived: !asset.archived);
+              if (context.mounted && Navigator.canPop(context)) {
+                Navigator.pop(context);
               }
-            },
-            icon: Icon(
-              asset.archived
-                  ? Icons.unarchive_outlined
-                  : Icons.archive_outlined,
-            ),
-          ),
-        ],
-      ),
+            } catch (e) {
+              if (context.mounted) showError(context, e);
+            }
+          },
+        ),
+      ],
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -158,6 +151,7 @@ class IllustrationDetail extends ConsumerWidget {
           const SizedBox(height: 16),
           Text(
             '${asset.width} × ${asset.height} · ${(asset.byteLength / 1024 / 1024).toStringAsFixed(1)} MB',
+            style: TextStyle(color: context.theme.colors.mutedForeground),
           ),
           if (ref.watch(_sourceCurrent(asset.id)).value == false)
             const Padding(
@@ -169,30 +163,31 @@ class IllustrationDetail extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.icon(
-                onPressed: () => _insert(context, ref, asset),
-                icon: const Icon(Icons.post_add),
-                label: const Text('插入正文'),
+              FButton(
+                mainAxisSize: MainAxisSize.min,
+                onPress: () => _insert(context, ref, asset),
+                prefix: const Icon(FLucideIcons.filePlus),
+                child: const Text('插入正文'),
               ),
-              OutlinedButton(
-                onPressed: () async {
+              FButton(
+                variant: FButtonVariant.outline,
+                mainAxisSize: MainAxisSize.min,
+                onPress: () async {
                   try {
                     await ref
                         .read(repositoryProvider)
                         .setCover(asset.novelId, asset.id);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text('已设为作品封面')));
-                    }
+                    if (context.mounted) toast(context, '已设为作品封面');
                   } catch (e) {
                     if (context.mounted) showError(context, e);
                   }
                 },
                 child: const Text('设为封面'),
               ),
-              OutlinedButton(
-                onPressed: () => Navigator.push(
+              FButton(
+                variant: FButtonVariant.outline,
+                mainAxisSize: MainAxisSize.min,
+                onPress: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
                     builder: (_) => IllustrationRequestScreen(
@@ -209,7 +204,13 @@ class IllustrationDetail extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           if (asset.metadata['prompt'] case final String prompt) ...[
-            Text('生成提示词', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              '生成提示词',
+              style: context.theme.typography.body.md.copyWith(
+                color: context.theme.colors.foreground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 12),
             SelectableText(prompt),
           ],
@@ -224,13 +225,19 @@ class IllustrationDetail extends ConsumerWidget {
               child: Text('已保存生成时的正文版本依据'),
             ),
           if (asset.metadata.isNotEmpty)
-            ExpansionTile(
-              title: const Text('来源与生成参数'),
-              children: [
-                SelectableText(
-                  const JsonEncoder.withIndent('  ').convert(asset.metadata),
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FAccordion(
+                children: [
+                  FAccordionItem(
+                    title: const Text('来源与生成参数'),
+                    child: SelectableText(
+                      const JsonEncoder.withIndent('  ')
+                          .convert(asset.metadata),
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
