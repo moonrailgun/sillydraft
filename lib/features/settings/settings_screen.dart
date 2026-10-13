@@ -322,7 +322,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     text: widget.connection?.command ?? '',
   );
   late final _context = TextEditingController(
-    text: '${widget.connection?.contextWindow ?? 32768}',
+    text: '${widget.connection?.contextWindow ?? 200000}',
   );
   late final _output = TextEditingController(
     text: '${widget.connection?.maxOutputTokens ?? 2048}',
@@ -445,7 +445,6 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         if (_name.text == '我的模型') {
           _name.text = protocolLabels[value]!.split('（').first;
         }
-        if (_context.text == '32768') _context.text = '200000';
         if (_output.text == '2048') _output.text = '8192';
       }
     });

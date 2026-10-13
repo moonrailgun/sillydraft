@@ -34,7 +34,7 @@ final class ModelConnection extends JsonSource {
     ModelProtocol protocol = ModelProtocol.openAICompatible,
     String outputTokenParameter = 'max_tokens',
     List<String> extraParameters = const [],
-    int contextWindow = 32768,
+    int contextWindow = 200000,
     int maxOutputTokens = 2048,
     bool allowInsecureHttp = false,
     String command = '',
@@ -115,7 +115,7 @@ final class ModelConnection extends JsonSource {
     outputTokenParameter:
         map['outputTokenParameter'] as String? ?? 'max_tokens',
     extraParameters: stringList(map['extraParameters'], 'extraParameters'),
-    contextWindow: map['contextWindow'] as int? ?? 32768,
+    contextWindow: map['contextWindow'] as int? ?? 200000,
     maxOutputTokens: map['maxOutputTokens'] as int? ?? 2048,
     allowInsecureHttp: map['allowInsecureHttp'] as bool? ?? false,
     command: map['command'] as String? ?? '',
