@@ -51,7 +51,7 @@ ST 导出的预设通常不含 `name`，ST 以文件名作为预设名；SillyDr
 | 相对与深度注入 | 兼容 `injection_position`、`injection_depth`、`injection_order`；同深度时的角色分组、拼接与排序一并对照 |
 | 生成触发条件 | 按 `injection_trigger` 和实际生成类型决定是否参与本次请求 |
 | 角色卡覆盖 | 按 `forbid_overrides`、启停状态和卡片字段处理主提示词及历史后指令；保留 `{{original}}` 的原值语义 |
-| 动态标记 | 填充角色描述、性格、场景、用户身份、世界书、对话示例与故事历史，而不是输出标记名称 |
+| 动态标记 | 填充角色描述、性格、章节、用户身份、世界书、对话示例与故事历史，而不是输出标记名称 |
 | 旧格式迁移 | 识别 `main_prompt`、`nsfw_prompt`、`jailbreak_prompt` 等旧字段；迁移内部结构，同时保留导入来源 |
 | 预算与输出前缀 | 保留上下文、输出预算、预填、继续生成和停止配置；实际生效受模型能力约束 |
 
@@ -79,16 +79,16 @@ ST 导出的预设通常不含 `name`，ST 以文件名作为预设名；SillyDr
 | ST 输入 | 小说中的对应来源 |
 | --- | --- |
 | `charDescription`、`charPersonality` | 当前绑定的主要角色及其档案；其他人物作为相关资料提供 |
-| `scenario` | 当前场景和开局设定 |
+| `scenario` | 当前章节和开局设定 |
 | `personaDescription`、`{{user}}` | 导入时指定的故事人物身份，不自动指向现实用户 |
 | `worldInfoBefore`、`worldInfoAfter` | 本次触发、并符合当前分支和故事位置的世界书条目 |
 | `dialogueExamples` | 卡中的示例，用于声音和文风参考，不视为已经发生的剧情 |
-| `chatHistory` | 当前分支中已采纳场景构造的有序消息视图 |
+| `chatHistory` | 当前分支中已采纳章节构造的有序消息视图 |
 | 当前用户消息 | 本次写作要求；不自动带入整个编辑会话 |
 
-首版用稳定的场景记录构造历史消息，一段已采纳场景正文对应一个 assistant 消息；当前写作要求作为独立 user 消息。消息 ID 与场景及版本关联，不因屏幕分页、字号或段落自动换行而变化。编辑对话、工具日志、被拒绝候选和其他分支正文不进入该历史。
+首版用稳定的章节记录构造历史消息，一段已采纳章节正文对应一个 assistant 消息；当前写作要求作为独立 user 消息。消息 ID 与章节及版本关联，不因屏幕分页、字号或段落自动换行而变化。编辑对话、工具日志、被拒绝候选和其他分支正文不进入该历史。
 
-深度在该消息视图上按 ST 规则计算，并在请求预览中展示。写“下一幕”使用正常生成语义；继续补完同一段模型输出才使用 ST 的 `continue` 路径。其他生成操作逐项建立映射，不能仅根据界面上的“续写”二字决定触发类型。
+深度在该消息视图上按 ST 规则计算，并在请求预览中展示。写“下一章”使用正常生成语义；继续补完同一段模型输出才使用 ST 的 `continue` 路径。其他生成操作逐项建立映射，不能仅根据界面上的“续写”二字决定触发类型。
 
 用户可以直接按导入预设生成，也可以创建“小说适配副本”，显式调整叙事视角、篇幅与正文格式。适配改动可比较、撤回，不静默把“扮演角色”替换成“小说旁白”。即便按原预设运行，小说提供的历史也与某个现成 ST 聊天记录不同，不承诺产出相同文字。
 
@@ -100,7 +100,7 @@ SillyDraft 使用独立 Dart 模块实现预设解析、模板求值、宏求值
 
 **宏与正则是预设行为的一部分。** 宏除了人物名称替换，还有变量读写等带状态操作；预设正则可以存放在 `extensions.regex_scripts` 中。[变量宏源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/macros/definitions/variable-macros.js)、[预设正则读取源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/engine.js#L108)
 
-- 基础宏覆盖人物、用户身份、场景、描述、原提示词等常用输入；变量宏覆盖首批样本实际使用的读写、增减和条件行为，未知宏报告为依赖缺口。
+- 基础宏覆盖人物、用户身份、章节、描述、原提示词等常用输入；变量宏覆盖首批样本实际使用的读写、增减和条件行为，未知宏报告为依赖缺口。
 - 酒馆助手的助手宏 `{{get_(message|chat|global)_variable::路径}}` 和 `{{format_(message|chat|global)_variable::路径}}`（MVU 状态写入提示词的方式）内置支持：按路径读取变量（JSON 值按对象/数组取路径），`format` 输出 YAML 并按行首缩进。角色/预设变量域为空。
 - ST 的 local/global 变量保留不同命名空间；在 SillyDraft 中附加项目和分支作用域。这是为剧情隔离作出的适配，不能宣传为跨聊天全局状态完全等价。
 - 生成使用变量快照和任务内变更。预览、计算预算与正式发送复用一次编译结果，不重复执行变量副作用；候选的状态变更只有在采纳时才提交，其他候选丢弃或独立保留。
@@ -110,9 +110,9 @@ SillyDraft 使用独立 Dart 模块实现预设解析、模板求值、宏求值
 
 ST 对“仅提示词”“仅显示”和一般文本处理有不同执行条件。[正则阶段源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/engine.js#L334)
 
-SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则不能修改已保存正文；显示专用规则不写回正文；用于清理生成文本的规则在候选采纳前应用，原始输出仍可追溯。正文导出以用户采纳的作品为准。替换结果中的 `html` 代码块和块级 HTML 片段按酒馆助手的渲染规则显示：代码块进入带脚本的隔离网页视图并获得消息、变量、事件和 Slash 命令接口；片段去除脚本和事件后显示。没有生成任务的场景（例如角色卡开场）按分支当前绑定的全局、预设和角色卡正则显示。范围、沙箱和未支持项见 [HTML 界面验证](verification/html-rendering.md)。
+SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则不能修改已保存正文；显示专用规则不写回正文；用于清理生成文本的规则在候选采纳前应用，原始输出仍可追溯。正文导出以用户采纳的作品为准。替换结果中的 `html` 代码块和块级 HTML 片段按酒馆助手的渲染规则显示：代码块进入带脚本的隔离网页视图并获得消息、变量、事件和 Slash 命令接口；片段去除脚本和事件后显示。没有生成任务的章节（例如角色卡开场）按分支当前绑定的全局、预设和角色卡正则显示。范围、沙箱和未支持项见 [HTML 界面验证](verification/html-rendering.md)。
 
-**MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一幕记录执行本幕正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。
+**MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一章记录执行本章正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。
 
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
 

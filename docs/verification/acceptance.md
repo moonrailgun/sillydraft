@@ -15,7 +15,7 @@
 | 7 模型与示例 | 设置、安全存储、四类模型角色、`provider_test.dart`、`remote_runner_flow_test.dart`、原生平台本机密钥文件读写删除 | OpenAI 兼容及个人 runner；无真实付费模型测试 |
 | 8 旁路资料 | `lore_repository_test.dart`、`lore_flow_test.dart`：资料类型、来源、计划/推测、AI 建议、过期与跨故事位置拒绝 | 作者审阅后采纳 |
 | 9 关系和地图 | `map_flow_test.dart`、关系端点/方向校验、地图坐标/路线校验；原生带底图地图截图 | 关系图布局是展示状态，资料关系本身持久化 |
-| 10 分支 | `branch_flow_test.dart`、历史分叉与变量投影、候选选择幂等、分支比较；原生较早场景分叉截图 | 不合并未选中候选；版本和分支是不同概念 |
+| 10 分支 | `branch_flow_test.dart`、历史分叉与变量投影、候选选择幂等、分支比较；原生较早章节分叉截图 | 不合并未选中候选；版本和分支是不同概念 |
 | 11 插画 | `asset_library_test.dart`、`image_provider_test.dart`、`illustration_task_test.dart`、`illustration_flow_test.dart`；原生封面、地图、正文插画 | 图片经过格式/大小校验及元数据清理；失败不改正文 |
 | 12 任务 | `task_store_test.dart`、`task_runner_test.dart`：输入快照、流式输出、取消、重启、工具记录、明确重试 | 直连流中断后只保留结果，不冒充网络续传 |
 | 13 离线/远程 | `server/test/runner_http_test.dart`、真实 `process_restart_test.dart`：鉴权、断开继续、查询恢复、缺失不重提、旧结果 CAS、插画恢复、SIGKILL | 可选单人服务，无多租户账户；编辑工具留在客户端 |

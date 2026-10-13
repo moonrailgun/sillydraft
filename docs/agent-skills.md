@@ -47,12 +47,12 @@ disable-model-invocation: true # 可选：只允许手动 /villain-voice 启用
 | --- | --- |
 | `character-consistency` 人物一致性检查 | 性格、动机、语气、已知事实前后是否一致 |
 | `foreshadowing-audit` 伏笔与暗线梳理 | 已回收、未回收、疑似遗忘的线索 |
-| `scene-pacing` 场景节奏诊断 | 信息密度、张力曲线、拖沓与仓促 |
+| `chapter-pacing` 章节节奏诊断 | 信息密度、张力曲线、拖沓与仓促 |
 | `dialogue-polish` 对白打磨 | 人物声音、说明性台词、潜台词（附检查清单） |
 | `continuity-check` 设定与时间线连续性检查 | 时间、地点、物品、谁知道什么 |
-| `next-chapter-plan` 下一章规划 | 当前局面、三种方向、场景节拍 |
+| `next-chapter-plan` 下一章规划 | 当前局面、三种方向、章节节拍 |
 
-内置技能只使用助手已有的工具：`list_scenes`、`read_scene`、`propose_scene`、`list_lore`、`read_lore`、`propose_lore`。
+内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。
 
 ## 注意
 

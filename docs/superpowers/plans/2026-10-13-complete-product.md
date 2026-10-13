@@ -33,10 +33,10 @@
 
 **Files:** root Flutter platform scaffold; `packages/sillydraft_core/lib/src/model/`; `packages/sillydraft_core/lib/src/storage/`; `packages/sillydraft_core/test/story_repository_test.dart`.
 
-**Interfaces:** `StoryRepository.open(String path)` / `.memory()`, `createNovel`, `createChapter`, `createScene`, `saveScene(expectedRevisionId)`, `forkBranch(atSceneId)`, `getStory(branchId)`, `createProposal`, `acceptProposal`, `close`. Typed novel/branch/chapter/scene/revision/proposal/lore/task records and `ManuscriptContent` persist JSON with schema versions.
+**Interfaces:** `StoryRepository.open(String path)` / `.memory()`, `createNovel`, `createChapter`, `saveChapter(expectedRevisionId)`, `forkBranch(atChapterId)`, `getStory(branchId)`, `createProposal`, `acceptProposal`, `close`. Typed novel/branch/chapter/revision/proposal/lore/task records and `ManuscriptContent` persist JSON with schema versions.
 
 - [x] Scaffold Flutter and pure Dart package, pin compatible dependency versions, and document the SDK command.
-- [x] Write and run failing tests for reopen persistence, optimistic revision conflict, rejected proposal isolation, immutable fork history and scene ordering.
+- [x] Write and run failing tests for reopen persistence, optimistic revision conflict, rejected proposal isolation, immutable fork history and chapter ordering.
 - [x] Implement transactional schema and typed records; run core tests to green, including rollback on conflict.
 - [x] Commit the foundation and record exact test evidence.
 
