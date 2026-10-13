@@ -124,6 +124,22 @@ final class ResourceLibrary {
     );
   }
 
+  /// Imports [bytes] unless the very same file was imported before, in which
+  /// case that resource is returned, so dropping a card twice keeps one copy.
+  Future<LibraryResource> importOnce(
+    Uint8List bytes, {
+    required String filename,
+    required ResourceKind kind,
+  }) async {
+    inspect(bytes, filename: filename, kind: kind);
+    final hash = sha256.convert(bytes).toString();
+    final existing = (await repository.listResources(
+      kind: kind,
+      includeArchived: true,
+    )).where((r) => r.sourceHash == hash && r.parentId == null).firstOrNull;
+    return existing ?? import(bytes, filename: filename, kind: kind);
+  }
+
   Future<Uint8List> original(String id) async {
     final bytes = await repository.encryptedResourceSource(id);
     try {
