@@ -14,13 +14,14 @@ class BranchComparisonScreen extends ConsumerWidget {
   });
   final String leftId, rightId;
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('分支比较')),
+  Widget build(BuildContext context, WidgetRef ref) => PageScaffold(
+    title: '分支比较',
     body: AsyncView(
       value: ref.watch(storyProvider(leftId)),
       builder: (left) => AsyncView(
         value: ref.watch(storyProvider(rightId)),
         builder: (right) {
+          final theme = context.theme;
           final leftScenes = {for (final s in left.scenes) s.id: s},
               rightScenes = {for (final s in right.scenes) s.id: s};
           final ids = {...leftScenes.keys, ...rightScenes.keys};
@@ -31,18 +32,36 @@ class BranchComparisonScreen extends ConsumerWidget {
                     leftScenes[id]?.title != rightScenes[id]?.title,
               )
               .toList();
-          Widget panel(String title, String text) => Card(
+          Widget panel(String title, String text) => FCard(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    title,
+                    style: theme.typography.body.sm.copyWith(
+                      color: theme.colors.mutedForeground,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   SelectableText(text, style: const TextStyle(height: 1.8)),
                 ],
               ),
             ),
+          );
+          Widget pair(Widget a, Widget b) => LayoutBuilder(
+            builder: (_, bounds) => bounds.maxWidth >= 800
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: a),
+                      const SizedBox(width: 12),
+                      Expanded(child: b),
+                    ],
+                  )
+                : Column(children: [a, const SizedBox(height: 12), b]),
           );
           final ll =
                   ref
@@ -58,12 +77,15 @@ class BranchComparisonScreen extends ConsumerWidget {
               ? '无此资料'
               : '${e.name} · ${certaintyLabels[e.certainty]}${e.deleted ? ' · 已归档' : ''}\n${e.content}';
           final loreIds = {...ll.map((e) => e.id), ...rr.map((e) => e.id)};
+          final heading = theme.typography.body.xl.copyWith(
+            fontWeight: FontWeight.w600,
+          );
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
               Text(
                 '${left.branch.name} ↔ ${right.branch.name}',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: heading,
               ),
               const SizedBox(height: 12),
               Text(
@@ -71,34 +93,28 @@ class BranchComparisonScreen extends ConsumerWidget {
               ),
               for (final id in changed) ...[
                 const SizedBox(height: 20),
-                Text(
-                  rightScenes[id]?.title ?? leftScenes[id]!.title,
-                  style: Theme.of(context).textTheme.titleMedium,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    rightScenes[id]?.title ?? leftScenes[id]!.title,
+                    style: theme.typography.body.md.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-                LayoutBuilder(
-                  builder: (_, bounds) {
-                    final a = panel(
-                          left.branch.name,
-                          leftScenes[id]?.content.text ?? '此分支无此场景',
-                        ),
-                        b = panel(
-                          right.branch.name,
-                          rightScenes[id]?.content.text ?? '此分支无此场景',
-                        );
-                    return bounds.maxWidth >= 800
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: a),
-                              Expanded(child: b),
-                            ],
-                          )
-                        : Column(children: [a, b]);
-                  },
+                pair(
+                  panel(
+                    left.branch.name,
+                    leftScenes[id]?.content.text ?? '此分支无此场景',
+                  ),
+                  panel(
+                    right.branch.name,
+                    rightScenes[id]?.content.text ?? '此分支无此场景',
+                  ),
                 ),
               ],
               const SizedBox(height: 28),
-              Text('旁路资料', style: Theme.of(context).textTheme.titleLarge),
+              Text('旁路资料', style: heading),
               for (final id in loreIds)
                 Builder(
                   builder: (_) {
@@ -111,11 +127,19 @@ class BranchComparisonScreen extends ConsumerWidget {
                         a?.data.toString() == b?.data.toString()) {
                       return const SizedBox();
                     }
-                    return ExpansionTile(
-                      title: Text(b?.name ?? a!.name),
+                    return FAccordion(
                       children: [
-                        panel(left.branch.name, describe(a)),
-                        panel(right.branch.name, describe(b)),
+                        FAccordionItem(
+                          title: Text(b?.name ?? a!.name),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              panel(left.branch.name, describe(a)),
+                              const SizedBox(height: 12),
+                              panel(right.branch.name, describe(b)),
+                            ],
+                          ),
+                        ),
                       ],
                     );
                   },

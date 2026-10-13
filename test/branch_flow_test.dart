@@ -6,6 +6,9 @@ import 'package:sillydraft/features/branches/branch_screen.dart';
 import 'package:sillydraft/features/branches/candidate_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/finders.dart';
+import 'support/host.dart';
+
 void main() {
   testWidgets('phone selects one candidate without changing its source', (
     tester,
@@ -49,7 +52,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
-        child: MaterialApp(home: CandidateScreen(taskId: task.id)),
+        child: testHost(CandidateScreen(taskId: task.id)),
       ),
     );
     await tester.pumpAndSettle();
@@ -99,7 +102,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
-        child: MaterialApp(home: BranchScreen(novelId: novel.id)),
+        child: testHost(BranchScreen(novelId: novel.id)),
       ),
     );
     await tester.pumpAndSettle();
@@ -107,7 +110,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('原来的故事'), findsOneWidget);
     expect(find.textContaining('新的故事'), findsOneWidget);
-    await tester.pageBack();
+    await tester.tap(findAction('返回'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('activate-${branch.id}')));
     await tester.pumpAndSettle();

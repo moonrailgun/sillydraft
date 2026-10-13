@@ -79,247 +79,295 @@ class _BranchState extends ConsumerState<BranchScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('故事分支')),
-    body: AsyncView(
-      value: ref.watch(novelProvider(widget.novelId)),
-      builder: (novel) => AsyncView(
-        value: ref.watch(branchesProvider(novel.id)),
-        builder: (branches) {
-          final source =
-              _source ?? widget.sourceBranchId ?? novel.activeBranchId;
-          final byId = {for (final b in branches) b.id: b};
-          int depth(StoryBranch b) {
-            var d = 0;
-            final seen = <String>{};
-            while (b.parentBranchId != null && seen.add(b.id)) {
-              final parent = byId[b.parentBranchId];
-              if (parent == null) break;
-              d++;
-              b = parent;
-            }
-            return d;
-          }
+  Widget build(BuildContext context) => PageScaffold(
+    title: '故事分支',
+    body: Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: AsyncView(
+          value: ref.watch(novelProvider(widget.novelId)),
+          builder: (novel) => AsyncView(
+            value: ref.watch(branchesProvider(novel.id)),
+            builder: (branches) {
+              final source =
+                  _source ?? widget.sourceBranchId ?? novel.activeBranchId;
+              final byId = {for (final b in branches) b.id: b};
+              int depth(StoryBranch b) {
+                var d = 0;
+                final seen = <String>{};
+                while (b.parentBranchId != null && seen.add(b.id)) {
+                  final parent = byId[b.parentBranchId];
+                  if (parent == null) break;
+                  d++;
+                  b = parent;
+                }
+                return d;
+              }
 
-          final ordered = <StoryBranch>[];
-          void visit(String? parent) {
-            for (final b in branches.where((b) => b.parentBranchId == parent)) {
-              ordered.add(b);
-              visit(b.id);
-            }
-          }
+              final ordered = <StoryBranch>[];
+              void visit(String? parent) {
+                for (final b in branches.where(
+                  (b) => b.parentBranchId == parent,
+                )) {
+                  ordered.add(b);
+                  visit(b.id);
+                }
+              }
 
-          visit(null);
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const Text('每条分支保留各自的正文、人物资料和故事变量。切换分支继续写作，或比较不同发展。'),
-              const SizedBox(height: 20),
-              for (final b in ordered)
-                Padding(
-                  padding: EdgeInsets.only(
-                    left: (depth(b) * 12).clamp(0, 48).toDouble(),
-                    bottom: 10,
-                  ),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
+              visit(null);
+              final theme = context.theme;
+              final heading = theme.typography.body.md.copyWith(
+                fontWeight: FontWeight.w600,
+              );
+              return ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  const Text('每条分支保留各自的正文、人物资料和故事变量。切换分支继续写作，或比较不同发展。'),
+                  const SizedBox(height: 20),
+                  for (final b in ordered)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: (depth(b) * 12).clamp(0, 48).toDouble(),
+                        bottom: 10,
+                      ),
+                      child: FCard(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Icon(
-                                b.id == novel.activeBranchId
-                                    ? Icons.check_circle_outline
-                                    : Icons.account_tree_outlined,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  b.name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium,
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: '重命名分支',
-                                onPressed: () async {
-                                  final name = await askText(
-                                    context,
-                                    title: '重命名分支',
-                                    initial: b.name,
-                                  );
-                                  if (name == null) return;
-                                  try {
-                                    await ref
-                                        .read(repositoryProvider)
-                                        .renameBranch(b.id, name);
-                                  } catch (e) {
-                                    if (context.mounted) showError(context, e);
-                                  }
-                                },
-                                icon: const Icon(Icons.edit_outlined),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            b.parentBranchId == null
-                                ? '起始分支'
-                                : '来自：${byId[b.parentBranchId]?.name ?? '原分支'}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          Wrap(
-                            spacing: 8,
-                            children: [
-                              TextButton(
-                                key: ValueKey('activate-${b.id}'),
-                                onPressed: b.id == novel.activeBranchId
-                                    ? null
-                                    : () async {
-                                        try {
-                                          await ref
-                                              .read(servicesProvider)
-                                              .flushDrafts();
-                                          await ref
-                                              .read(repositoryProvider)
-                                              .setActiveBranch(b.id);
-                                        } catch (e) {
-                                          if (context.mounted) {
-                                            showError(context, e);
-                                          }
+                              Row(
+                                children: [
+                                  Icon(
+                                    b.id == novel.activeBranchId
+                                        ? FLucideIcons.circleCheck
+                                        : FLucideIcons.gitBranch,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text(b.name, style: heading)),
+                                  IconAction(
+                                    icon: FLucideIcons.pencil,
+                                    tooltip: '重命名分支',
+                                    onPress: () async {
+                                      final name = await askText(
+                                        context,
+                                        title: '重命名分支',
+                                        initial: b.name,
+                                      );
+                                      if (name == null) return;
+                                      try {
+                                        await ref
+                                            .read(repositoryProvider)
+                                            .renameBranch(b.id, name);
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          showError(context, e);
                                         }
-                                      },
-                                child: Text(
-                                  b.id == novel.activeBranchId
-                                      ? '当前创作分支'
-                                      : '切换到此分支',
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                b.parentBranchId == null
+                                    ? '起始分支'
+                                    : '来自：${byId[b.parentBranchId]?.name ?? '原分支'}',
+                                style: theme.typography.body.sm.copyWith(
+                                  color: theme.colors.mutedForeground,
                                 ),
                               ),
-                              if (b.id != novel.activeBranchId)
-                                TextButton(
-                                  key: ValueKey('compare-${b.id}'),
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => BranchComparisonScreen(
-                                        leftId: novel.activeBranchId,
-                                        rightId: b.id,
-                                      ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  FButton(
+                                    key: ValueKey('activate-${b.id}'),
+                                    variant: FButtonVariant.outline,
+                                    size: FButtonSizeVariant.sm,
+                                    mainAxisSize: MainAxisSize.min,
+                                    onPress: b.id == novel.activeBranchId
+                                        ? null
+                                        : () async {
+                                            try {
+                                              await ref
+                                                  .read(servicesProvider)
+                                                  .flushDrafts();
+                                              await ref
+                                                  .read(repositoryProvider)
+                                                  .setActiveBranch(b.id);
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                showError(context, e);
+                                              }
+                                            }
+                                          },
+                                    child: Text(
+                                      b.id == novel.activeBranchId
+                                          ? '当前创作分支'
+                                          : '切换到此分支',
                                     ),
                                   ),
-                                  child: const Text('与当前分支比较'),
-                                ),
+                                  if (b.id != novel.activeBranchId)
+                                    FButton(
+                                      key: ValueKey('compare-${b.id}'),
+                                      variant: FButtonVariant.ghost,
+                                      size: FButtonSizeVariant.sm,
+                                      mainAxisSize: MainAxisSize.min,
+                                      onPress: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              BranchComparisonScreen(
+                                                leftId: novel.activeBranchId,
+                                                rightId: b.id,
+                                              ),
+                                        ),
+                                      ),
+                                      child: const Text('与当前分支比较'),
+                                    ),
+                                ],
+                              ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
+                  const SizedBox(height: 24),
+                  Text('从已有故事创建分支', style: heading),
+                  const SizedBox(height: 16),
+                  FSelect<String>.rich(
+                    key: ValueKey('source:$source'),
+                    label: const Text('依据分支'),
+                    control: FSelectControl<String>.lifted(
+                      value: source,
+                      onChange: (v) => setState(() {
+                        _source = v;
+                        _scene = null;
+                      }),
+                    ),
+                    format: (id) => byId[id]?.name ?? '',
+                    children: [
+                      for (final b in branches)
+                        FSelectItem<String>(title: Text(b.name), value: b.id),
+                    ],
                   ),
-                ),
-              const SizedBox(height: 24),
-              Text('从已有故事创建分支', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                key: ValueKey('source:$source'),
-                initialValue: source,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '依据分支'),
-                items: [
-                  for (final b in branches)
-                    DropdownMenuItem(value: b.id, child: Text(b.name)),
-                ],
-                onChanged: (v) => setState(() {
-                  _source = v;
-                  _scene = null;
-                }),
-              ),
-              const SizedBox(height: 16),
-              AsyncView(
-                value: ref.watch(storyProvider(source)),
-                builder: (story) => DropdownButtonFormField<String>(
-                  key: ValueKey('cutoff:$source:$_scene'),
-                  initialValue: _scene,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '分叉位置'),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('当前故事末尾'),
-                    ),
-                    for (final s in story.scenes)
-                      DropdownMenuItem(
-                        value: s.id,
-                        child: Text(
-                          s.title.isEmpty ? '未命名场景' : s.title,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => _scene = v),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => _fork(source),
-                icon: const Icon(Icons.fork_right),
-                label: const Text('创建独立分支'),
-              ),
-              const SizedBox(height: 24),
-              Text('探索故事的下一步', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              const Text('根据所选分支的全部正文，提出多种可能。要从中途探索，先在该处分叉。'),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('推演结局'),
-                subtitle: const Text('关闭时生成后续剧情走向'),
-                value: _endings,
-                onChanged: (v) => setState(() => _endings = v),
-              ),
-              DropdownButtonFormField<int>(
-                initialValue: _count,
-                decoration: const InputDecoration(labelText: '候选数量'),
-                items: [
-                  for (var i = 2; i <= 6; i++)
-                    DropdownMenuItem(value: i, child: Text('$i 个')),
-                ],
-                onChanged: (v) => setState(() => _count = v!),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _busy ? null : () => _generate(source),
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: Text(_busy ? '准备中…' : '生成候选走向'),
-              ),
-              const SizedBox(height: 24),
-              AsyncView(
-                value: ref.watch(tasksProvider(source)),
-                builder: (tasks) => Column(
-                  children: [
-                    for (final task in tasks.where(
-                      (t) => t.kind == TaskKind.branches,
-                    ))
-                      ListTile(
-                        title: Text('故事走向 · ${taskStatusLabels[task.status]}'),
-                        subtitle: Text(
-                          task.createdAt.toLocal().toString().substring(0, 16),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => TaskScreen(taskId: task.id),
+                  const SizedBox(height: 16),
+                  AsyncView(
+                    value: ref.watch(storyProvider(source)),
+                    builder: (story) {
+                      // The empty id stands for the end of the story.
+                      String title(String id) => id.isEmpty
+                          ? '当前故事末尾'
+                          : switch (story.scenes
+                                .where((s) => s.id == id)
+                                .firstOrNull) {
+                              null => '',
+                              final s when s.title.isEmpty => '未命名场景',
+                              final s => s.title,
+                            };
+                      return FSelect<String>.rich(
+                        key: ValueKey('cutoff:$source:$_scene'),
+                        label: const Text('分叉位置'),
+                        control: FSelectControl<String>.lifted(
+                          value: _scene ?? '',
+                          onChange: (v) => setState(
+                            () => _scene = v == null || v.isEmpty ? null : v,
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+                        format: title,
+                        children: [
+                          FSelectItem<String>(
+                            title: Text(title('')),
+                            value: '',
+                          ),
+                          for (final s in story.scenes)
+                            FSelectItem<String>(
+                              title: Text(
+                                title(s.id),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              value: s.id,
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  FButton(
+                    variant: FButtonVariant.outline,
+                    onPress: () => _fork(source),
+                    prefix: const Icon(FLucideIcons.gitFork),
+                    child: const Text('创建独立分支'),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('探索故事的下一步', style: heading),
+                  const SizedBox(height: 8),
+                  const Text('根据所选分支的全部正文，提出多种可能。要从中途探索，先在该处分叉。'),
+                  const SizedBox(height: 12),
+                  FTile(
+                    title: const Text('推演结局'),
+                    subtitle: const Text('关闭时生成后续剧情走向'),
+                    suffix: FSwitch(
+                      value: _endings,
+                      onChange: (v) => setState(() => _endings = v),
+                    ),
+                    onPress: () => setState(() => _endings = !_endings),
+                  ),
+                  const SizedBox(height: 16),
+                  FSelect<int>(
+                    label: const Text('候选数量'),
+                    items: {for (var i = 2; i <= 6; i++) '$i 个': i},
+                    control: FSelectControl<int>.lifted(
+                      value: _count,
+                      onChange: (v) {
+                        if (v != null) setState(() => _count = v);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FButton(
+                    onPress: _busy ? null : () => _generate(source),
+                    prefix: const Icon(FLucideIcons.sparkles),
+                    child: Text(_busy ? '准备中…' : '生成候选走向'),
+                  ),
+                  const SizedBox(height: 24),
+                  AsyncView(
+                    value: ref.watch(tasksProvider(source)),
+                    builder: _branchTasks,
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     ),
   );
+
+  /// Earlier story-direction runs on the source branch.
+  Widget _branchTasks(List<GenerationTask> all) {
+    final tasks = all.where((t) => t.kind == TaskKind.branches).toList();
+    if (tasks.isEmpty) return const SizedBox.shrink();
+    return FTileGroup(
+      children: [
+        for (final task in tasks)
+          FTile(
+            title: Text('故事走向 · ${taskStatusLabels[task.status]}'),
+            subtitle: Text(
+              task.createdAt.toLocal().toString().substring(0, 16),
+            ),
+            suffix: const Icon(FLucideIcons.chevronRight),
+            onPress: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => TaskScreen(taskId: task.id),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
