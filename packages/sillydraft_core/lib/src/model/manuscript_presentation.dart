@@ -16,14 +16,17 @@ final class ManuscriptPresentation {
 
   factory ManuscriptPresentation.fromTask(
     ManuscriptContent content,
-    GenerationTask task,
-  ) {
-    final input = task.input, rules = input['outputRegex'] as List? ?? [];
+    GenerationTask task, {
+    List<Map<String, dynamic>>? rules,
+  }) {
+    final input = task.input;
+    rules ??= (input['outputRegex'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     if (rules.isEmpty) return ManuscriptPresentation.identity(content);
     final variables = input['variableResult'] as Map? ?? {};
     return ManuscriptPresentation.fromRules(
       content,
-      rules: rules.cast<Map<String, dynamic>>(),
+      rules: rules,
       macros: MacroEngine(
         values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
         local: (variables['local'] as Map? ?? {}).cast<String, String>(),

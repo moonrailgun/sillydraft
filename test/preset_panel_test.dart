@@ -274,7 +274,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('已有生成章节仍使用生成时的规则'), findsOneWidget);
+    expect(find.textContaining('立即刷新已有章节'), findsOneWidget);
 
     await tester.ensureVisible(status);
     await tester.tap(

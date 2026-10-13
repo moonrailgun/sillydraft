@@ -78,20 +78,22 @@ extension DisplayOperations on StoryRepository {
   /// current display rules, as SillyTavern applies regex to every message.
   /// Rules that fail leave the text as written rather than hiding it.
   Future<ManuscriptPresentation> _presentWithBranchRules(
-    DocumentRevision revision,
-  ) async {
-    final context = await displayContext(revision.originBranchId);
+    DocumentRevision revision, {
+    String? branchId,
+  }) async {
+    branchId ??= revision.originBranchId;
+    final context = await displayContext(branchId);
     if (context.rules.isEmpty) {
       return ManuscriptPresentation.identity(revision.content);
     }
     BranchVariables variables;
     try {
       variables = await getBranchVariables(
-        revision.originBranchId,
+        branchId,
         throughChapterId: revision.chapterId,
       );
     } on StoryNotFound {
-      variables = await getBranchVariables(revision.originBranchId);
+      variables = await getBranchVariables(branchId);
     }
     return ManuscriptPresentation.fromRules(
       revision.content,

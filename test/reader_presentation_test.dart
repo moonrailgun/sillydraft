@@ -159,6 +159,20 @@ void main() {
           ],
         },
       );
+      await repo.storeResource(
+        id: 'preset',
+        kind: ResourceKind.preset,
+        name: '显示预设',
+        filename: 'display.json',
+        sourceHash: 'fixture',
+        encryptedSource: [],
+        data: {
+          'extensions': {'regex_scripts': task.input['outputRegex']},
+        },
+      );
+      await repo.setSetting('writing/${chapter.branchId}', {
+        'presetId': 'preset',
+      });
       await repo.updateTask(task.id, status: TaskStatus.running);
       await repo.completeWritingTask(
         task.id,
@@ -181,6 +195,36 @@ void main() {
       await tester.pumpWidget(
         host(services, ReaderScreen(branchId: chapter.branchId)),
       );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('阿雾的来信到了。', findRichText: true), findsWidgets);
+      // The mounted reader must refresh even though the revision stays the same.
+      await repo.setSetting('writing/${chapter.branchId}', {
+        'presetId': 'preset',
+        'presetOverrides': {
+          'preset': {
+            'extensions': {
+              'regex_scripts': [
+                {
+                  ...(task.input['outputRegex'] as List).single as Map,
+                  'disabled': true,
+                },
+              ],
+            },
+          },
+        },
+      });
+      await tester.pumpAndSettle();
+      expect(find.textContaining('阿雾的来信到了。', findRichText: true), findsNothing);
+      expect(find.textContaining('暗号到了。', findRichText: true), findsWidgets);
+      expect((await repo.getTask(task.id)).input, task.input);
+      expect(
+        (await repo.presentProposal(proposal.id)).content.text,
+        '阿雾的来信到了。\n',
+        reason: 'candidate previews retain their task snapshot',
+      );
+      await repo.setSetting('writing/${chapter.branchId}', {
+        'presetId': 'preset',
+      });
       await tester.pumpAndSettle();
       expect(find.textContaining('阿雾的来信到了。', findRichText: true), findsWidgets);
       expect(

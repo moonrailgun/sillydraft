@@ -13,14 +13,23 @@ extension ProposalOperations on StoryRepository {
     }
   }
 
-  /// Immutable task input pins display rules and macro values to this revision.
-  /// Later manual edits inherit its display context; exports use original data.
-  Future<ManuscriptPresentation> presentRevision(String id) async {
+  /// With [branchId], use its current rules but retain the task's macro context.
+  /// Without it, historical comparisons use the immutable task snapshot.
+  Future<ManuscriptPresentation> presentRevision(
+    String id, {
+    String? branchId,
+  }) async {
     final revision = await getRevision(id),
         task = await _displayContext(revision);
     return task == null
-        ? await _presentWithBranchRules(revision)
-        : ManuscriptPresentation.fromTask(revision.content, task);
+        ? await _presentWithBranchRules(revision, branchId: branchId)
+        : ManuscriptPresentation.fromTask(
+            revision.content,
+            task,
+            rules: branchId == null
+                ? null
+                : (await displayContext(branchId)).rules,
+          );
   }
 
   Future<ManuscriptPresentation> presentProposal(String id) async {

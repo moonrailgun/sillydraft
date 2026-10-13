@@ -6,7 +6,7 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 实现证据位于 `packages/sillydraft_core/test/st_import_test.dart` 与 `st_compiler_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入及指令序列化函数，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
 
-显示专用正则已接入候选预览和独立阅读器，使用生成任务中冻结的规则、时钟、随机种子和宏变量；手动编辑继承此前生成的显示上下文。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
+显示专用正则已接入候选预览和独立阅读器。阅读器使用当前分支的显示规则，调整后已有章节立即重新渲染；生成章节仍使用任务中冻结的时钟、随机种子和宏变量，手动编辑继承此前生成的宏上下文。候选预览及历史对比保留任务中冻结的规则。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
 当前受测范围包括 V1/V2/V3、PNG、CHARX 导入，完整预设与提示词包区分，100001 顺序、关闭条目、角色覆盖、深度注入、条件和变量宏、正则阶段、默认 Handlebars 模板、文本指令序列及世界书递归。宏变量只在任务副本中变化，存储提交由候选采纳流程负责。未知宏、模板 helper 与已识别的未实现世界书依赖会阻止无提示运行。
 
@@ -18,7 +18,7 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 - 下拉框切换本作品当前预设，选择即生效；“不使用预设”回到 SillyDraft 默认写作配置。导入 ST 预设后自动选中。
 - 面板按「采样参数」「提示词管理」「预设正则」「兼容提示」分组，按预设内容显示适用页签；预设选择、助手开关与自动保存状态保留在顶部。各页签独立滚动，提示词长列表只构建可见区域及邻近缓存的条目。
-- 预设正则：列出 `extensions.regex_scripts` 内的规则名称、用途与启停开关；「查看正则内容」展示可选取的完整查找表达式、替换内容及其余字段，支持复制完整规则 JSON。开关只修改 `disabled`，保留规则顺序和其他字段，语义依据固定 ST 基线的[正则开关](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L653-L656)。开关自动保存到当前分支，后续生成使用新设置；已有生成章节仍使用生成时的规则。
+- 预设正则：列出 `extensions.regex_scripts` 内的规则名称、用途与启停开关；「查看正则内容」展示可选取的完整查找表达式、替换内容及其余字段，支持复制完整规则 JSON。开关只修改 `disabled`，保留规则顺序和其他字段，语义依据固定 ST 基线的[正则开关](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L653-L656)。显示规则变更后阅读器刷新已有章节，与 ST [保存规则后重载聊天](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L557-L560)一致；切换到其他分支时使用该分支规则。后续生成也使用新设置，已有任务记录和正式正文不变。
 - 采样参数：聊天补全预设显示温度、Top P/K、Min P、频率/存在/重复惩罚、最大回复与上下文长度、随机种子；文本补全预设与高级格式组合包编辑对应的 `temp`、`rep_pen`、`max_length` 等字段。未设置的参数不写入预设，交由模型默认值。
 - 提示词管理：开关、拖动或箭头排序、编辑、新增与删除自定义条目；ST 内置条目和动态标记只能关闭，不能删除。
 - 面板调整自动保存到当前分支，不修改预设库原件或其他分支；“恢复预设”清除本分支调整。“存入预设库…”创建并选中新资源，也可导出当前配置的 JSON（移除已识别凭据）。

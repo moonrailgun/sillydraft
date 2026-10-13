@@ -27,9 +27,14 @@ import '../../app/services.dart';
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
 
-final _revisionPresentationProvider =
-    FutureProvider.family<ManuscriptPresentation, String>(
-      (ref, id) => ref.watch(repositoryProvider).presentRevision(id),
+final _revisionPresentationProvider = FutureProvider.autoDispose
+    .family<
+      ManuscriptPresentation,
+      ({String revisionId, String branchId, DisplayContext display})
+    >(
+      (ref, key) => ref
+          .watch(repositoryProvider)
+          .presentRevision(key.revisionId, branchId: key.branchId),
     );
 typedef _ReaderBook = ({
   StorySnapshot story,
@@ -41,12 +46,20 @@ final _readerStoryProvider = FutureProvider.family<_ReaderBook, String>((
   branchId,
 ) async {
   final story = await ref.watch(storyProvider(branchId).future);
+  // ST 1.19.0 (06bde939), regex/index.js: changing rules reloads current chat.
+  // DisplayContext is cached by profile, so reading-progress writes reuse pages.
+  final display = await ref.watch(repositoryProvider).displayContext(branchId);
   final pages = await Future.wait(
     story.chapters.map(
-      (s) => ref.watch(_revisionPresentationProvider(s.revisionId).future),
+      (s) => ref.watch(
+        _revisionPresentationProvider((
+          revisionId: s.revisionId,
+          branchId: branchId,
+          display: display,
+        )).future,
+      ),
     ),
   );
-  final display = await ref.watch(repositoryProvider).displayContext(branchId);
   return (story: story, pages: pages, display: display);
 });
 

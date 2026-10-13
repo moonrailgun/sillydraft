@@ -525,7 +525,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                             ),
                                             const SizedBox(height: 4),
                                             const Text(
-                                              '开关自动保存到当前分支，后续生成使用新设置。已有生成章节仍使用生成时的规则。',
+                                              '开关自动保存到当前分支；显示正则立即刷新已有章节，不改动原正文。后续生成使用新设置。',
                                             ),
                                             const SizedBox(height: 8),
                                             FTileGroup(
