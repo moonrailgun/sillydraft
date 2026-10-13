@@ -95,6 +95,21 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
+      'name': 'search_story',
+      'description': '在当前编辑位置及此前的正文中查找词句（不区分大小写），返回所在场景、位置和前后文片段。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'query': {'type': 'string'},
+        },
+        'required': ['query'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'propose_scene',
       'description': '用独立写作模型生成正文候选，供作者审阅。不会直接修改正文。',
       'parameters': {
@@ -382,6 +397,43 @@ extension _AgentExecution on TaskRunner {
         'revisionId': scene['revisionId'],
         'title': scene['title'],
         'text': scene['text'],
+      };
+    }
+    if (call.name == 'search_story') {
+      final query = args['query'];
+      if (args.keys.any((k) => k != 'query') ||
+          query is! String ||
+          query.trim().isEmpty) {
+        throw const FormatException('参数无效');
+      }
+      final needle = query.trim().toLowerCase();
+      final matches = <Map<String, dynamic>>[];
+      var total = 0;
+      for (final scene in scenes) {
+        final text = scene['text'] as String, lower = text.toLowerCase();
+        for (
+          var at = lower.indexOf(needle);
+          at >= 0;
+          at = lower.indexOf(needle, at + needle.length)
+        ) {
+          total++;
+          if (matches.length >= 30) continue;
+          matches.add({
+            'sceneId': scene['id'],
+            'title': scene['title'],
+            'offset': at,
+            'snippet': text.substring(
+              (at - 60).clamp(0, text.length),
+              (at + needle.length + 60).clamp(0, text.length),
+            ),
+          });
+        }
+      }
+      return {
+        'query': query,
+        'total': total,
+        'matches': matches,
+        if (total > matches.length) 'truncated': true,
       };
     }
     if (call.name == 'propose_scene') {
