@@ -38,11 +38,24 @@ FThemeData appTheme(Brightness brightness) =>
         touch: touch,
         fontFamilyFallback: _cjkFallback,
       );
+      // forui paints an off switch track and a hovered tile both in
+      // `secondary`, so a switch in a tile vanished on hover. Neutral-300 /
+      // neutral-700 stays visible on the card and its hover.
+      final offTrack = brightness == Brightness.dark
+          ? const Color(0xFF404040)
+          : const Color(0xFFD4D4D4);
       return FThemeData(
         colors: colors,
         touch: touch,
         typography: FTypography(display: face, body: face),
         debugLabel: 'SillyDraft ${brightness.name}',
+      ).copyWith(
+        switchStyle: .delta(
+          trackColor: .delta([
+            .base(offTrack),
+            .exact({.disabled}, colors.disable(offTrack)),
+          ]),
+        ),
       );
     });
 
