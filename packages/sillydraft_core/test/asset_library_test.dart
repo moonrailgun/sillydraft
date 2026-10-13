@@ -136,18 +136,14 @@ void main() {
       startsWith('${dir.path}/assets/'),
     );
     expect((await assets.file(asset.id)).path, isNot(contains('harbor')));
-    final c = await repo.createChapter(
+
+    final s = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final s = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: c.id,
       content: ManuscriptContent.plainText('港口。'),
     );
     final inserted = await repo.insertIllustration(
       branchId: s.branchId,
-      sceneId: s.id,
+      chapterId: s.id,
       expectedRevisionId: s.revisionId,
       assetId: asset.id,
       offset: 3,
@@ -163,7 +159,7 @@ void main() {
     await expectLater(
       repo.insertIllustration(
         branchId: s.branchId,
-        sceneId: s.id,
+        chapterId: s.id,
         expectedRevisionId: s.revisionId,
         assetId: asset.id,
         offset: 0,
@@ -181,7 +177,7 @@ void main() {
     );
     expect(await assets.read(asset.id), isNotEmpty);
     expect(
-      (await repo.getScene(branchId: s.branchId, sceneId: s.id)).revisionId,
+      (await repo.getChapter(branchId: s.branchId, chapterId: s.id)).revisionId,
       inserted.revisionId,
     );
   });
@@ -217,14 +213,8 @@ void main() {
       bytes: testPicture(),
     );
     final other = await repo.createNovel(title: '乙');
-    final c = await repo.createChapter(
-      branchId: other.activeBranchId,
-      title: '一',
-    );
-    final s = await repo.createScene(
-      branchId: other.activeBranchId,
-      chapterId: c.id,
-    );
+
+    final s = await repo.createChapter(branchId: other.activeBranchId);
     await expectLater(
       repo.saveLoreEntry(
         branchId: other.activeBranchId,
@@ -238,7 +228,7 @@ void main() {
     await expectLater(
       repo.insertIllustration(
         branchId: s.branchId,
-        sceneId: s.id,
+        chapterId: s.id,
         expectedRevisionId: s.revisionId,
         assetId: asset.id,
         offset: 0,
@@ -246,9 +236,9 @@ void main() {
       throwsA(isA<StoryNotFound>()),
     );
     await expectLater(
-      repo.saveScene(
+      repo.saveChapter(
         branchId: s.branchId,
-        sceneId: s.id,
+        chapterId: s.id,
         expectedRevisionId: s.revisionId,
         content: ManuscriptContent.fromDelta([
           {
@@ -259,7 +249,7 @@ void main() {
       throwsFormatException,
     );
     expect(
-      (await repo.getScene(branchId: s.branchId, sceneId: s.id)).revisionId,
+      (await repo.getChapter(branchId: s.branchId, chapterId: s.id)).revisionId,
       s.revisionId,
     );
   });

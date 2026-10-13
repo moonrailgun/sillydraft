@@ -12,19 +12,19 @@ extension LoreReviewOperations on StoryRepository {
   Future<bool> taskSourcesCurrent(String taskId) async {
     final task = await getTask(taskId);
     final story = await getStory(task.branchId);
-    final throughSceneId = task.input['throughSceneId'] as String?;
-    final cutoff = throughSceneId == null
-        ? story.scenes.length - 1
-        : story.scenes.indexWhere((s) => s.id == throughSceneId);
-    if (throughSceneId != null && cutoff < 0) return false;
-    final scenes = story.scenes.take(cutoff + 1).toList();
+    final throughChapterId = task.input['throughChapterId'] as String?;
+    final cutoff = throughChapterId == null
+        ? story.chapters.length - 1
+        : story.chapters.indexWhere((s) => s.id == throughChapterId);
+    if (throughChapterId != null && cutoff < 0) return false;
+    final chapters = story.chapters.take(cutoff + 1).toList();
     final sources = task.input['sourceRevisions'];
-    if (sources is! List || sources.length != scenes.length) return false;
-    for (final (i, scene) in scenes.indexed) {
+    if (sources is! List || sources.length != chapters.length) return false;
+    for (final (i, chapter) in chapters.indexed) {
       final source = sources[i];
       if (source is! Map ||
-          source['sceneId'] != scene.id ||
-          source['revisionId'] != scene.revisionId) {
+          source['chapterId'] != chapter.id ||
+          source['revisionId'] != chapter.revisionId) {
         return false;
       }
     }
@@ -69,17 +69,20 @@ extension LoreReviewOperations on StoryRepository {
     if (kind == null || kind == LoreKind.map || confidence == null) {
       throw const FormatException('分析资料类型无效');
     }
-    final sceneId = stringField(data, 'sourceSceneId');
+    final chapterId = stringField(data, 'sourceChapterId');
     if (!(task.input['sourceRevisions'] as List).any(
-      (s) => s is Map && s['sceneId'] == sceneId,
+      (s) => s is Map && s['chapterId'] == chapterId,
     )) {
       throw const FormatException('资料依据不在这次分析的正文快照中');
     }
-    final source = await getScene(branchId: task.branchId, sceneId: sceneId);
+    final source = await getChapter(
+      branchId: task.branchId,
+      chapterId: chapterId,
+    );
     final entryName = name ?? stringField(data, 'name');
     final existing = await listLore(
       task.branchId,
-      throughSceneId: sceneId,
+      throughChapterId: chapterId,
       kind: kind,
     );
     if (targetEntityId == null &&
@@ -93,7 +96,7 @@ extension LoreReviewOperations on StoryRepository {
         : await getLoreEntry(
             branchId: task.branchId,
             id: targetEntityId,
-            throughSceneId: sceneId,
+            throughChapterId: chapterId,
           );
     if (old?.data['worldBookOnly'] == true) {
       throw const LoreConflict('世界书快照应在来源角色卡中编辑。');
@@ -106,7 +109,7 @@ extension LoreReviewOperations on StoryRepository {
       name: entryName,
       content: content ?? stringField(data, 'content'),
       certainty: confidence,
-      atSceneId: sceneId,
+      atChapterId: chapterId,
       data: {
         ...?old?.data,
         if (data['data'] is Map<String, dynamic>)
@@ -117,7 +120,7 @@ extension LoreReviewOperations on StoryRepository {
         'type': 'analysis',
         'taskId': taskId,
         'entryIndex': index,
-        'sceneId': sceneId,
+        'chapterId': chapterId,
         'revisionId': source.revisionId,
       },
     );
@@ -162,13 +165,8 @@ extension LoreReviewOperations on StoryRepository {
       branchId: task.branchId,
       name: name ?? stringField(candidate, 'title'),
     );
-    final story = await getStory(branch.id);
-    final chapter =
-        story.chapters.lastOrNull ??
-        await createChapter(branchId: branch.id, title: '第一章');
-    final opening = await createScene(
+    final opening = await createChapter(
       branchId: branch.id,
-      chapterId: chapter.id,
       title: stringField(candidate, 'title'),
       content: ManuscriptContent.plainText(stringField(candidate, 'opening')),
     );
@@ -178,7 +176,7 @@ extension LoreReviewOperations on StoryRepository {
       name: '剧情计划：${candidate['title']}',
       content: stringField(candidate, 'summary'),
       certainty: LoreCertainty.plan,
-      atSceneId: opening.id,
+      atChapterId: opening.id,
       provenance: {
         'type': 'candidate',
         'taskId': taskId,

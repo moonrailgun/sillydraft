@@ -11,9 +11,9 @@ const _toolNames = {
   'list_lore',
   'read_lore',
   'propose_lore',
-  'list_scenes',
-  'read_scene',
-  'propose_scene',
+  'list_chapters',
+  'read_chapter',
+  'propose_chapter',
   'activate_skill',
   'read_skill_file',
 };

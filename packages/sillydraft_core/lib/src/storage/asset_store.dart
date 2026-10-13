@@ -32,7 +32,7 @@ extension AssetOperations on StoryRepository {
     required String name,
     required PreparedAsset prepared,
     AssetPurpose purpose = AssetPurpose.illustration,
-    String? sourceSceneId,
+    String? sourceChapterId,
     String? sourceRevisionId,
     String? taskId,
     Map<String, dynamic> metadata = const {},
@@ -46,13 +46,13 @@ extension AssetOperations on StoryRepository {
         prepared.byteLength <= 0) {
       throw const FormatException('图片资源记录无效');
     }
-    if ((sourceSceneId == null) != (sourceRevisionId == null)) {
-      throw const FormatException('图片来源场景和版本必须同时提供');
+    if ((sourceChapterId == null) != (sourceRevisionId == null)) {
+      throw const FormatException('图片来源章节和版本必须同时提供');
     }
-    if (sourceSceneId != null &&
+    if (sourceChapterId != null &&
         !(await listRevisions(
           branchId: branchId,
-          sceneId: sourceSceneId,
+          chapterId: sourceChapterId,
         )).any((r) => r.id == sourceRevisionId)) {
       throw const StoryNotFound('插画依据版本');
     }
@@ -61,7 +61,7 @@ extension AssetOperations on StoryRepository {
     }
     final id = _id();
     await _execute(
-      '''INSERT INTO story_assets (id,novel_id,branch_id,name,content_hash,thumbnail_hash,width,height,byte_length,purpose,source_scene_id,source_revision_id,task_id,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+      '''INSERT INTO story_assets (id,novel_id,branch_id,name,content_hash,thumbnail_hash,width,height,byte_length,purpose,source_chapter_id,source_revision_id,task_id,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
       [
         id,
         branch.novelId,
@@ -73,7 +73,7 @@ extension AssetOperations on StoryRepository {
         prepared.height,
         prepared.byteLength,
         purpose.name,
-        sourceSceneId,
+        sourceChapterId,
         sourceRevisionId,
         taskId,
         jsonEncode(redactCredentials(metadata)),
@@ -99,7 +99,7 @@ extension AssetOperations on StoryRepository {
       name: task.input['name'] as String,
       prepared: prepared,
       purpose: AssetPurpose.values.byName(task.input['purpose'] as String),
-      sourceSceneId: task.sceneId,
+      sourceChapterId: task.chapterId,
       sourceRevisionId: task.baseRevisionId,
       taskId: taskId,
       metadata: metadata,
@@ -113,11 +113,11 @@ extension AssetOperations on StoryRepository {
   });
   Future<bool> assetSourceCurrent(String id) async {
     final asset = await getAsset(id);
-    if (asset.sourceSceneId == null) return true;
+    if (asset.sourceChapterId == null) return true;
     try {
-      return (await getScene(
+      return (await getChapter(
             branchId: asset.branchId,
-            sceneId: asset.sourceSceneId!,
+            chapterId: asset.sourceChapterId!,
           )).revisionId ==
           asset.sourceRevisionId;
     } on StoryNotFound {
@@ -141,27 +141,27 @@ extension AssetOperations on StoryRepository {
     }
   }
 
-  Future<Scene> insertIllustration({
+  Future<Chapter> insertIllustration({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required String expectedRevisionId,
     required String assetId,
     required int offset,
   }) => _write(() async {
-    final scene = await getScene(branchId: branchId, sceneId: sceneId);
-    if (scene.revisionId != expectedRevisionId) {
+    final chapter = await getChapter(branchId: branchId, chapterId: chapterId);
+    if (chapter.revisionId != expectedRevisionId) {
       throw RevisionConflict(
         expected: expectedRevisionId,
-        actual: scene.revisionId,
+        actual: chapter.revisionId,
       );
     }
     final asset = await getAsset(assetId), branch = await getBranch(branchId);
     if (asset.novelId != branch.novelId) throw const StoryNotFound('本作品的图片资源');
-    return _saveScene(
+    return _saveChapter(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       expectedRevisionId: expectedRevisionId,
-      content: scene.content.insertImage(offset, assetId),
+      content: chapter.content.insertImage(offset, assetId),
       reason: 'insert_illustration',
     );
   });
@@ -187,7 +187,7 @@ StoryAsset _asset(Map<String, Object?> r) => StoryAsset(
   height: r['height'] as int,
   byteLength: r['byte_length'] as int,
   purpose: AssetPurpose.values.byName(r['purpose'] as String),
-  sourceSceneId: r['source_scene_id'] as String?,
+  sourceChapterId: r['source_chapter_id'] as String?,
   sourceRevisionId: r['source_revision_id'] as String?,
   taskId: r['task_id'] as String?,
   archived: r['archived'] == 1,

@@ -28,13 +28,13 @@ extension PreferenceOperations on StoryRepository {
 
   Future<void> setReadingProgress({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required double fraction,
   }) async {
-    await getScene(branchId: branchId, sceneId: sceneId);
+    await getChapter(branchId: branchId, chapterId: chapterId);
     if (!fraction.isFinite) throw ArgumentError('阅读进度无效');
     await setSetting('progress/$branchId', {
-      'sceneId': sceneId,
+      'chapterId': chapterId,
       'fraction': fraction.clamp(0, 1),
       'updatedAt': _now(),
     });
@@ -45,21 +45,21 @@ extension PreferenceOperations on StoryRepository {
 
   Future<ReadingBookmark> addBookmark({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     String label = '',
     int offset = 0,
   }) => _write(() async {
-    final scene = await getScene(branchId: branchId, sceneId: sceneId);
+    final chapter = await getChapter(branchId: branchId, chapterId: chapterId);
     final id = _id(), now = _now();
-    final position = offset.clamp(0, scene.content.text.length);
+    final position = offset.clamp(0, chapter.content.text.length);
     await _execute(
-      'INSERT INTO reading_bookmarks (id,branch_id,scene_id,label,offset,created_at) VALUES (?,?,?,?,?,?)',
-      [id, branchId, sceneId, label, position, now],
+      'INSERT INTO reading_bookmarks (id,branch_id,chapter_id,label,offset,created_at) VALUES (?,?,?,?,?,?)',
+      [id, branchId, chapterId, label, position, now],
     );
     return ReadingBookmark(
       id: id,
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       label: label,
       offset: position,
       createdAt: DateTime.fromMillisecondsSinceEpoch(now, isUtc: true),
@@ -75,7 +75,7 @@ extension PreferenceOperations on StoryRepository {
             (r) => ReadingBookmark(
               id: r['id'] as String,
               branchId: r['branch_id'] as String,
-              sceneId: r['scene_id'] as String,
+              chapterId: r['chapter_id'] as String,
               label: r['label'] as String,
               offset: r['offset'] as int,
               createdAt: DateTime.fromMillisecondsSinceEpoch(

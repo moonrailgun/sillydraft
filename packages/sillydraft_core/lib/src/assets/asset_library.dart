@@ -149,7 +149,7 @@ final class AssetLibrary {
     required String name,
     required Uint8List bytes,
     AssetPurpose purpose = AssetPurpose.illustration,
-    String? sourceSceneId,
+    String? sourceChapterId,
     String? sourceRevisionId,
     Map<String, dynamic> metadata = const {},
   }) async {
@@ -160,7 +160,7 @@ final class AssetLibrary {
       name: name,
       prepared: prepared,
       purpose: purpose,
-      sourceSceneId: sourceSceneId,
+      sourceChapterId: sourceChapterId,
       sourceRevisionId: sourceRevisionId,
       metadata: metadata,
     );

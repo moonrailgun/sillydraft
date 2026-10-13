@@ -7,23 +7,18 @@ import 'task_runner_test.dart' show ScriptProvider;
 
 void main() {
   test(
-    'editor tools freeze scene scope and leave lore changes for review',
+    'editor tools freeze chapter scope and leave lore changes for review',
     () async {
       final repo = StoryRepository.memory();
       addTearDown(repo.close);
       final novel = await repo.createNovel(title: '按位置编辑');
-      final chapter = await repo.createChapter(
+
+      final first = await repo.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final first = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('门尚未打开'),
       );
-      final later = await repo.createScene(
+      final later = await repo.createChapter(
         branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('门后是未来秘密'),
       );
       final lore = await repo.saveLoreEntry(
@@ -31,18 +26,18 @@ void main() {
         kind: LoreKind.location,
         name: '旧宅',
         content: '锁住的大门',
-        atSceneId: first.id,
+        atChapterId: first.id,
       );
       await repo.saveLoreEntry(
         branchId: novel.activeBranchId,
         kind: LoreKind.world,
         name: '未来秘密',
         content: '未来秘密',
-        atSceneId: later.id,
+        atChapterId: later.id,
       );
       final conversation = await repo.createConversation(
         branchId: novel.activeBranchId,
-        throughSceneId: first.id,
+        throughChapterId: first.id,
       );
       final config = ModelConnection(
         id: 'test',
@@ -68,7 +63,7 @@ void main() {
             yield ToolCallReady('l2', 'read_lore', {'id': lore.id});
           } else if (round == 3) {
             expect(request.messages.last['content'], contains('锁住的大门'));
-            yield ToolCallReady('l3', 'read_scene', {'sceneId': later.id});
+            yield ToolCallReady('l3', 'read_chapter', {'chapterId': later.id});
           } else if (round == 4) {
             expect(request.messages.last['content'], contains('error'));
             yield ToolCallReady('l4', 'propose_lore', {
@@ -76,7 +71,7 @@ void main() {
               'name': '未开启的门',
               'content': '门后可能藏着线索',
               'certainty': 'inference',
-              'sourceSceneId': first.id,
+              'sourceChapterId': first.id,
             });
           } else {
             final result =
@@ -103,11 +98,11 @@ void main() {
         index: 0,
       );
       expect(accepted.certainty, LoreCertainty.inference);
-      expect(accepted.atSceneId, first.id);
+      expect(accepted.atChapterId, first.id);
       expect(
-        (await repo.getScene(
+        (await repo.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: first.id,
+          chapterId: first.id,
         )).revisionId,
         first.revisionId,
       );
@@ -117,13 +112,9 @@ void main() {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);
     final novel = await repo.createNovel(title: '编辑');
+
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('故事正文'),
     );
     final conversation = await repo.createConversation(
@@ -142,10 +133,10 @@ void main() {
         rounds++;
         expect(
           request.tools.map((t) => (t['function'] as Map)['name']),
-          contains('read_scene'),
+          contains('read_chapter'),
         );
         if (rounds == 1) {
-          yield ToolCallReady('c1', 'read_scene', {'sceneId': scene.id});
+          yield ToolCallReady('c1', 'read_chapter', {'chapterId': chapter.id});
           yield const GenerationFinished('tool_calls');
         } else {
           expect(request.messages.last['role'], 'tool');
@@ -169,27 +160,23 @@ void main() {
       '这段可以加强环境描写。',
     );
     expect(
-      (await repo.getScene(
+      (await repo.getChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
       )).content.text,
       '故事正文\n',
     );
     expect(await repo.listProposals(novel.activeBranchId), isEmpty);
   });
 
-  test('a tool cannot read a scene from a different project', () async {
+  test('a tool cannot read a chapter from a different project', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);
     final first = await repo.createNovel(title: '当前');
     final second = await repo.createNovel(title: '另一个项目');
+
     final chapter = await repo.createChapter(
       branchId: second.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: second.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('不能跨项目获取'),
     );
     final conversation = await repo.createConversation(
@@ -206,12 +193,14 @@ void main() {
       repository: repo,
       providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
         if (++rounds == 1) {
-          yield ToolCallReady('outside', 'read_scene', {'sceneId': scene.id});
+          yield ToolCallReady('outside', 'read_chapter', {
+            'chapterId': chapter.id,
+          });
           yield const GenerationFinished('tool_calls');
         } else {
           expect(request.messages.last['content'], contains('error'));
           expect(request.messages.last['content'], isNot(contains('不能跨项目获取')));
-          yield const TextDelta('当前分支没有这个场景。');
+          yield const TextDelta('当前分支没有这个章节。');
           yield const GenerationFinished('stop');
         }
       }),
@@ -220,7 +209,7 @@ void main() {
     final task = await EditorAgent(repository: repo, runner: runner).send(
       conversationId: conversation,
       connection: connection,
-      message: '查看场景',
+      message: '查看章节',
     );
     expect((await runner.wait(task.id)).status, TaskStatus.completed);
   });

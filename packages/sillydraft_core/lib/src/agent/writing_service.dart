@@ -20,12 +20,12 @@ import '../tasks/task_runner.dart';
 final class PreparedWriting extends JsonSource {
   PreparedWriting({
     required this.branchId,
-    required this.sceneId,
+    required this.chapterId,
     required this.baseRevisionId,
     required this.kind,
     required Map<String, dynamic> input,
   }) : super(input);
-  final String branchId, sceneId, baseRevisionId;
+  final String branchId, chapterId, baseRevisionId;
   final TaskKind kind;
   Map<String, dynamic> get input => raw;
   Map<String, dynamic> get compiled => jsonObject(raw['compiled'], 'compiled');
@@ -41,7 +41,7 @@ final class WritingService {
 
   Future<GenerationTask> generate({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required ModelConnection connection,
     required String brief,
     bool append = false,
@@ -60,7 +60,7 @@ final class WritingService {
   }) async => startPrepared(
     await prepare(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       connection: connection,
       brief: brief,
       append: append,
@@ -80,9 +80,9 @@ final class WritingService {
   );
 
   Future<GenerationTask> startPrepared(PreparedWriting draft) async {
-    final current = await repository.getScene(
+    final current = await repository.getChapter(
       branchId: draft.branchId,
-      sceneId: draft.sceneId,
+      chapterId: draft.chapterId,
     );
     if (current.revisionId != draft.baseRevisionId) {
       throw RevisionConflict(
@@ -115,19 +115,19 @@ final class WritingService {
     return runner.start(
       branchId: draft.branchId,
       kind: draft.kind,
-      sceneId: draft.sceneId,
+      chapterId: draft.chapterId,
       baseRevisionId: draft.baseRevisionId,
       input: draft.input,
     );
   }
 
-  /// Builds a writing request for [sceneId]. With [autoAccept] the result
-  /// is accepted into the scene as soon as it is written, story state
-  /// included, instead of waiting in review; if the scene or the variables
+  /// Builds a writing request for [chapterId]. With [autoAccept] the result
+  /// is accepted into the chapter as soon as it is written, story state
+  /// included, instead of waiting in review; if the chapter or the variables
   /// changed meanwhile it stays a candidate.
   Future<PreparedWriting> prepare({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required ModelConnection connection,
     required String brief,
     bool append = false,
@@ -146,13 +146,13 @@ final class WritingService {
   }) async {
     final authorBrief = brief;
     final story = await repository.getStory(branchId);
-    final position = story.scenes.indexWhere((s) => s.id == sceneId);
-    if (position < 0) throw const FormatException('场景不属于当前分支');
-    final scene = story.scenes[position];
-    if (expectedRevisionId != null && scene.revisionId != expectedRevisionId) {
+    final position = story.chapters.indexWhere((s) => s.id == chapterId);
+    if (position < 0) throw const FormatException('章节不属于当前分支');
+    final chapter = story.chapters[position];
+    if (expectedRevisionId != null && chapter.revisionId != expectedRevisionId) {
       throw RevisionConflict(
         expected: expectedRevisionId,
-        actual: scene.revisionId,
+        actual: chapter.revisionId,
       );
     }
     if ((rangeStart == null) != (rangeEnd == null)) {
@@ -160,18 +160,18 @@ final class WritingService {
     }
 
     if (rangeStart != null) {
-      scene.content.validateRange(rangeStart, rangeEnd!);
+      chapter.content.validateRange(rangeStart, rangeEnd!);
       if (rangeStart == rangeEnd || append) {
         throw ArgumentError('局部改写需要非空选区，不能同时追加正文');
       }
       brief =
-          '$brief\n只输出下列选中片段的替换正文，保持前后衔接，不重复其他段落：\n${scene.content.text.substring(rangeStart, rangeEnd)}';
+          '$brief\n只输出下列选中片段的替换正文，保持前后衔接，不重复其他段落：\n${chapter.content.text.substring(rangeStart, rangeEnd)}';
     }
     final variables = await repository.getBranchVariables(
       branchId,
-      throughSceneId: sceneId,
+      throughChapterId: chapterId,
     );
-    // MVU: the scene's record derives from the previous scene's, so the
+    // MVU: the chapter's record derives from the previous chapter's, so the
     // prompt sees that one and the reply's commands apply on top of it.
     final mvu = MvuService(repository);
     final initEntries = <MvuInitEntry>[
@@ -182,17 +182,17 @@ final class WritingService {
     final profile = await repository.getSetting('writing/$branchId') ?? {};
     final mvuBase = await mvu.baseFor(
       branchId,
-      sceneId,
+      chapterId,
       entries: initEntries,
       schemaChecks: MvuService.schemaChecksFor(profile, card?.raw),
       errors: mvuErrors,
     );
     // The prompt shows the latest stored record (the state after this
-    // scene's earlier replies); the base only seeds a scene without one.
+    // chapter's earlier replies); the base only seeds a chapter without one.
     final localVariables = MvuData.presentIn(variables.local) || mvuBase == null
         ? variables.local
         : {...variables.local, ...mvuBase.toStored()};
-    final lore = await repository.listLore(branchId, throughSceneId: sceneId);
+    final lore = await repository.listLore(branchId, throughChapterId: chapterId);
     final availableLore = lore
         .where((e) => !e.sourceStale && e.data['worldBookOnly'] != true)
         .toList();
@@ -236,11 +236,11 @@ final class WritingService {
         localVariables: localVariables,
         globalVariables: variables.global,
         history: [
-          for (final (i, s) in story.scenes.indexed)
-            ContextScene(
+          for (final (i, s) in story.chapters.indexed)
+            ContextChapter(
               branchId: branchId,
               position: i,
-              sceneId: s.id,
+              chapterId: s.id,
               revisionId: s.revisionId,
               content: s.content.text,
             ),
@@ -254,9 +254,9 @@ final class WritingService {
       stopStrings: result.stopStrings,
       trace: [
         ...result.trace,
-        '资料按当前分支和目标场景过滤：${availableLore.length} 项',
+        '资料按当前分支和目标章节过滤：${availableLore.length} 项',
         if (mvuBase != null)
-          'mvu:base:${position == 0 ? 'initvar' : 'scene:${position - 1}'}',
+          'mvu:base:${position == 0 ? 'initvar' : 'chapter:${position - 1}'}',
       ],
       diagnostics: [
         ...result.diagnostics,
@@ -288,8 +288,8 @@ final class WritingService {
     return PreparedWriting(
       branchId: branchId,
       kind: rewrite ? TaskKind.rewrite : TaskKind.writing,
-      sceneId: sceneId,
-      baseRevisionId: scene.revisionId,
+      chapterId: chapterId,
+      baseRevisionId: chapter.revisionId,
       input: {
         'connection': connection.raw,
         'request': request.raw,
@@ -303,7 +303,7 @@ final class WritingService {
         if (rangeStart != null)
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
         'selectedOrderId': ?selectedOrderId,
-        'originalContent': scene.content.toJson(),
+        'originalContent': chapter.content.toJson(),
         'clock': clock.toIso8601String(),
         'seed': seed,
         'presetHash': sha256
@@ -312,8 +312,8 @@ final class WritingService {
         'preset': selectedPreset.exportJson(),
         'compiled': compiled.toJson(),
         'sourceRevisions': [
-          for (final s in story.scenes.take(position + 1))
-            {'sceneId': s.id, 'revisionId': s.revisionId},
+          for (final s in story.chapters.take(position + 1))
+            {'chapterId': s.id, 'revisionId': s.revisionId},
         ],
         'variableBaseVersion': variables.version,
         if (mvuBase != null) 'mvu': {'base': mvuBase.toJson()},
@@ -340,16 +340,16 @@ final class WritingService {
 
   Future<GenerationTask> rewrite({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required ModelConnection connection,
     required String instructions,
     ImportedPreset? preset,
     CharacterCard? card,
   }) => generate(
     branchId: branchId,
-    sceneId: sceneId,
+    chapterId: chapterId,
     connection: connection,
-    brief: '重写当前场景，保留未要求修改的事实。要求：$instructions',
+    brief: '重写当前章节，保留未要求修改的事实。要求：$instructions',
     rewrite: true,
     preset: preset,
     card: card,
@@ -380,7 +380,7 @@ final class WritingService {
     TaskKind.analysis,
     '整理当前故事的人物、设定、地点、组织、物品、事件和伏笔。明确区分已发生事实、计划和推测。'
     '只返回 JSON：{"entries":[{"kind":"character/world/location/organization/item/event/foreshadow",'
-    '"name":"名称","content":"信息","certainty":"fact/plan/inference","sourceSceneId":"依据场景ID"}]}。',
+    '"name":"名称","content":"信息","certainty":"fact/plan/inference","sourceChapterId":"依据章节ID"}]}。',
   );
 
   Future<GenerationTask> _sideTask(
@@ -401,9 +401,9 @@ final class WritingService {
           'content': jsonEncode({
             'title': story.novel.title,
             'synopsis': story.novel.synopsis,
-            'scenes': [
-              for (final scene in story.scenes)
-                {'sceneId': scene.id, 'text': scene.content.text},
+            'chapters': [
+              for (final chapter in story.chapters)
+                {'chapterId': chapter.id, 'text': chapter.content.text},
             ],
           }),
         },
@@ -421,8 +421,8 @@ final class WritingService {
         'connection': connection.raw,
         'request': request.raw,
         'sourceRevisions': [
-          for (final s in story.scenes)
-            {'sceneId': s.id, 'revisionId': s.revisionId},
+          for (final s in story.chapters)
+            {'chapterId': s.id, 'revisionId': s.revisionId},
         ],
       },
     );

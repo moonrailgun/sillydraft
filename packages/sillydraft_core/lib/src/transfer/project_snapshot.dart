@@ -3,24 +3,29 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
+import '../migration/chapter_migration.dart';
+import '../migration/legacy_schema.dart';
+
 /// Versioned, portable project graph. Encrypted ST sources and image bytes are
 /// separate archive members; no global connection settings or secrets are here.
 final class ProjectSnapshot {
-  ProjectSnapshot.fromJson(Map<String, dynamic> json)
-    : _encoded = jsonEncode(json) {
+  factory ProjectSnapshot.fromJson(Map<String, dynamic> json) {
     if (json['format'] != 'sillydraft-project' ||
         json['version'] != 1 ||
-        json['schema'] != 6 ||
+        ![6, 8].contains(json['schema']) ||
         json['tables'] is! Map) {
       throw const FormatException('不支持的项目备份格式');
     }
     final tables = json['tables'] as Map;
-    if (tables.length != projectTables.length ||
-        tables.keys.any((k) => !projectTables.contains(k))) {
+    final expectedTables = json['schema'] == 6
+        ? legacyProjectTables
+        : projectTables;
+    if (tables.length != expectedTables.length ||
+        tables.keys.any((k) => !expectedTables.contains(k))) {
       throw const FormatException('备份数据表不完整');
     }
     var count = 0;
-    for (final name in projectTables) {
+    for (final name in expectedTables) {
       final rows = tables[name];
       if (rows is! List) throw const FormatException('备份数据表无效');
       count += rows.length;
@@ -31,7 +36,19 @@ final class ProjectSnapshot {
     if ((tables['novels'] as List).length != 1) {
       throw const FormatException('备份须包含一部作品');
     }
+    if (json['schema'] == 6) {
+      json = {
+        ...json,
+        'schema': 8,
+        'tables': migrateLegacyChapters({
+          for (final name in expectedTables)
+            name: (tables[name] as List).cast<Map<String, dynamic>>(),
+        }),
+      };
+    }
+    return ProjectSnapshot._(jsonEncode(json));
   }
+  ProjectSnapshot._(this._encoded);
   final String _encoded;
   Map<String, dynamic> toJson() => jsonDecode(_encoded) as Map<String, dynamic>;
   Map<String, List<Map<String, dynamic>>> get tables => {
@@ -57,7 +74,6 @@ final class ProjectSnapshot {
         for (final key in [
           'id',
           'chapter_id',
-          'scene_id',
           'entity_id',
           if (name == 'lore_versions') 'revision_id',
         ]) {
@@ -91,7 +107,7 @@ final class ProjectSnapshot {
       snapshot: ProjectSnapshot.fromJson({
         'format': 'sillydraft-project',
         'version': 1,
-        'schema': 6,
+        'schema': 8,
         'tables': rows,
       }),
       ids: Map.unmodifiable(ids),
@@ -102,9 +118,8 @@ final class ProjectSnapshot {
 const projectTables = [
   'novels',
   'branches',
-  'branch_chapters',
   'revisions',
-  'branch_scenes',
+  'branch_chapters',
   'proposals',
   'generation_tasks',
   'branch_variables',

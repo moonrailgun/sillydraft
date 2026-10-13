@@ -14,7 +14,7 @@ final class IllustrationService {
     required ModelConnection connection,
     required String name,
     required ImageRequest request,
-    String? sceneId,
+    String? chapterId,
     List<String> referenceAssetIds = const [],
     AssetPurpose purpose = AssetPurpose.illustration,
   }) async {
@@ -23,9 +23,9 @@ final class IllustrationService {
       throw const FormatException('最多使用 16 张参考图');
     }
     final branch = await repository.getBranch(branchId);
-    final scene = sceneId == null
+    final chapter = chapterId == null
         ? null
-        : await repository.getScene(branchId: branchId, sceneId: sceneId);
+        : await repository.getChapter(branchId: branchId, chapterId: chapterId);
     final references = <Map<String, dynamic>>[];
     for (final id in referenceAssetIds) {
       final asset = await repository.getAsset(id);
@@ -37,8 +37,8 @@ final class IllustrationService {
     return runner.start(
       branchId: branchId,
       kind: TaskKind.illustration,
-      sceneId: scene?.id,
-      baseRevisionId: scene?.revisionId,
+      chapterId: chapter?.id,
+      baseRevisionId: chapter?.revisionId,
       input: {
         'connection': connection.raw,
         'imageRequest': request.raw,

@@ -85,11 +85,6 @@ extension CardStartOperations on StoryRepository {
     final chapter = await createChapter(
       branchId: novel.activeBranchId,
       title: '第一章',
-    );
-    final scene = await createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
-      title: '故事开场',
       content: ManuscriptContent.plainText(opening),
     );
     await setSetting('writing/${novel.activeBranchId}', {
@@ -106,7 +101,7 @@ extension CardStartOperations on StoryRepository {
         card.description,
         card.personality,
       ].where((s) => s.isNotEmpty).join('\n\n'),
-      atSceneId: scene.id,
+      atChapterId: chapter.id,
       provenance: {'type': 'card', 'resourceId': resourceId},
       data: {'cardId': resourceId},
     );
@@ -116,7 +111,7 @@ extension CardStartOperations on StoryRepository {
         kind: LoreKind.world,
         name: '开场设定',
         content: card.scenario,
-        atSceneId: scene.id,
+        atChapterId: chapter.id,
         provenance: {'type': 'card', 'resourceId': resourceId},
       );
     }
@@ -130,7 +125,7 @@ extension CardStartOperations on StoryRepository {
             ? entry.keys.join('、')
             : '世界书 ${entry.id}',
         content: entry.content,
-        atSceneId: scene.id,
+        atChapterId: chapter.id,
         provenance: {
           'type': 'card',
           'resourceId': resourceId,
@@ -142,7 +137,7 @@ extension CardStartOperations on StoryRepository {
     if (macros.local.isNotEmpty || macros.global.isNotEmpty) {
       await setBranchVariables(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
         expectedVersion: 0,
         local: macros.local,
         global: macros.global,

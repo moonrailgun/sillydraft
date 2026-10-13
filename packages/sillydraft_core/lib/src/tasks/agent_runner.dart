@@ -32,7 +32,7 @@ const _editingTools = <Map<String, dynamic>>[
     'type': 'function',
     'function': {
       'name': 'propose_lore',
-      'description': '提出一条待作者审阅的资料建议。不会直接修改资料；sourceSceneId 必须是可见场景。关系须提供已有资料的 fromId/toId。',
+      'description': '提出一条待作者审阅的资料建议。不会直接修改资料；sourceChapterId 必须是可见章节。关系须提供已有资料的 fromId/toId。',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -55,12 +55,12 @@ const _editingTools = <Map<String, dynamic>>[
             'type': 'string',
             'enum': ['fact', 'plan', 'inference'],
           },
-          'sourceSceneId': {'type': 'string'},
+          'sourceChapterId': {'type': 'string'},
           'fromId': {'type': 'string'},
           'toId': {'type': 'string'},
           'directed': {'type': 'boolean'},
         },
-        'required': ['kind', 'name', 'content', 'certainty', 'sourceSceneId'],
+        'required': ['kind', 'name', 'content', 'certainty', 'sourceChapterId'],
         'additionalProperties': false,
       },
     },
@@ -68,8 +68,8 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
-      'name': 'list_scenes',
-      'description': '列出当前分支的场景和版本',
+      'name': 'list_chapters',
+      'description': '列出当前分支的章节和版本',
       'parameters': {
         'type': 'object',
         'properties': <String, dynamic>{},
@@ -80,14 +80,14 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
-      'name': 'read_scene',
-      'description': '读取当前分支指定场景的正文',
+      'name': 'read_chapter',
+      'description': '读取当前分支指定章节的正文',
       'parameters': {
         'type': 'object',
         'properties': {
-          'sceneId': {'type': 'string'},
+          'chapterId': {'type': 'string'},
         },
-        'required': ['sceneId'],
+        'required': ['chapterId'],
         'additionalProperties': false,
       },
     },
@@ -96,7 +96,7 @@ const _editingTools = <Map<String, dynamic>>[
     'type': 'function',
     'function': {
       'name': 'search_story',
-      'description': '在当前编辑位置及此前的正文中查找词句（不区分大小写），返回所在场景、位置和前后文片段。',
+      'description': '在当前编辑位置及此前的正文中查找词句（不区分大小写），返回所在章节、位置和前后文片段。',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -110,16 +110,16 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
-      'name': 'propose_scene',
+      'name': 'propose_chapter',
       'description': '用独立写作模型生成正文候选，供作者审阅。不会直接修改正文。',
       'parameters': {
         'type': 'object',
         'properties': {
-          'sceneId': {'type': 'string'},
+          'chapterId': {'type': 'string'},
           'instructions': {'type': 'string'},
           'append': {'type': 'boolean'},
         },
-        'required': ['sceneId', 'instructions', 'append'],
+        'required': ['chapterId', 'instructions', 'append'],
         'additionalProperties': false,
       },
     },
@@ -275,7 +275,7 @@ extension _AgentExecution on TaskRunner {
     if (call.name == 'activate_skill' || call.name == 'read_skill_file') {
       return _skillTool(task, call);
     }
-    final scenes = (task.input['sceneSnapshot'] as List? ?? [])
+    final chapters = (task.input['chapterSnapshot'] as List? ?? [])
         .cast<Map<String, dynamic>>();
     final lore = (task.input['loreSnapshot'] as List? ?? [])
         .cast<Map<String, dynamic>>();
@@ -309,7 +309,7 @@ extension _AgentExecution on TaskRunner {
         'name',
         'content',
         'certainty',
-        'sourceSceneId',
+        'sourceChapterId',
       ];
       if (required.any(
             (key) =>
@@ -331,14 +331,14 @@ extension _AgentExecution on TaskRunner {
           !['fact', 'plan', 'inference'].contains(args['certainty']) ||
           (args['name'] as String).length > 300 ||
           (args['content'] as String).length > 100000 ||
-          !scenes.any((s) => s['id'] == args['sourceSceneId'])) {
+          !chapters.any((s) => s['id'] == args['sourceChapterId'])) {
         throw const FormatException('资料建议参数无效');
       }
       final data = <String, dynamic>{};
       if (args['kind'] == 'relationship') {
         final endpoints = await repository.listLore(
           task.branchId,
-          throughSceneId: args['sourceSceneId'] as String,
+          throughChapterId: args['sourceChapterId'] as String,
         );
         if (args['fromId'] == args['toId'] ||
             ['fromId', 'toId'].any(
@@ -366,7 +366,7 @@ extension _AgentExecution on TaskRunner {
         kind: TaskKind.analysis,
         input: {
           'sourceRevisions': task.input['sourceRevisions'],
-          'throughSceneId': task.input['throughSceneId'],
+          'throughChapterId': task.input['throughChapterId'],
           'parentTaskId': task.id,
           'conversationId': task.input['conversationId'],
           'origin': 'editorSuggestion',
@@ -387,30 +387,30 @@ extension _AgentExecution on TaskRunner {
         'message': '资料建议已保存，等待作者逐条审阅。',
       };
     }
-    if (call.name == 'list_scenes') {
-      if (args.isNotEmpty) throw const FormatException('list_scenes 无参数');
+    if (call.name == 'list_chapters') {
+      if (args.isNotEmpty) throw const FormatException('list_chapters 无参数');
       return {
-        'scenes': [
-          for (final scene in scenes)
+        'chapters': [
+          for (final chapter in chapters)
             {
-              'id': scene['id'],
-              'title': scene['title'],
-              'revisionId': scene['revisionId'],
-              'canEdit': scene['id'] == task.input['editSceneId'],
+              'id': chapter['id'],
+              'title': chapter['title'],
+              'revisionId': chapter['revisionId'],
+              'canEdit': chapter['id'] == task.input['editChapterId'],
             },
         ],
       };
     }
-    if (call.name == 'read_scene') {
-      if (args.keys.any((k) => k != 'sceneId') || args['sceneId'] is! String) {
+    if (call.name == 'read_chapter') {
+      if (args.keys.any((k) => k != 'chapterId') || args['chapterId'] is! String) {
         throw const FormatException('参数无效');
       }
-      final scene = scenes.firstWhere((s) => s['id'] == args['sceneId']);
+      final chapter = chapters.firstWhere((s) => s['id'] == args['chapterId']);
       return {
-        'sceneId': scene['id'],
-        'revisionId': scene['revisionId'],
-        'title': scene['title'],
-        'text': scene['text'],
+        'chapterId': chapter['id'],
+        'revisionId': chapter['revisionId'],
+        'title': chapter['title'],
+        'text': chapter['text'],
       };
     }
     if (call.name == 'search_story') {
@@ -423,8 +423,8 @@ extension _AgentExecution on TaskRunner {
       final needle = query.trim().toLowerCase();
       final matches = <Map<String, dynamic>>[];
       var total = 0;
-      for (final scene in scenes) {
-        final text = scene['text'] as String, lower = text.toLowerCase();
+      for (final chapter in chapters) {
+        final text = chapter['text'] as String, lower = text.toLowerCase();
         for (
           var at = lower.indexOf(needle);
           at >= 0;
@@ -433,8 +433,8 @@ extension _AgentExecution on TaskRunner {
           total++;
           if (matches.length >= 30) continue;
           matches.add({
-            'sceneId': scene['id'],
-            'title': scene['title'],
+            'chapterId': chapter['id'],
+            'title': chapter['title'],
             'offset': at,
             'snippet': text.substring(
               (at - 60).clamp(0, text.length),
@@ -450,16 +450,16 @@ extension _AgentExecution on TaskRunner {
         if (total > matches.length) 'truncated': true,
       };
     }
-    if (call.name == 'propose_scene') {
+    if (call.name == 'propose_chapter') {
       if (args.keys.any(
-            (k) => !['sceneId', 'instructions', 'append'].contains(k),
+            (k) => !['chapterId', 'instructions', 'append'].contains(k),
           ) ||
-          args['sceneId'] is! String ||
+          args['chapterId'] is! String ||
           args['instructions'] is! String ||
           args['append'] is! bool) {
         throw const FormatException('参数无效');
       }
-      if (args['sceneId'] != task.input['editSceneId'] ||
+      if (args['chapterId'] != task.input['editChapterId'] ||
           !await repository.taskSourcesCurrent(task.id)) {
         throw const FormatException('不属于当前编辑位置，或正文已变化');
       }
@@ -468,7 +468,7 @@ extension _AgentExecution on TaskRunner {
       final context = input['writingContext'] as Map<String, dynamic>? ?? {};
       final child = await service.generate(
         branchId: task.branchId,
-        sceneId: args['sceneId'] as String,
+        chapterId: args['chapterId'] as String,
         connection: ModelConnection.fromJson(
           jsonObject(input['writingConnection'], 'writingConnection'),
         ),

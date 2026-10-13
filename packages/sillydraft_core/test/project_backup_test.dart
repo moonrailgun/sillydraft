@@ -18,18 +18,13 @@ void main() {
       await dir.delete(recursive: true);
     });
     final novel = await repo.createNovel(title: '不能破坏的作品');
+
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('完整正文'),
     );
-    final other = await repo.createScene(
+    final other = await repo.createChapter(
       branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('第二场'),
     );
     await repo.saveLoreEntry(
@@ -37,12 +32,12 @@ void main() {
       kind: LoreKind.character,
       name: '人物',
       content: '介绍',
-      atSceneId: scene.id,
-      provenance: {'sceneId': scene.id, 'revisionId': scene.revisionId},
+      atChapterId: chapter.id,
+      provenance: {'chapterId': chapter.id, 'revisionId': chapter.revisionId},
     );
     await repo.setBranchVariables(
       branchId: novel.activeBranchId,
-      sceneId: scene.id,
+      chapterId: chapter.id,
       expectedVersion: 0,
       local: {'name': '人物'},
     );
@@ -51,7 +46,7 @@ void main() {
     });
     await repo.setReadingProgress(
       branchId: novel.activeBranchId,
-      sceneId: scene.id,
+      chapterId: chapter.id,
       fraction: .5,
     );
     final backup = ProjectBackup(
@@ -64,11 +59,11 @@ void main() {
     );
     final original = await repo.exportProject(novel.id);
     final mutations = <(String, String, Map<String, dynamic>, String?)>[
-      ('lore_versions', 'provenance_json', {'sceneId': 42}, null),
+      ('lore_versions', 'provenance_json', {'chapterId': 42}, null),
       (
         'lore_versions',
         'provenance_json',
-        {'sceneId': scene.id, 'revisionId': other.revisionId},
+        {'chapterId': chapter.id, 'revisionId': other.revisionId},
         null,
       ),
       ('lore_versions', 'data_json', {'appearance': <dynamic>[]}, null),
@@ -89,7 +84,7 @@ void main() {
       (
         'app_settings',
         'value_json',
-        {'sceneId': scene.id, 'fraction': 'bad'},
+        {'chapterId': chapter.id, 'fraction': 'bad'},
         'progress/${novel.activeBranchId}',
       ),
       (
@@ -179,64 +174,64 @@ void main() {
       kind: ResourceKind.character,
     );
     final novel = await a.createNovelFromCard(resourceId: card.id, title: '雾港');
-    var scene = (await a.getStory(novel.activeBranchId)).scenes.single;
-    final firstRevision = scene.revisionId;
-    scene = await a.saveScene(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+    var chapter = (await a.getStory(novel.activeBranchId)).chapters.single;
+    final firstRevision = chapter.revisionId;
+    chapter = await a.saveChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       content: ManuscriptContent.plainText('潮声来了。'),
     );
     final asset = await aa.importImage(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       name: '插图',
       bytes: testPicture(),
     );
-    scene = await a.insertIllustration(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+    chapter = await a.insertIllustration(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       assetId: asset.id,
       offset: 5,
     );
     await a.setCover(novel.id, asset.id);
     await a.archiveAsset(asset.id, archived: true);
     await a.saveLoreEntry(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       kind: LoreKind.foreshadow,
       name: '旧钟',
       content: '待回收',
       certainty: LoreCertainty.plan,
-      provenance: {'sceneId': scene.id, 'revisionId': scene.revisionId},
+      provenance: {'chapterId': chapter.id, 'revisionId': chapter.revisionId},
     );
     await a.setBranchVariables(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedVersion: (await a.getBranchVariables(scene.branchId)).version,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedVersion: (await a.getBranchVariables(chapter.branchId)).version,
       local: {'clue': 'bell'},
       global: {},
     );
     await a.addBookmark(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
       label: '线索',
       offset: 2,
     );
     await a.setReadingProgress(
-      branchId: scene.branchId,
-      sceneId: scene.id,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
       fraction: .5,
     );
     await a.forkBranch(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       name: '另一结局',
-      atSceneId: scene.id,
+      atChapterId: chapter.id,
     );
     final task = await a.createTask(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       kind: TaskKind.analysis,
       input: {
-        'sourceRevisions': {scene.id: scene.revisionId},
+        'sourceRevisions': {chapter.id: chapter.revisionId},
       },
     );
     await a.updateTask(
@@ -267,7 +262,7 @@ void main() {
     expect(
       (await b.listRevisions(
         branchId: story.branch.id,
-        sceneId: story.scenes.single.id,
+        chapterId: story.chapters.single.id,
       )).length,
       3,
     );
@@ -331,18 +326,14 @@ void main() {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);
     final novel = await repo.createNovel(title: '保存中的作品');
-    final c = await repo.createChapter(
+
+    final s = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final s = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: c.id,
       content: ManuscriptContent.plainText('旧正文'),
     );
     final snapshot = await repo.exportProject(novel.id);
     final raw = snapshot.toJson();
-    ((raw['tables'] as Map)['branch_scenes'] as List).single['revision_id'] =
+    ((raw['tables'] as Map)['branch_chapters'] as List).single['revision_id'] =
         'outside-project';
     await expectLater(
       repo.restoreProject(ProjectSnapshot.fromJson(raw), encryptedSources: {}),
@@ -369,9 +360,9 @@ void main() {
       reason:
           'Late validation failure must roll back all inserted project rows',
     );
-    await repo.saveScene(
+    await repo.saveChapter(
       branchId: s.branchId,
-      sceneId: s.id,
+      chapterId: s.id,
       expectedRevisionId: s.revisionId,
       content: ManuscriptContent.plainText('用户的新正文'),
     );

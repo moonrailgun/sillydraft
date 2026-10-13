@@ -273,19 +273,15 @@ void main() {
     );
     var runner = runnerFor(repository);
     final novel = await repository.createNovel(title: '断线重连测试');
+
     final chapter = await repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('原稿'),
     );
     final task = await WritingService(repository: repository, runner: runner)
         .generate(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
           connection: connection(),
           brief: '继续故事',
         );
@@ -302,10 +298,10 @@ void main() {
       await runner.close();
       await repository.close();
     });
-    final changed = await repository.saveScene(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+    final changed = await repository.saveChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       content: ManuscriptContent.plainText('离线时作者补写'),
     );
     gate.complete();
@@ -321,20 +317,20 @@ void main() {
     final proposal = await repository.getProposal(
       done.result['proposalId'] as String,
     );
-    expect(proposal.baseRevisionId, scene.revisionId);
+    expect(proposal.baseRevisionId, chapter.revisionId);
     expect(proposal.content.text, contains('候选完整正文'));
     await expectLater(
       repository.acceptProposal(proposal.id),
       throwsA(isA<RevisionConflict>()),
     );
     expect(
-      (await repository.getScene(
-        branchId: scene.branchId,
-        sceneId: scene.id,
+      (await repository.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
       )).revisionId,
       changed.revisionId,
     );
-    expect((await repository.listProposals(scene.branchId)).length, 1);
+    expect((await repository.listProposals(chapter.branchId)).length, 1);
   });
 
   test('detached remote cancellation requires acknowledgement before recording cancelled locally', () async {
@@ -356,18 +352,14 @@ void main() {
     );
     final runner = runnerFor(token);
     final novel = await repository.createNovel(title: '取消托管任务');
+
     final chapter = await repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final scene = await repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
     );
     final task = await WritingService(repository: repository, runner: runner)
         .generate(
-          branchId: scene.branchId,
-          sceneId: scene.id,
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
           connection: connection(),
           brief: '继续',
         );
@@ -390,7 +382,7 @@ void main() {
       (await http('GET', 'v1/jobs/${task.id}')).data['status'],
       'cancelled',
     );
-    expect(await repository.listProposals(scene.branchId), isEmpty);
+    expect(await repository.listProposals(chapter.branchId), isEmpty);
     expect(calls, 1);
   });
 
@@ -490,101 +482,91 @@ void main() {
     },
   );
 
-  test(
-    'remote image recovery saves one asset against its original scene revision',
-    () async {
-      await server.close();
-      final bytes = await File('../test/fixtures/tiny-illustration.png')
-          .readAsBytes();
-      var imageCalls = 0;
-      server = await RunnerServer.open(
-        directory: directory,
-        token: token,
-        profiles: {'writer': profile},
-        providerFactory: (c) async => ScriptModel(c, script),
-        imageProviderFactory: (c) async =>
-            ScriptImage(c, (request, refs) async {
-              imageCalls++;
-              return GeneratedImage(bytes: bytes, revisedPrompt: '测试插画');
-            }),
-      );
-      final repo = StoryRepository.memory();
-      addTearDown(repo.close);
-      final assets = AssetLibrary(
-        repository: repo,
-        directory: Directory('${directory.path}/assets'),
-      );
-      final novel = await repo.createNovel(title: '远程插画恢复');
-      final chapter = await repo.createChapter(
-        branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await repo.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
-        content: ManuscriptContent.plainText('下雨的夜晚'),
-      );
-      final config = connection();
-      final imageRequest = ImageRequest(prompt: '雨夜');
-      final task = await repo.createTask(
-        branchId: scene.branchId,
-        kind: TaskKind.illustration,
-        sceneId: scene.id,
-        baseRevisionId: scene.revisionId,
-        input: {
-          'connection': config.raw,
-          'imageRequest': imageRequest.raw,
-          'name': '雨夜',
-          'purpose': 'illustration',
-          'references': [],
-        },
-      );
-      final transport = RemoteImageProvider(
-        config: config,
+  test('remote image recovery saves one asset against its original chapter revision', () async {
+    await server.close();
+    final bytes = await File('../test/fixtures/tiny-illustration.png')
+        .readAsBytes();
+    var imageCalls = 0;
+    server = await RunnerServer.open(
+      directory: directory,
+      token: token,
+      profiles: {'writer': profile},
+      providerFactory: (c) async => ScriptModel(c, script),
+      imageProviderFactory: (c) async => ScriptImage(c, (request, refs) async {
+        imageCalls++;
+        return GeneratedImage(bytes: bytes, revisedPrompt: '测试插画');
+      }),
+    );
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final assets = AssetLibrary(
+      repository: repo,
+      directory: Directory('${directory.path}/assets'),
+    );
+    final novel = await repo.createNovel(title: '远程插画恢复');
+
+    final chapter = await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('下雨的夜晚'),
+    );
+    final config = connection();
+    final imageRequest = ImageRequest(prompt: '雨夜');
+    final task = await repo.createTask(
+      branchId: chapter.branchId,
+      kind: TaskKind.illustration,
+      chapterId: chapter.id,
+      baseRevisionId: chapter.revisionId,
+      input: {
+        'connection': config.raw,
+        'imageRequest': imageRequest.raw,
+        'name': '雨夜',
+        'purpose': 'illustration',
+        'references': [],
+      },
+    );
+    final transport = RemoteImageProvider(
+      config: config,
+      accessToken: token,
+      pollInterval: const Duration(milliseconds: 10),
+    );
+    addTearDown(transport.close);
+    await transport.generate(ImageRequest(prompt: '雨夜', executionId: task.id));
+    await repo.recoverInterruptedTasks();
+    final edited = await repo.saveChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
+      content: ManuscriptContent.plainText('作者改成晴天'),
+    );
+    final runner = TaskRunner(
+      repository: repo,
+      providerFactory: (c) async =>
+          RemoteModelProvider(config: c, accessToken: token),
+      imageProviderFactory: (c) async => RemoteImageProvider(
+        config: c,
         accessToken: token,
         pollInterval: const Duration(milliseconds: 10),
-      );
-      addTearDown(transport.close);
-      await transport.generate(
-        ImageRequest(prompt: '雨夜', executionId: task.id),
-      );
-      await repo.recoverInterruptedTasks();
-      final edited = await repo.saveScene(
-        branchId: scene.branchId,
-        sceneId: scene.id,
-        expectedRevisionId: scene.revisionId,
-        content: ManuscriptContent.plainText('作者改成晴天'),
-      );
-      final runner = TaskRunner(
-        repository: repo,
-        providerFactory: (c) async =>
-            RemoteModelProvider(config: c, accessToken: token),
-        imageProviderFactory: (c) async => RemoteImageProvider(
-          config: c,
-          accessToken: token,
-          pollInterval: const Duration(milliseconds: 10),
-        ),
-        assetLibrary: assets,
-      );
-      addTearDown(runner.close);
-      await runner.reconnectRemote(task.id);
-      final done = await runner.wait(task.id);
-      expect(done.status, TaskStatus.completed);
-      final asset = await repo.getAsset(done.result['assetId'] as String);
-      expect(asset.sourceRevisionId, scene.revisionId);
-      expect(await repo.assetSourceCurrent(asset.id), isFalse);
-      expect(await assets.read(asset.id), isNotEmpty);
-      expect((await repo.listAssets(novel.id)).length, 1);
-      expect(
-        (await repo.getScene(
-          branchId: scene.branchId,
-          sceneId: scene.id,
-        )).revisionId,
-        edited.revisionId,
-      );
-      expect(imageCalls, 1);
-    },
-  );
+      ),
+      assetLibrary: assets,
+    );
+    addTearDown(runner.close);
+    await runner.reconnectRemote(task.id);
+    final done = await runner.wait(task.id);
+    expect(done.status, TaskStatus.completed);
+    final asset = await repo.getAsset(done.result['assetId'] as String);
+    expect(asset.sourceRevisionId, chapter.revisionId);
+    expect(await repo.assetSourceCurrent(asset.id), isFalse);
+    expect(await assets.read(asset.id), isNotEmpty);
+    expect((await repo.listAssets(novel.id)).length, 1);
+    expect(
+      (await repo.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+      )).revisionId,
+      edited.revisionId,
+    );
+    expect(imageCalls, 1);
+  });
 
   test('remote image returns authenticated binary output and retains its stable request identity', () async {
     final provider = RemoteImageProvider(

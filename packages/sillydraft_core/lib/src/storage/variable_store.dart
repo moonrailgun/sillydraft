@@ -3,16 +3,16 @@ part of 'story_repository.dart';
 extension VariableOperations on StoryRepository {
   Future<BranchVariables> _variablesAt(
     String branchId, {
-    String? throughSceneId,
+    String? throughChapterId,
   }) async {
     final story = await getStory(branchId);
-    final positions = {for (final (i, s) in story.scenes.indexed) s.id: i};
-    if (throughSceneId != null && !positions.containsKey(throughSceneId)) {
+    final positions = {for (final (i, s) in story.chapters.indexed) s.id: i};
+    if (throughChapterId != null && !positions.containsKey(throughChapterId)) {
       throw const StoryNotFound('变量查询位置');
     }
-    final cutoff = throughSceneId == null
-        ? story.scenes.length - 1
-        : positions[throughSceneId]!;
+    final cutoff = throughChapterId == null
+        ? story.chapters.length - 1
+        : positions[throughChapterId]!;
     final heads = await _rows(
       'SELECT version FROM branch_variables WHERE branch_id = ?',
       [branchId],
@@ -23,7 +23,7 @@ extension VariableOperations on StoryRepository {
       'SELECT * FROM variable_revisions WHERE branch_id = ? ORDER BY version',
       [branchId],
     )) {
-      final position = positions[row['scene_id']];
+      final position = positions[row['chapter_id']];
       if (position != null &&
           position <= cutoff &&
           position >= selectedPosition) {
@@ -46,36 +46,39 @@ extension VariableOperations on StoryRepository {
 
   Future<BranchVariables> setBranchVariables({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required int expectedVersion,
     Map<String, String> local = const {},
     Map<String, String> global = const {},
   }) => _write(() async {
-    final scene = await getScene(branchId: branchId, sceneId: sceneId);
+    final chapter = await getChapter(branchId: branchId, chapterId: chapterId);
     await _setBranchVariables(
       branchId: branchId,
-      scene: scene,
+      chapter: chapter,
       expectedVersion: expectedVersion,
       local: local,
       global: global,
     );
-    return getBranchVariables(branchId, throughSceneId: sceneId);
+    return getBranchVariables(branchId, throughChapterId: chapterId);
   });
 
-  /// Writes a scene's variables, keeping whatever table ([local] or
-  /// [global]) is not given as it stands at that scene. Conflicts with a
+  /// Writes a chapter's variables, keeping whatever table ([local] or
+  /// [global]) is not given as it stands at that chapter. Conflicts with a
   /// concurrent writer surface as [VariableConflict].
   Future<BranchVariables> patchBranchVariables({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     Map<String, String>? local,
     Map<String, String>? global,
   }) async {
-    final current = await getBranchVariables(branchId, throughSceneId: sceneId);
+    final current = await getBranchVariables(
+      branchId,
+      throughChapterId: chapterId,
+    );
     final head = await getBranchVariables(branchId);
     return setBranchVariables(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       expectedVersion: head.version,
       local: local ?? current.local,
       global: global ?? current.global,
@@ -84,7 +87,7 @@ extension VariableOperations on StoryRepository {
 
   Future<void> _setBranchVariables({
     required String branchId,
-    required Scene scene,
+    required Chapter chapter,
     required int expectedVersion,
     required Map<String, String> local,
     required Map<String, String> global,
@@ -93,20 +96,20 @@ extension VariableOperations on StoryRepository {
     if (current.version != expectedVersion) throw const VariableConflict();
     final version = current.version + 1;
     await _execute(
-      '''INSERT INTO variable_revisions (id,branch_id,version,scene_id,revision_id,local_json,global_json,created_at)
+      '''INSERT INTO variable_revisions (id,branch_id,version,chapter_id,revision_id,local_json,global_json,created_at)
         VALUES (?,?,?,?,?,?,?,?)''',
       [
         _id(),
         branchId,
         version,
-        scene.id,
-        scene.revisionId,
+        chapter.id,
+        chapter.revisionId,
         jsonEncode(local),
         jsonEncode(global),
         _now(),
       ],
     );
-    // Editing an earlier scene must not replace later narrative state. The
+    // Editing an earlier chapter must not replace later narrative state. The
     // monotonically increasing version still detects concurrent acceptance.
     final projected = await _variablesAt(branchId);
     await _execute(
@@ -124,22 +127,23 @@ extension VariableOperations on StoryRepository {
   Future<void> _forkSideData(
     StorySnapshot source,
     String branchId,
-    List<Scene> included,
+    List<Chapter> included,
   ) async {
-    final scenes = included.map((s) => s.id).toSet();
+    final chapters = included.map((s) => s.id).toSet();
     final revisions = <String, String>{};
     for (final row in await _rows(
       'SELECT * FROM lore_versions WHERE branch_id = ? ORDER BY sequence',
       [source.branch.id],
     )) {
-      if (row['at_scene_id'] != null && !scenes.contains(row['at_scene_id'])) {
+      if (row['at_chapter_id'] != null &&
+          !chapters.contains(row['at_chapter_id'])) {
         continue;
       }
       final id = _id();
       revisions[row['revision_id'] as String] = id;
       await _execute(
         '''INSERT INTO lore_versions
-        (revision_id,entity_id,branch_id,previous_revision_id,kind,name,content,certainty,data_json,provenance_json,at_scene_id,deleted,created_at)
+        (revision_id,entity_id,branch_id,previous_revision_id,kind,name,content,certainty,data_json,provenance_json,at_chapter_id,deleted,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
         [
           id,
@@ -152,7 +156,7 @@ extension VariableOperations on StoryRepository {
           row['certainty'],
           row['data_json'],
           row['provenance_json'],
-          row['at_scene_id'],
+          row['at_chapter_id'],
           row['deleted'],
           row['created_at'],
         ],
@@ -163,16 +167,16 @@ extension VariableOperations on StoryRepository {
       'SELECT * FROM variable_revisions WHERE branch_id = ? ORDER BY version',
       [source.branch.id],
     )) {
-      if (!scenes.contains(row['scene_id'])) continue;
+      if (!chapters.contains(row['chapter_id'])) continue;
       version = row['version'] as int;
       await _execute(
-        '''INSERT INTO variable_revisions(id,branch_id,version,scene_id,revision_id,local_json,global_json,created_at)
+        '''INSERT INTO variable_revisions(id,branch_id,version,chapter_id,revision_id,local_json,global_json,created_at)
         VALUES (?,?,?,?,?,?,?,?)''',
         [
           _id(),
           branchId,
           version,
-          row['scene_id'],
+          row['chapter_id'],
           row['revision_id'],
           row['local_json'],
           row['global_json'],

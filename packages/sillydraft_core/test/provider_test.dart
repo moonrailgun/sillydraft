@@ -106,7 +106,7 @@ void main() {
                 'index': 0,
                 'id': 'call1',
                 'type': 'function',
-                'function': {'name': 'read_scene', 'arguments': '{"scene'},
+                'function': {'name': 'read_chapter', 'arguments': '{"chapter'},
               },
             ],
           }),
@@ -132,7 +132,7 @@ void main() {
                 {
                   'type': 'function',
                   'function': {
-                    'name': 'read_scene',
+                    'name': 'read_chapter',
                     'parameters': {'type': 'object'},
                   },
                 },
@@ -142,8 +142,8 @@ void main() {
           .toList();
       final call = events.whereType<ToolCallReady>().single;
       expect(call.id, 'call1');
-      expect(call.name, 'read_scene');
-      expect(call.arguments, {'sceneId': 's'});
+      expect(call.name, 'read_chapter');
+      expect(call.arguments, {'chapterId': 's'});
     },
   );
 

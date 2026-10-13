@@ -31,17 +31,13 @@ void main() {
   late Stream<ProviderEvent> Function(ProviderRequest, GenerationCancellation)
   script;
   late Novel novel;
-  late Scene scene;
+  late Chapter chapter;
   setUp(() async {
     repository = StoryRepository.memory();
     novel = await repository.createNovel(title: '生成测试');
-    final chapter = await repository.createChapter(
+
+    chapter = await repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    scene = await repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('原文'),
     );
     connection = ModelConnection(
@@ -66,68 +62,62 @@ void main() {
   });
   Future<GenerationTask> generate() => service.generate(
     branchId: novel.activeBranchId,
-    sceneId: scene.id,
+    chapterId: chapter.id,
     connection: connection,
     brief: '写下一段',
     append: true,
   );
 
-  test(
-    'writing at an earlier scene uses only lore and variables available there',
-    () async {
-      final later = await repository.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: scene.chapterId,
-        content: ManuscriptContent.plainText('未来的揭晓'),
-      );
-      await repository.saveLoreEntry(
-        branchId: novel.activeBranchId,
-        kind: LoreKind.character,
-        name: '早期人物',
-        content: '身份未知',
-        atSceneId: scene.id,
-      );
-      await repository.saveLoreEntry(
-        branchId: novel.activeBranchId,
-        kind: LoreKind.world,
-        name: '隐藏答案',
-        content: '未来秘密答案',
-        atSceneId: later.id,
-      );
-      await repository.setBranchVariables(
-        branchId: novel.activeBranchId,
-        sceneId: scene.id,
-        expectedVersion: 0,
-        local: {'phase': '早期阶段'},
-      );
-      await repository.setBranchVariables(
-        branchId: novel.activeBranchId,
-        sceneId: later.id,
-        expectedVersion: 1,
-        local: {'phase': '未来秘密阶段'},
-      );
-      final draft = await service.prepare(
-        branchId: novel.activeBranchId,
-        sceneId: scene.id,
-        connection: connection,
-        brief: '继续',
-      );
-      final request = draft.input['request'].toString();
-      expect(request, contains('早期人物'));
-      expect(request, isNot(contains('未来秘密答案')));
-      expect((draft.input['variableResult'] as Map)['local'], {
-        'phase': '早期阶段',
-      });
-    },
-  );
+  test('writing at an earlier chapter uses only lore and variables available there', () async {
+    final later = await repository.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('未来的揭晓'),
+    );
+    await repository.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.character,
+      name: '早期人物',
+      content: '身份未知',
+      atChapterId: chapter.id,
+    );
+    await repository.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.world,
+      name: '隐藏答案',
+      content: '未来秘密答案',
+      atChapterId: later.id,
+    );
+    await repository.setBranchVariables(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      expectedVersion: 0,
+      local: {'phase': '早期阶段'},
+    );
+    await repository.setBranchVariables(
+      branchId: novel.activeBranchId,
+      chapterId: later.id,
+      expectedVersion: 1,
+      local: {'phase': '未来秘密阶段'},
+    );
+    final draft = await service.prepare(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      connection: connection,
+      brief: '继续',
+    );
+    final request = draft.input['request'].toString();
+    expect(request, contains('早期人物'));
+    expect(request, isNot(contains('未来秘密答案')));
+    expect((draft.input['variableResult'] as Map)['local'], {'phase': '早期阶段'});
+  });
 
   test(
     'preview is frozen and selection rewrite preserves surrounding formatting',
     () async {
-      scene = await repository.saveScene(
+      chapter = await repository.saveChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
-        expectedRevisionId: scene.revisionId,
+        chapterId: chapter.id,
+        expectedRevisionId: chapter.revisionId,
         content: ManuscriptContent.fromDelta([
           {
             'insert': '前文',
@@ -147,7 +137,7 @@ void main() {
       };
       final prepared = await service.prepare(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
         connection: connection,
         brief: '改写选中片段',
         rangeStart: 2,
@@ -167,9 +157,9 @@ void main() {
       expect(proposal.content.delta.first['attributes'], {'bold': true});
       expect(proposal.content.delta.last['attributes'], {'italic': true});
       expect(
-        (await repository.getScene(
+        (await repository.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text,
         '前文旧句。后文\n',
       );
@@ -215,9 +205,9 @@ void main() {
           .single;
       expect(proposal.content.text, '原文\n\n新正文\n');
       expect(
-        (await repository.getScene(
+        (await repository.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text,
         '原文\n',
       );

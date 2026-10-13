@@ -6,16 +6,10 @@ import 'package:xml/xml.dart';
 
 import 'safe_archive.dart';
 
-/// One scene of an imported book.
-final class ImportedScene {
-  const ImportedScene({required this.title, required this.text});
-  final String title, text;
-}
-
+/// One chapter of an imported book.
 final class ImportedChapter {
-  const ImportedChapter({required this.title, required this.scenes});
-  final String title;
-  final List<ImportedScene> scenes;
+  const ImportedChapter({required this.title, required this.text});
+  final String title, text;
 }
 
 /// A finished or half-finished novel read from a file, ready to become a new
@@ -33,27 +27,18 @@ final class ImportedManuscript {
 
   int get characters => chapters.fold(
     0,
-    (sum, c) =>
-        sum +
-        c.scenes.fold(
-          0,
-          (s, scene) => s + scene.text.replaceAll(_space, '').length,
-        ),
+    (sum, chapter) => sum + chapter.text.replaceAll(_space, '').length,
   );
-  int get sceneCount => chapters.fold(0, (sum, c) => sum + c.scenes.length);
+  int get chapterCount => chapters.length;
 }
 
 final _space = RegExp(r'\s');
 
-/// Reads TXT, Markdown and EPUB books. Chapter headings are recognised the
-/// way Chinese web novels and published books write them; a book without any
-/// is cut into parts so no single scene becomes too large to edit.
+/// Reads TXT, Markdown and EPUB books, preserving each chapter as one unit.
+/// A book without recognised headings becomes one chapter.
 abstract final class ManuscriptImporter {
   static const maxBytes = 64 * 1024 * 1024;
   static const extensions = ['txt', 'md', 'markdown', 'epub'];
-
-  /// Scenes longer than this are split at paragraph boundaries.
-  static const sceneLimit = 20000;
 
   static bool supports(String filename) =>
       extensions.contains(_extension(filename));
@@ -116,42 +101,34 @@ abstract final class ManuscriptImporter {
     RegExp heading,
   ) {
     final lines = const LineSplitter().convert(text);
-    final sections = <({String title, List<String> lines})>[];
+    final headings = <({String title, List<String> lines})>[];
     final front = <String>[];
     String? volume;
     for (final raw in lines) {
       final line = raw.trim();
       if (line.isNotEmpty && line.length <= 40 && heading.hasMatch(line)) {
         if (_volume.hasMatch(line)) {
-          // A volume heading opens the chapters below it; it carries no text.
+          // Keep the volume label in the next chapter title without a hierarchy.
           volume = line;
           continue;
         }
-        sections.add((
+        headings.add((
           title: volume == null ? line : '$volume · $line',
           lines: [],
         ));
         volume = null;
         continue;
       }
-      (sections.isEmpty ? front : sections.last.lines).add(raw);
+      (headings.isEmpty ? front : headings.last.lines).add(raw);
     }
     final warnings = <String>[];
     var title = fallbackTitle;
     var synopsis = '';
     final chapters = <ImportedChapter>[];
     final frontText = _clean(front.join('\n'));
-    if (sections.isEmpty) {
-      warnings.add('没有识别到章节标题，已按长度分成若干部分');
-      final parts = _split(frontText);
-      for (final (i, part) in parts.indexed) {
-        chapters.add(
-          ImportedChapter(
-            title: parts.length == 1 ? '正文' : '第${i + 1}部分',
-            scenes: [ImportedScene(title: '正文', text: part)],
-          ),
-        );
-      }
+    if (headings.isEmpty) {
+      warnings.add('没有识别到章节标题，已导入为“正文”一章');
+      chapters.add(ImportedChapter(title: '正文', text: frontText));
     } else {
       // Web-novel files open with the book name, author and blurb.
       final named = RegExp(r'^\s*《(.+?)》').firstMatch(frontText);
@@ -159,12 +136,12 @@ abstract final class ManuscriptImporter {
       if (frontText.isNotEmpty && frontText.length <= 1500) {
         synopsis = frontText;
       } else if (frontText.isNotEmpty) {
-        chapters.add(_chapter('开篇', frontText));
+        chapters.add(ImportedChapter(title: '开篇', text: frontText));
       }
-      for (final s in sections) {
-        final body = _clean(s.lines.join('\n'));
+      for (final heading in headings) {
+        final body = _clean(heading.lines.join('\n'));
         if (body.isEmpty) continue;
-        chapters.add(_chapter(s.title, body));
+        chapters.add(ImportedChapter(title: heading.title, text: body));
       }
       if (chapters.isEmpty) {
         throw const FormatException('章节标题下都没有正文');
@@ -175,20 +152,6 @@ abstract final class ManuscriptImporter {
       synopsis: synopsis,
       chapters: chapters,
       warnings: warnings,
-    );
-  }
-
-  static ImportedChapter _chapter(String title, String body) {
-    final parts = _split(body);
-    return ImportedChapter(
-      title: title,
-      scenes: [
-        for (final (i, part) in parts.indexed)
-          ImportedScene(
-            title: parts.length == 1 ? title : '$title（${i + 1}）',
-            text: part,
-          ),
-      ],
     );
   }
 
@@ -241,16 +204,10 @@ abstract final class ManuscriptImporter {
       title: bookTitle ?? result.title,
       synopsis: result.synopsis,
       chapters: [
-        for (final c in result.chapters)
+        for (final chapter in result.chapters)
           ImportedChapter(
-            title: c.title.replaceAll('\u0000', ''),
-            scenes: [
-              for (final s in c.scenes)
-                ImportedScene(
-                  title: s.title.replaceAll('\u0000', ''),
-                  text: s.text,
-                ),
-            ],
+            title: chapter.title.replaceAll('\u0000', ''),
+            text: chapter.text,
           ),
       ],
       warnings: [
@@ -309,9 +266,9 @@ abstract final class ManuscriptImporter {
         final (heading, text) = _xhtml(read(path));
         if (text.replaceAll(_space, '').isEmpty) continue;
         chapters.add(
-          _chapter(
-            heading.isEmpty ? '第${chapters.length + 1}章' : heading,
-            text,
+          ImportedChapter(
+            title: heading.isEmpty ? '第${chapters.length + 1}章' : heading,
+            text: text,
           ),
         );
       }
@@ -394,24 +351,6 @@ abstract final class ManuscriptImporter {
       .join('\n')
       .replaceAll(RegExp(r'\n{3,}'), '\n\n')
       .trim();
-
-  /// Cuts text longer than [sceneLimit] at paragraph boundaries.
-  static List<String> _split(String text) {
-    if (text.length <= sceneLimit) return [text];
-    final parts = <String>[];
-    final buffer = StringBuffer();
-    for (final paragraph in text.split('\n')) {
-      if (buffer.length > 0 && buffer.length + paragraph.length > sceneLimit) {
-        parts.add(buffer.toString().trim());
-        buffer.clear();
-      }
-      buffer.writeln(paragraph);
-    }
-    if (buffer.toString().trim().isNotEmpty) {
-      parts.add(buffer.toString().trim());
-    }
-    return parts;
-  }
 
   static String _extension(String filename) {
     final dot = filename.lastIndexOf('.');

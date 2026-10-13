@@ -91,7 +91,7 @@ extension ProjectOperations on StoryRepository {
     return ProjectSnapshot.fromJson({
       'format': 'sillydraft-project',
       'version': 1,
-      'schema': 6,
+      'schema': 8,
       'tables': result,
     });
   });
@@ -343,11 +343,7 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     for (final r in t['branch_chapters']!)
       '${r['branch_id']}/${r['chapter_id']}',
   };
-  final sceneKeys = {
-    for (final r in t['branch_scenes']!) '${r['branch_id']}/${r['scene_id']}',
-  };
-  if (chapterKeys.length != t['branch_chapters']!.length ||
-      sceneKeys.length != t['branch_scenes']!.length) {
+  if (chapterKeys.length != t['branch_chapters']!.length) {
     invalid();
   }
   for (final name in projectTables) {
@@ -371,16 +367,22 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
   cycle(resources, 'parent_id');
   cycle(lore, 'previous_revision_id');
   cycle(tasks, 'retry_of');
-  void sceneRevision(Object? branchId, Object? sceneId, Object? revisionId) {
-    if (sceneId is! String || revisionId is! String) invalid();
-    final scene = t['branch_scenes']!
-        .where((s) => s['branch_id'] == branchId && s['scene_id'] == sceneId)
+  void chapterRevision(
+    Object? branchId,
+    Object? chapterId,
+    Object? revisionId,
+  ) {
+    if (chapterId is! String || revisionId is! String) invalid();
+    final chapter = t['branch_chapters']!
+        .where(
+          (s) => s['branch_id'] == branchId && s['chapter_id'] == chapterId,
+        )
         .firstOrNull;
-    if (scene == null || revisions[revisionId]?['scene_id'] != sceneId) {
+    if (chapter == null || revisions[revisionId]?['chapter_id'] != chapterId) {
       invalid();
     }
     // A fork may share an ancestor's revision, but unrelated history is invalid.
-    String? current = scene['revision_id'] as String;
+    String? current = chapter['revision_id'] as String;
     while (current != null && current != revisionId) {
       current = revisions[current]?['parent_revision_id'] as String?;
     }
@@ -390,19 +392,16 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
   for (final row in revisions.values) {
     ref(row['source_proposal_id'], proposals);
     final parent = revisions[row['parent_revision_id']];
-    if (parent != null && parent['scene_id'] != row['scene_id']) invalid();
+    if (parent != null && parent['chapter_id'] != row['chapter_id']) invalid();
   }
-  for (final row in t['branch_scenes']!) {
-    if (!chapterKeys.contains('${row['branch_id']}/${row['chapter_id']}')) {
-      invalid();
-    }
+  for (final row in t['branch_chapters']!) {
     ref(row['revision_id'], revisions, nullable: false);
-    if (revisions[row['revision_id']]!['scene_id'] != row['scene_id']) {
+    if (revisions[row['revision_id']]!['chapter_id'] != row['chapter_id']) {
       invalid();
     }
   }
   for (final row in proposals.values) {
-    if (!sceneKeys.contains('${row['branch_id']}/${row['scene_id']}')) {
+    if (!chapterKeys.contains('${row['branch_id']}/${row['chapter_id']}')) {
       invalid();
     }
     ref(row['base_revision_id'], revisions, nullable: false);
@@ -419,14 +418,16 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       invalid();
     }
     ref(row['base_revision_id'], revisions);
-    if (row['scene_id'] != null &&
-        !sceneKeys.contains('${row['branch_id']}/${row['scene_id']}')) {
+    if (row['chapter_id'] != null &&
+        !chapterKeys.contains('${row['branch_id']}/${row['chapter_id']}')) {
       invalid();
     }
   }
   for (final row in conversations.values) {
-    if (row['through_scene_id'] != null &&
-        !sceneKeys.contains('${row['branch_id']}/${row['through_scene_id']}')) {
+    if (row['through_chapter_id'] != null &&
+        !chapterKeys.contains(
+          '${row['branch_id']}/${row['through_chapter_id']}',
+        )) {
       invalid();
     }
   }
@@ -437,12 +438,12 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     }
   }
   for (final row in [...t['reading_bookmarks']!, ...t['variable_revisions']!]) {
-    if (!sceneKeys.contains('${row['branch_id']}/${row['scene_id']}')) {
+    if (!chapterKeys.contains('${row['branch_id']}/${row['chapter_id']}')) {
       invalid();
     }
     if (row.containsKey('revision_id')) {
       ref(row['revision_id'], revisions, nullable: false);
-      sceneRevision(row['branch_id'], row['scene_id'], row['revision_id']);
+      chapterRevision(row['branch_id'], row['chapter_id'], row['revision_id']);
     }
   }
   for (final row in assets.values) {
@@ -475,8 +476,8 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
         !LoreCertainty.values.any((v) => v.name == row['certainty'])) {
       invalid();
     }
-    if (row['at_scene_id'] != null &&
-        !sceneKeys.contains('${row['branch_id']}/${row['at_scene_id']}')) {
+    if (row['at_chapter_id'] != null &&
+        !chapterKeys.contains('${row['branch_id']}/${row['at_chapter_id']}')) {
       invalid();
     }
     final data = jsonDecode(row['data_json'] as String) as Map<String, dynamic>;
@@ -547,7 +548,7 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     final provenance = jsonDecode(row['provenance_json'] as String) as Map;
     stringFields(provenance, [
       'type',
-      'sceneId',
+      'chapterId',
       'revisionId',
       'resourceId',
       'taskId',
@@ -555,10 +556,10 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     ref(provenance['revisionId'], revisions);
     ref(provenance['resourceId'], resources);
     ref(provenance['taskId'], tasks);
-    if (provenance['sceneId'] != null || provenance['revisionId'] != null) {
-      sceneRevision(
+    if (provenance['chapterId'] != null || provenance['revisionId'] != null) {
+      chapterRevision(
         row['branch_id'],
-        provenance['sceneId'],
+        provenance['chapterId'],
         provenance['revisionId'],
       );
     }
@@ -601,8 +602,8 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       }
     } else if ((row['key'] as String).startsWith('progress/')) {
       final branchId = (row['key'] as String).substring('progress/'.length);
-      if (value['sceneId'] is! String ||
-          !sceneKeys.contains('$branchId/${value['sceneId']}')) {
+      if (value['chapterId'] is! String ||
+          !chapterKeys.contains('$branchId/${value['chapterId']}')) {
         invalid();
       }
       final fraction = value['fraction'];

@@ -56,7 +56,7 @@ final class TaskRunner {
     required String branchId,
     required TaskKind kind,
     required Map<String, dynamic> input,
-    String? sceneId,
+    String? chapterId,
     String? baseRevisionId,
     String? retryOf,
   }) async {
@@ -65,7 +65,7 @@ final class TaskRunner {
       branchId: branchId,
       kind: kind,
       input: input,
-      sceneId: sceneId,
+      chapterId: chapterId,
       baseRevisionId: baseRevisionId,
       retryOf: retryOf,
     );
@@ -130,7 +130,7 @@ final class TaskRunner {
       branchId: old.branchId,
       kind: old.kind,
       input: old.input,
-      sceneId: old.sceneId,
+      chapterId: old.chapterId,
       baseRevisionId: old.baseRevisionId,
       retryOf: old.id,
     );
@@ -282,8 +282,8 @@ final class TaskRunner {
         var variables = processed.variables;
         Map<String, dynamic>? mvuResult;
         if (mvuEnabled) {
-          // One status bar per scene: the placeholder MVU appends moves to
-          // the end of the scene, and the model's own copy of the state
+          // One status bar per chapter: the placeholder MVU appends moves to
+          // the end of the chapter, and the model's own copy of the state
           // listing is dropped, as MVU strips it from the saved message.
           content = _withoutMvuMarkup(content);
           final applied = _applyMvu(task, content.text, variables);
@@ -307,7 +307,7 @@ final class TaskRunner {
           variableResult: variables,
           mvuResult: mvuResult,
         );
-        // Accepting commits the scene's story state with it, so each scene
+        // Accepting commits the chapter's story state with it, so each chapter
         // written this way keeps its own snapshot to fork or roll back to.
         // A conflict leaves the candidate for the author to review.
         final proposal = done.result['proposalId'];
@@ -395,11 +395,11 @@ ManuscriptContent _withoutMvuMarkup(ManuscriptContent content) {
   ]);
 }
 
-/// Derives the scene's MVU record from the task's base record and the
-/// final scene text, as MVU re-reads a message once the reply has landed.
+/// Derives the chapter's MVU record from the task's base record and the
+/// final chapter text, as MVU re-reads a message once the reply has landed.
 ({Map<String, dynamic> variables, Map<String, dynamic> result}) _applyMvu(
   GenerationTask task,
-  String sceneText,
+  String chapterText,
   Map<String, dynamic> variables,
 ) {
   final input = task.input;
@@ -410,7 +410,7 @@ ManuscriptContent _withoutMvuMarkup(ManuscriptContent content) {
     clock: DateTime.parse(input['clock'] as String),
     seed: input['seed'] as int,
   );
-  final result = MvuUpdater.apply(sceneText, data, substitute: macro.render);
+  final result = MvuUpdater.apply(chapterText, data, substitute: macro.render);
   final local = (variables['local'] as Map? ?? {}).cast<String, String>();
   return (
     variables: {

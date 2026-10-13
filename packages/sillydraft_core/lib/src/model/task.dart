@@ -17,13 +17,13 @@ final class GenerationTask extends JsonSource {
     required this.error,
     required this.createdAt,
     required this.updatedAt,
-    this.sceneId,
+    this.chapterId,
     this.baseRevisionId,
     this.retryOf,
     this.result = const {},
   }) : super(input);
   final String id, branchId, partialText, reasoning, error;
-  final String? sceneId, baseRevisionId, retryOf;
+  final String? chapterId, baseRevisionId, retryOf;
   final TaskKind kind;
   final TaskStatus status;
   final DateTime createdAt, updatedAt;

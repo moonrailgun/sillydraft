@@ -100,24 +100,24 @@ void main() {
     );
 
     test(
-      'presents an opening scene with the card display regex and no task',
+      'presents an opening chapter with the card display regex and no task',
       () async {
         final (:repo, :novel) = await _cardNovel();
         addTearDown(repo.close);
         final story = await repo.getStory(novel.activeBranchId);
-        final scene = story.scenes.single;
+        final chapter = story.chapters.single;
         expect(
-          (await repo.presentRevision(scene.revisionId)).content.text.trim(),
+          (await repo.presentRevision(chapter.revisionId)).content.text.trim(),
           _opening,
         );
-        await repo.saveScene(
+        await repo.saveChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
-          expectedRevisionId: scene.revisionId,
+          chapterId: chapter.id,
+          expectedRevisionId: chapter.revisionId,
           content: ManuscriptContent.plainText('[重塑仙缘]'),
         );
         final updated = (await repo.getStory(novel.activeBranchId))
-            .scenes
+            .chapters
             .single;
         final shown = await repo.presentRevision(updated.revisionId);
         expect(shown.content.text.trim(), _creationPage);
@@ -132,7 +132,7 @@ void main() {
 
   group('BranchChatBackend', () {
     test(
-      'snapshot exposes scenes as messages with greetings as swipes',
+      'snapshot exposes chapters as messages with greetings as swipes',
       () async {
         final (:repo, :novel) = await _cardNovel();
         addTearDown(repo.close);
@@ -162,7 +162,7 @@ void main() {
     );
 
     test(
-      'switching to the second greeting rewrites the opening scene',
+      'switching to the second greeting rewrites the opening chapter',
       () async {
         final (:repo, :novel) = await _cardNovel();
         addTearDown(repo.close);
@@ -191,7 +191,7 @@ void main() {
         expect(result.ok, isTrue, reason: '${result.payload}');
         expect(result.id, 7);
         final story = await repo.getStory(novel.activeBranchId);
-        expect(story.scenes.single.content.text.trim(), '[重塑仙缘]');
+        expect(story.chapters.single.content.text.trim(), '[重塑仙缘]');
         expect(
           (await repo.getSetting(
             'writing/${novel.activeBranchId}',
@@ -272,15 +272,13 @@ void main() {
     });
 
     test(
-      'chat variables written from an earlier scene are read at the head',
+      'chat variables written from an earlier chapter are read at the head',
       () async {
         final (:repo, :novel) = await _cardNovel();
         addTearDown(repo.close);
         final branch = novel.activeBranchId;
-        final chapter = (await repo.getStory(branch)).chapters.single;
-        await repo.createScene(
+        await repo.createChapter(
           branchId: branch,
-          chapterId: chapter.id,
           title: '第二幕',
           content: ManuscriptContent.plainText('后来。'),
         );
@@ -289,7 +287,7 @@ void main() {
           branchId: branch,
           context: await repo.displayContext(branch),
         );
-        // The opening page records its own message variables at scene 0.
+        // The opening page records its own message variables at chapter 0.
         await backend.replaceVariables(
           {
             'stat_data': {'hp': 1},
@@ -303,11 +301,11 @@ void main() {
           messageId: 0,
         );
         expect(await bridge.runSlash('/setvar key=hp 10 | /getvar hp'), '10');
-        final scenes = (await repo.getStory(branch)).scenes;
+        final chapters = (await repo.getStory(branch)).chapters;
         expect((await repo.getBranchVariables(branch)).local['hp'], '10');
         final atOpening = await repo.getBranchVariables(
           branch,
-          throughSceneId: scenes[0].id,
+          throughChapterId: chapters[0].id,
         );
         expect(atOpening.local['stat_data'], '{"hp":1}');
         expect(atOpening.local.containsKey('hp'), isFalse);
@@ -326,7 +324,7 @@ void main() {
       },
     );
 
-    test('createChatMessages appends scenes; deleting is refused', () async {
+    test('createChatMessages appends chapters; deleting is refused', () async {
       final (:repo, :novel) = await _cardNovel();
       addTearDown(repo.close);
       final bridge = TavernBridge(
@@ -345,8 +343,8 @@ void main() {
         {},
       ]);
       final story = await repo.getStory(novel.activeBranchId);
-      expect(story.scenes, hasLength(2));
-      expect(story.scenes.last.content.text.trim(), '我走进山门。');
+      expect(story.chapters, hasLength(2));
+      expect(story.chapters.last.content.text.trim(), '我走进山门。');
       final refused = await bridge.handleMessage(
         jsonEncode({
           'id': 1,
@@ -359,7 +357,10 @@ void main() {
       );
       expect(refused.ok, isFalse);
       expect(refused.payload, contains('/cut'));
-      expect((await repo.getStory(novel.activeBranchId)).scenes, hasLength(2));
+      expect(
+        (await repo.getStory(novel.activeBranchId)).chapters,
+        hasLength(2),
+      );
     });
   });
 
@@ -390,7 +391,7 @@ void main() {
       expect(actions.requests.single.rewriteMessageId, isNull);
     });
 
-    test('/sys | /cut | /trigger asks to rewrite the cut scene', () async {
+    test('/sys | /cut | /trigger asks to rewrite the cut chapter', () async {
       await bridge.runSlash(
         '/sys [仙缘已定 - 普通模式]\n**道号**: 玖神 | /cut 0 | /trigger',
       );

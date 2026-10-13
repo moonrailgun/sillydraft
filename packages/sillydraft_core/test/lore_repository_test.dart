@@ -4,23 +4,18 @@ import 'package:test/test.dart';
 void main() {
   late StoryRepository repo;
   late Novel novel;
-  late Scene first, later;
+  late Chapter first, later;
   setUp(() async {
     repo = StoryRepository.memory();
     novel = await repo.createNovel(title: '世界资料测试');
-    final chapter = await repo.createChapter(
+
+    first = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    first = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '相遇',
       content: ManuscriptContent.plainText('林舟遇见苏雾。'),
     );
-    later = await repo.createScene(
+    later = await repo.createChapter(
       branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '真相',
       content: ManuscriptContent.plainText('苏雾交出灯塔钥匙。'),
     );
@@ -32,22 +27,22 @@ void main() {
       kind: LoreKind.character,
       name: '林舟',
       content: '信使',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     final b = await repo.saveLoreEntry(
       branchId: novel.activeBranchId,
       kind: LoreKind.character,
       name: '苏雾',
       content: '守塔人',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     final task = await repo.createTask(
       branchId: novel.activeBranchId,
       kind: TaskKind.analysis,
       input: {
-        'throughSceneId': first.id,
+        'throughChapterId': first.id,
         'sourceRevisions': [
-          {'sceneId': first.id, 'revisionId': first.revisionId},
+          {'chapterId': first.id, 'revisionId': first.revisionId},
         ],
       },
     );
@@ -61,7 +56,7 @@ void main() {
             'name': '信任',
             'content': '愿意托付信件',
             'certainty': 'inference',
-            'sourceSceneId': first.id,
+            'sourceChapterId': first.id,
             'data': {'fromId': a.id, 'toId': b.id, 'directed': true},
           },
           {
@@ -69,7 +64,7 @@ void main() {
             'name': '越过快照',
             'content': '不应采纳未来依据',
             'certainty': 'fact',
-            'sourceSceneId': later.id,
+            'sourceChapterId': later.id,
           },
         ],
       },
@@ -91,7 +86,7 @@ void main() {
       name: '苏雾',
       content: '身份未知',
       certainty: LoreCertainty.fact,
-      atSceneId: first.id,
+      atChapterId: first.id,
       provenance: {'type': 'manual'},
     );
     final changed = await repo.saveLoreEntry(
@@ -102,17 +97,17 @@ void main() {
       name: '苏雾',
       content: '灯塔守护人',
       certainty: LoreCertainty.fact,
-      atSceneId: later.id,
+      atChapterId: later.id,
       provenance: {
         'type': 'manuscript',
-        'sceneId': later.id,
+        'chapterId': later.id,
         'revisionId': later.revisionId,
       },
     );
     expect(
       (await repo.listLore(
         novel.activeBranchId,
-        throughSceneId: first.id,
+        throughChapterId: first.id,
       )).single.content,
       '身份未知',
     );
@@ -126,13 +121,13 @@ void main() {
         name: '苏雾',
         content: '覆盖',
         certainty: LoreCertainty.inference,
-        atSceneId: later.id,
+        atChapterId: later.id,
       ),
       throwsA(isA<LoreConflict>()),
     );
-    await repo.saveScene(
+    await repo.saveChapter(
       branchId: novel.activeBranchId,
-      sceneId: later.id,
+      chapterId: later.id,
       expectedRevisionId: later.revisionId,
       content: ManuscriptContent.plainText('真相被改写了。'),
     );
@@ -144,13 +139,13 @@ void main() {
       branchId: novel.activeBranchId,
       id: changed.id,
       expectedRevisionId: changed.revisionId,
-      atSceneId: later.id,
+      atChapterId: later.id,
     );
     expect(await repo.listLore(novel.activeBranchId), isEmpty);
     expect(
       (await repo.listLore(
         novel.activeBranchId,
-        throughSceneId: first.id,
+        throughChapterId: first.id,
       )).single.content,
       '身份未知',
     );
@@ -161,21 +156,21 @@ void main() {
       kind: LoreKind.character,
       name: '林舟',
       content: '信使',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     final b = await repo.saveLoreEntry(
       branchId: novel.activeBranchId,
       kind: LoreKind.character,
       name: '苏雾',
       content: '陌生人',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     final relation = await repo.saveLoreEntry(
       branchId: novel.activeBranchId,
       kind: LoreKind.relationship,
       name: '认识',
       content: '渡口初见',
-      atSceneId: first.id,
+      atChapterId: first.id,
       data: {'fromId': a.id, 'toId': b.id, 'directed': true},
     );
     await repo.saveLoreEntry(
@@ -185,31 +180,31 @@ void main() {
       kind: LoreKind.character,
       name: '苏雾',
       content: '守护人',
-      atSceneId: later.id,
+      atChapterId: later.id,
     );
     await repo.setBranchVariables(
       branchId: novel.activeBranchId,
-      sceneId: first.id,
+      chapterId: first.id,
       expectedVersion: 0,
       local: {'phase': 'meeting'},
     );
     await repo.setBranchVariables(
       branchId: novel.activeBranchId,
-      sceneId: later.id,
+      chapterId: later.id,
       expectedVersion: 1,
       local: {'phase': 'reveal', 'secret': 'tower'},
     );
     expect(
       (await repo.getBranchVariables(
         novel.activeBranchId,
-        throughSceneId: first.id,
+        throughChapterId: first.id,
       )).local,
       {'phase': 'meeting'},
     );
     final fork = await repo.forkBranch(
       branchId: novel.activeBranchId,
       name: '另一种相遇',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     final lore = await repo.listLore(fork.id);
     expect(lore.firstWhere((e) => e.id == b.id).content, '陌生人');
@@ -219,7 +214,7 @@ void main() {
     });
     await repo.setBranchVariables(
       branchId: fork.id,
-      sceneId: first.id,
+      chapterId: first.id,
       expectedVersion: (await repo.getBranchVariables(fork.id)).version,
       local: {'phase': 'different'},
     );
@@ -234,8 +229,8 @@ void main() {
       kind: TaskKind.analysis,
       input: {
         'sourceRevisions': [
-          {'sceneId': first.id, 'revisionId': first.revisionId},
-          {'sceneId': later.id, 'revisionId': later.revisionId},
+          {'chapterId': first.id, 'revisionId': first.revisionId},
+          {'chapterId': later.id, 'revisionId': later.revisionId},
         ],
       },
     );
@@ -249,14 +244,14 @@ void main() {
             'name': '苏雾',
             'content': '也许来自灯塔',
             'certainty': 'inference',
-            'sourceSceneId': first.id,
+            'sourceChapterId': first.id,
           },
           {
             'kind': 'item',
             'name': '钥匙',
             'content': '打开灯塔',
             'certainty': 'fact',
-            'sourceSceneId': later.id,
+            'sourceChapterId': later.id,
           },
         ],
       },
@@ -268,9 +263,9 @@ void main() {
       (await repo.acceptAnalysisEntry(taskId: task.id, index: 0)).id,
       entry.id,
     );
-    await repo.saveScene(
+    await repo.saveChapter(
       branchId: novel.activeBranchId,
-      sceneId: later.id,
+      chapterId: later.id,
       expectedRevisionId: later.revisionId,
       content: ManuscriptContent.plainText('没有钥匙。'),
     );
@@ -293,7 +288,7 @@ void main() {
       kind: LoreKind.character,
       name: '林舟',
       content: '信使',
-      atSceneId: first.id,
+      atChapterId: first.id,
     );
     await expectLater(
       repo.saveLoreEntry(
@@ -332,8 +327,8 @@ void main() {
       kind: TaskKind.branches,
       input: {
         'sourceRevisions': [
-          {'sceneId': first.id, 'revisionId': first.revisionId},
-          {'sceneId': later.id, 'revisionId': later.revisionId},
+          {'chapterId': first.id, 'revisionId': first.revisionId},
+          {'chapterId': later.id, 'revisionId': later.revisionId},
         ],
       },
     );
@@ -354,7 +349,7 @@ void main() {
     );
     expect((await repo.getStory(branch.id)).text, contains('他踏上石阶。'));
     expect((await repo.getStory(branch.id)).text, isNot(contains('船驶向远方。')));
-    expect((await repo.getStory(novel.activeBranchId)).scenes.length, 2);
+    expect((await repo.getStory(novel.activeBranchId)).chapters.length, 2);
     expect(
       (await repo.listLore(branch.id)).single.certainty,
       LoreCertainty.plan,

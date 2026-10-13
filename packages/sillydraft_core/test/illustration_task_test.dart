@@ -46,13 +46,9 @@ void main() {
     addTearDown(repo.close);
     final assets = AssetLibrary(repository: repo, directory: dir);
     final novel = await repo.createNovel(title: '图片任务');
-    final c = await repo.createChapter(
+
+    final s = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    final s = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: c.id,
       content: ManuscriptContent.plainText('雨中的渡口'),
     );
     final config = ModelConnection(
@@ -83,16 +79,16 @@ void main() {
     final service = IllustrationService(repository: repo, runner: runner);
     final first = await service.generate(
       branchId: s.branchId,
-      sceneId: s.id,
+      chapterId: s.id,
       connection: config,
       name: '港口',
       request: ImageRequest(prompt: '画一个港口'),
     );
     expect((await runner.wait(first.id)).status, TaskStatus.failed);
     expect(await repo.listAssets(novel.id), isEmpty);
-    final edited = await repo.saveScene(
+    final edited = await repo.saveChapter(
       branchId: s.branchId,
-      sceneId: s.id,
+      chapterId: s.id,
       expectedRevisionId: s.revisionId,
       content: ManuscriptContent.plainText('编辑后已放晴'),
     );
@@ -107,7 +103,7 @@ void main() {
     expect(asset.metadata['prompt'], '画一个港口');
     expect(await repo.assetSourceCurrent(asset.id), false);
     expect(
-      (await repo.getScene(branchId: s.branchId, sceneId: s.id)).revisionId,
+      (await repo.getChapter(branchId: s.branchId, chapterId: s.id)).revisionId,
       edited.revisionId,
     );
     expect(await repo.listProposals(s.branchId), isEmpty);

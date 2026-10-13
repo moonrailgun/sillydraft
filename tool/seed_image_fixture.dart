@@ -17,14 +17,10 @@ Future<void> main(List<String> args) async {
       title: '插画验证（本地测试）',
       synopsis: '用于验证本地图片显示的测试作品，图片为纯色测试数据。',
     );
+
     final chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章 · 图片验证',
-    );
-    final scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
-      title: '带插图的场景',
+      title: '带插图的章节',
       content: ManuscriptContent.plainText(
         '这是本地图片显示测试。下面的色块用于验证编辑器和阅读器中的插图。\n',
       ),
@@ -37,20 +33,20 @@ Future<void> main(List<String> args) async {
       branchId: novel.activeBranchId,
       name: '本地测试图 · 非模型生成',
       bytes: await File(args[2]).readAsBytes(),
-      sourceSceneId: scene.id,
-      sourceRevisionId: scene.revisionId,
+      sourceChapterId: chapter.id,
+      sourceRevisionId: chapter.revisionId,
       metadata: {'origin': 'local_test_fixture'},
     );
     await repo.insertIllustration(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       assetId: asset.id,
-      offset: scene.content.text.length - 1,
+      offset: chapter.content.text.length - 1,
     );
     await repo.setCover(novel.id, asset.id);
     await repo.saveLoreEntry(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       kind: LoreKind.map,
       name: '测试地图',
       content: '验证底图、地点和路线',

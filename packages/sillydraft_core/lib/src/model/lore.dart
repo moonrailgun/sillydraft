@@ -26,13 +26,13 @@ final class LoreEntry extends JsonSource {
     required this.createdAt,
     required Map<String, dynamic> data,
     required Map<String, dynamic> provenance,
-    this.atSceneId,
+    this.atChapterId,
     this.previousRevisionId,
     this.deleted = false,
     this.sourceStale = false,
   }) : super({'data': data, 'provenance': provenance});
   final String id, revisionId, branchId, name, content;
-  final String? atSceneId, previousRevisionId;
+  final String? atChapterId, previousRevisionId;
   final LoreKind kind;
   final LoreCertainty certainty;
   final DateTime createdAt;

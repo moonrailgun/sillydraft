@@ -3,9 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
-import 'package:sillydraft_core/src/storage/database.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
+
+import 'support/legacy_database.dart';
 
 void main() {
   test('starting from a card selects one greeting and seeds sourced lore and persona', () async {
@@ -233,16 +234,7 @@ void main() {
     addTearDown(() => dir.delete(recursive: true));
     final path = '${dir.path}/old.sqlite';
     final old = sqlite.sqlite3.open(path);
-    for (final statement in [
-      ...StoryDatabase.schema,
-      ...StoryDatabase.taskSchema,
-      ...StoryDatabase.preferencesSchema,
-      ...StoryDatabase.resourceSchema,
-      ...StoryDatabase.loreSchema,
-      ...StoryDatabase.assetSchema,
-    ]) {
-      old.execute(statement);
-    }
+    createLegacyDatabase(old, version: 6);
     void resource(
       String id,
       String name,
@@ -260,7 +252,6 @@ void main() {
     resource('b', '我改过的名字', 'Other.json');
     resource('c', '导入的预设', '导入的预设.json'); // nothing better to use
     resource('w', '导入的预设', 'book.json', kind: 'worldBook');
-    old.execute('PRAGMA user_version = 6');
     old.close();
 
     final repo = StoryRepository.open(path);

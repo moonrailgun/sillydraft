@@ -16,13 +16,13 @@ final class StoryAsset extends JsonSource {
     required this.purpose,
     required this.createdAt,
     required Map<String, dynamic> metadata,
-    this.sourceSceneId,
+    this.sourceChapterId,
     this.sourceRevisionId,
     this.taskId,
     this.archived = false,
   }) : super(metadata);
   final String id, novelId, branchId, name, hash, thumbnailHash;
-  final String? sourceSceneId, sourceRevisionId, taskId;
+  final String? sourceChapterId, sourceRevisionId, taskId;
   final int width, height, byteLength;
   final AssetPurpose purpose;
   final DateTime createdAt;

@@ -21,7 +21,7 @@ final class PublicationFile {
   final Uint8List bytes;
 }
 
-/// Exports only the immutable accepted scene snapshot, never agent transcripts.
+/// Exports only the immutable accepted chapter snapshot, never agent transcripts.
 final class PublicationExporter {
   PublicationExporter({required this.repository, required this.assets});
   final StoryRepository repository;
@@ -36,8 +36,8 @@ final class PublicationExporter {
     final ids = <String>{
       if (format == PublicationFormat.epub && story.novel.coverAssetId != null)
         story.novel.coverAssetId!,
-      for (final scene in story.scenes)
-        for (final op in scene.content.delta)
+      for (final chapter in story.chapters)
+        for (final op in chapter.content.delta)
           if (op['insert'] case {'image': final String uri}) uri.substring(6),
     };
     final images = <String, StoryAsset>{};
@@ -62,19 +62,16 @@ final class PublicationExporter {
     if (format == PublicationFormat.text) {
       final buffer = StringBuffer('$title\n\n');
       for (final chapter in story.chapters) {
-        buffer.writeln('${chapter.title}\n');
-        for (final scene in story.scenesInChapter(chapter.id)) {
-          if (scene.title.isNotEmpty) buffer.writeln('${scene.title}\n');
-          for (final op in scene.content.delta) {
-            final insert = op['insert'];
-            if (insert is String) {
-              buffer.write(insert);
-            } else if (insert case {'image': final String uri}) {
-              buffer.write('[插图：${images[uri.substring(6)]!.name}]');
-            }
+        if (chapter.title.isNotEmpty) buffer.writeln('${chapter.title}\n');
+        for (final op in chapter.content.delta) {
+          final insert = op['insert'];
+          if (insert is String) {
+            buffer.write(insert);
+          } else if (insert case {'image': final String uri}) {
+            buffer.write('[插图：${images[uri.substring(6)]!.name}]');
           }
-          buffer.writeln();
         }
+        buffer.writeln();
       }
       return PublicationFile(
         filename: '$filename.txt',
@@ -85,13 +82,10 @@ final class PublicationExporter {
     if (format == PublicationFormat.markdown) {
       final buffer = StringBuffer('# ${_md(title)}\n\n');
       for (final chapter in story.chapters) {
-        buffer.writeln('## ${_md(chapter.title)}\n');
-        for (final scene in story.scenesInChapter(chapter.id)) {
-          if (scene.title.isNotEmpty) {
-            buffer.writeln('### ${_md(scene.title)}\n');
-          }
-          buffer.writeln(_render(scene.content, images, html: false));
+        if (chapter.title.isNotEmpty) {
+          buffer.writeln('## ${_md(chapter.title)}\n');
         }
+        buffer.writeln(_render(chapter.content, images, html: false));
       }
       files['book.md'] = Uint8List.fromList(utf8.encode(buffer.toString()));
       return PublicationFile(
@@ -139,12 +133,10 @@ final class PublicationExporter {
     }
     for (final (i, chapter) in story.chapters.indexed) {
       final id = 'chapter-${i + 1}';
-      final body = StringBuffer('<h1>${_xml(chapter.title)}</h1>');
-      for (final scene in story.scenesInChapter(chapter.id)) {
-        if (scene.title.isNotEmpty) body.write('<h2>${_xml(scene.title)}</h2>');
-        body.write(_render(scene.content, images, html: true));
-      }
-      add('EPUB/$id.xhtml', _xhtml(chapter.title, lang, body.toString()));
+      final body =
+          '<h1>${_xml(chapter.title)}</h1>'
+          '${_render(chapter.content, images, html: true)}';
+      add('EPUB/$id.xhtml', _xhtml(chapter.title, lang, body));
       manifest.write(
         '<item id="$id" href="$id.xhtml" media-type="application/xhtml+xml"/>',
       );

@@ -85,7 +85,7 @@ extension DisplayOperations on StoryRepository {
     try {
       variables = await getBranchVariables(
         revision.originBranchId,
-        throughSceneId: revision.sceneId,
+        throughChapterId: revision.chapterId,
       );
     } on StoryNotFound {
       variables = await getBranchVariables(revision.originBranchId);

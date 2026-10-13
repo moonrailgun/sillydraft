@@ -64,7 +64,7 @@ final class StoryBranch {
     required this.name,
     required this.createdAt,
     this.parentBranchId,
-    this.forkSceneId,
+    this.forkChapterId,
     this.forkRevisionId,
   });
 
@@ -72,7 +72,7 @@ final class StoryBranch {
   final String novelId;
   final String name;
   final String? parentBranchId;
-  final String? forkSceneId;
+  final String? forkChapterId;
   final String? forkRevisionId;
   final DateTime createdAt;
 }
@@ -83,27 +83,12 @@ final class Chapter {
     required this.branchId,
     required this.title,
     required this.position,
-  });
-  final String id;
-  final String branchId;
-  final String title;
-  final int position;
-}
-
-final class Scene {
-  const Scene({
-    required this.id,
-    required this.branchId,
-    required this.chapterId,
-    required this.title,
-    required this.position,
     required this.revisionId,
     required this.content,
   });
 
   final String id;
   final String branchId;
-  final String chapterId;
   final String title;
   final int position;
   final String revisionId;
@@ -114,7 +99,7 @@ final class DocumentRevision {
   const DocumentRevision({
     required this.id,
     required this.novelId,
-    required this.sceneId,
+    required this.chapterId,
     required this.originBranchId,
     required this.content,
     required this.createdAt,
@@ -125,7 +110,7 @@ final class DocumentRevision {
 
   final String id;
   final String novelId;
-  final String sceneId;
+  final String chapterId;
   final String originBranchId;
   final String? parentRevisionId;
   final ManuscriptContent content;
@@ -140,7 +125,7 @@ final class ManuscriptProposal {
   const ManuscriptProposal({
     required this.id,
     required this.branchId,
-    required this.sceneId,
+    required this.chapterId,
     required this.baseRevisionId,
     required this.content,
     required this.status,
@@ -152,7 +137,7 @@ final class ManuscriptProposal {
 
   final String id;
   final String branchId;
-  final String sceneId;
+  final String chapterId;
   final String baseRevisionId;
   final ManuscriptContent content;
   final ProposalStatus status;
@@ -167,17 +152,12 @@ final class StorySnapshot {
     required this.novel,
     required this.branch,
     required List<Chapter> chapters,
-    required List<Scene> scenes,
-  }) : chapters = List.unmodifiable(chapters),
-       scenes = List.unmodifiable(scenes);
+  }) : chapters = List.unmodifiable(chapters);
 
   final Novel novel;
   final StoryBranch branch;
   final List<Chapter> chapters;
-  final List<Scene> scenes;
-  List<Scene> scenesInChapter(String id) =>
-      scenes.where((s) => s.chapterId == id).toList(growable: false);
-  String get text => scenes.map((s) => s.content.text).join('\n');
+  String get text => chapters.map((s) => s.content.text).join('\n');
 }
 
 final class RevisionConflict implements Exception {

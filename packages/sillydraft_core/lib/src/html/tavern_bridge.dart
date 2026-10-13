@@ -2,7 +2,7 @@ import 'dart:convert';
 
 /// A page's view of the story, as 酒馆助手 shows a chat to its iframes.
 ///
-/// Implementations map SillyTavern's chat onto something else: the scenes of
+/// Implementations map SillyTavern's chat onto something else: the chapters of
 /// a branch, or the greetings of a card not yet turned into a novel.
 abstract interface class TavernChatBackend {
   /// The `window.__SD_STATE` object for a block hosted in message
@@ -61,7 +61,7 @@ final class TavernWritingRequest {
   final String brief;
 
   /// A message the page removed with `/cut`; the request rewrites that
-  /// scene instead of appending after the last one.
+  /// chapter instead of appending after the last one.
   final int? rewriteMessageId;
 
   /// Whether `/trigger` or `/continue` asked for generation.
@@ -91,7 +91,7 @@ final class TavernBridge {
   final TavernChatBackend backend;
   final TavernHostActions actions;
 
-  /// Index of the message (scene) hosting the block.
+  /// Index of the message (chapter) hosting the block.
   final int messageId;
   final int blockIndex;
   final int maxMessageBytes;
@@ -146,7 +146,7 @@ final class TavernBridge {
         return null;
       case 'deleteChatMessages':
         throw StateError(
-          'SillyDraft 不允许界面删除正文场景；要替换本幕，请使用 /cut 楼层号 | /trigger 发起改写。',
+          'SillyDraft 不允许界面删除正文章节；要替换本章，请使用 /cut 楼层号 | /trigger 发起改写。',
         );
       case 'replaceVariables':
         await backend.replaceVariables(

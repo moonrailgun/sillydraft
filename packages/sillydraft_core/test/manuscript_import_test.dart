@@ -38,7 +38,7 @@ void main() {
         '第二章 灯塔',
         '番外 旧事',
       ]);
-      expect(result.chapters.first.scenes.single.text, '雾从港口升起。\n她站在栈桥上。');
+      expect(result.chapters.first.text, '雾从港口升起。\n她站在栈桥上。');
       expect(result.warnings, isEmpty);
     });
 
@@ -57,24 +57,35 @@ void main() {
         _utf8('第一章 开始\n第一次见到她时，雨下得很大，整条街都没有人，只有远处的钟声。\n'),
         filename: 'a.txt',
       );
-      expect(result.chapters.single.scenes.single.text, startsWith('第一次见到她'));
+      expect(result.chapters.single.text, startsWith('第一次见到她'));
     });
 
-    test('without headings, long text is cut into editable parts', () {
+    test('without headings, long text stays in one complete chapter', () {
       final paragraph = '${'雾' * 999}\n';
       final result = ManuscriptImporter.parse(
         _utf8(paragraph * 50),
         filename: 'plain.txt',
       );
-      expect(result.chapters.length, greaterThan(1));
-      for (final c in result.chapters) {
-        expect(
-          c.scenes.single.text.length,
-          lessThanOrEqualTo(ManuscriptImporter.sceneLimit),
-        );
-      }
+      expect(result.chapters, hasLength(1));
+      expect(result.chapters.single.title, '正文');
+      expect(result.chapters.single.text, (paragraph * 50).trim());
       expect(result.characters, 999 * 50);
       expect(result.warnings, isNotEmpty);
+    });
+
+    test('long chapters keep their complete text and original boundaries', () {
+      final longText = '${'雾' * 999}\n' * 50;
+      final result = ManuscriptImporter.parse(
+        _utf8('Chapter 1 Harbor\n${longText}Chapter 2 Lighthouse\n灯亮了。'),
+        filename: 'book.txt',
+      );
+      expect(result.chapters.map((chapter) => chapter.title), [
+        'Chapter 1 Harbor',
+        'Chapter 2 Lighthouse',
+      ]);
+      expect(result.chapters.first.text, longText.trim());
+      expect(result.chapters.last.text, '灯亮了。');
+      expect(result.warnings, isEmpty);
     });
 
     test('rejects empty files and unknown formats', () {
@@ -105,8 +116,8 @@ void main() {
     );
     expect(result.title, '雾港来信');
     expect(result.chapters.map((c) => c.title), ['码头', '灯塔']);
-    expect(result.chapters.first.scenes.single.text, '雾从港口升起。');
-    expect(result.chapters.last.scenes.single.text, '灯塔熄灭了。');
+    expect(result.chapters.first.text, '雾从港口升起。');
+    expect(result.chapters.last.text, '灯塔熄灭了。');
     expect(result.warnings.single, contains('1 张图片'));
   });
 
@@ -154,7 +165,7 @@ void main() {
     expect(result.title, '雾港来信');
     expect(result.synopsis, '港口的故事');
     expect(result.chapters.map((c) => c.title), ['码头', '第2章']);
-    expect(result.chapters.first.scenes.single.text, '雾从港口升起。\n她 来了…');
+    expect(result.chapters.first.text, '雾从港口升起。\n她 来了…');
   });
 
   test('a whole book becomes one work in one change', () async {
@@ -168,14 +179,14 @@ void main() {
     final story = await repo.getStory(novel.activeBranchId);
     expect(novel.title, '雾港来信');
     expect(story.chapters.map((c) => c.title), ['第一章 码头', '第二章 灯塔']);
-    expect(story.scenes.map((s) => s.content.text.trim()), [
+    expect(story.chapters.map((s) => s.content.text.trim()), [
       '雾从港口升起。',
       '灯塔熄灭了。',
     ]);
     // Imported text is history like any other: the editor can restore it.
     final history = await repo.listRevisions(
       branchId: novel.activeBranchId,
-      sceneId: story.scenes.first.id,
+      chapterId: story.chapters.first.id,
     );
     expect(history.single.reason, 'import');
   });

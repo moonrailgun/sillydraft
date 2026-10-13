@@ -65,13 +65,13 @@ void main() {
       final branchId = await branchWith(_card(zod: true));
       final service = MvuService(repo);
       final story = await repo.getStory(branchId);
-      final sceneId = story.scenes.single.id;
+      final chapterId = story.chapters.single.id;
       expect((await service.storedAt(branchId))!.schema, {'type': 'any'});
       await repo.setSetting('writing/$branchId', {
         ...?await repo.getSetting('writing/$branchId'),
         MvuService.schemaChecksKey: true,
       });
-      final base = (await service.baseFor(branchId, sceneId))!;
+      final base = (await service.baseFor(branchId, chapterId))!;
       expect(base.schema['type'], 'object');
       expect(
         ((base.schema['properties'] as Map)['人物'] as Map)['extensible'],
@@ -83,25 +83,29 @@ void main() {
         ...?await repo.getSetting('writing/$branchId'),
         MvuService.schemaChecksKey: false,
       });
-      expect((await service.baseFor(branchId, sceneId))!.schema, {
+      expect((await service.baseFor(branchId, chapterId))!.schema, {
         'type': 'any',
       });
     },
   );
 
   test(
-    'a scene keeps its record as base when nothing seeds variables any more',
+    'a chapter keeps its record as base when nothing seeds variables any more',
     () async {
       final branchId = await branchWith(_card());
       final service = MvuService(repo);
       final story = await repo.getStory(branchId);
-      final sceneId = story.scenes.single.id;
+      final chapterId = story.chapters.single.id;
       final profile = await repo.getSetting('writing/$branchId') ?? {};
       await repo.setSetting(
         'writing/$branchId',
         {...profile}..remove('cardId'),
       );
-      final base = await service.baseFor(branchId, sceneId, entries: const []);
+      final base = await service.baseFor(
+        branchId,
+        chapterId,
+        entries: const [],
+      );
       expect(base, isNotNull);
       expect(base!.statData['主角']['生命'], 90);
     },

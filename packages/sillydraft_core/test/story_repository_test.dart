@@ -8,19 +8,15 @@ void main() {
   setUp(() => repository = StoryRepository.memory());
   tearDown(() => repository.close());
 
-  Future<({Novel novel, Chapter chapter, Scene scene})> seed() async {
+  Future<({Novel novel, Chapter chapter})> seed() async {
     final novel = await repository.createNovel(title: '雾港来信');
+
     final chapter = await repository.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章 雨夜',
-    );
-    final scene = await repository.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '渡口',
       content: ManuscriptContent.plainText('林舟在渡口等一封信。'),
     );
-    return (novel: novel, chapter: chapter, scene: scene);
+    return (novel: novel, chapter: chapter);
   }
 
   test(
@@ -32,13 +28,9 @@ void main() {
       final path = '${folder.path}/library.sqlite';
       final first = StoryRepository.open(path);
       final novel = await first.createNovel(title: '持久化小说');
+
       final chapter = await first.createChapter(
         branchId: novel.activeBranchId,
-        title: '一',
-      );
-      final scene = await first.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
         content: ManuscriptContent.plainText('不要丢掉这句话。'),
       );
       await first.close();
@@ -46,9 +38,9 @@ void main() {
       try {
         final story = await second.getStory(novel.activeBranchId);
         expect(story.novel.title, '持久化小说');
-        expect(story.scenes.single.id, scene.id);
-        expect(story.scenes.single.content.text, '不要丢掉这句话。\n');
-        expect(story.scenes.single.revisionId, scene.revisionId);
+        expect(story.chapters.single.id, chapter.id);
+        expect(story.chapters.single.content.text, '不要丢掉这句话。\n');
+        expect(story.chapters.single.revisionId, chapter.revisionId);
       } finally {
         await second.close();
       }
@@ -57,27 +49,27 @@ void main() {
 
   test('stale saves preserve newer prose and revision history', () async {
     final s = await seed();
-    final revised = await repository.saveScene(
+    final revised = await repository.saveChapter(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      expectedRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      expectedRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('信已经被雨水打湿。'),
     );
     await expectLater(
-      repository.saveScene(
+      repository.saveChapter(
         branchId: s.novel.activeBranchId,
-        sceneId: s.scene.id,
-        expectedRevisionId: s.scene.revisionId,
+        chapterId: s.chapter.id,
+        expectedRevisionId: s.chapter.revisionId,
         content: ManuscriptContent.plainText('过期的编辑。'),
       ),
       throwsA(isA<RevisionConflict>()),
     );
     final story = await repository.getStory(s.novel.activeBranchId);
-    expect(story.scenes.single.content.text, '信已经被雨水打湿。\n');
-    expect(story.scenes.single.revisionId, revised.revisionId);
+    expect(story.chapters.single.content.text, '信已经被雨水打湿。\n');
+    expect(story.chapters.single.revisionId, revised.revisionId);
     final history = await repository.listRevisions(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
+      chapterId: s.chapter.id,
     );
     expect(history, hasLength(2));
     expect(history.last.content.text, '林舟在渡口等一封信。\n');
@@ -89,14 +81,14 @@ void main() {
       final s = await seed();
       final proposal = await repository.createProposal(
         branchId: s.novel.activeBranchId,
-        sceneId: s.scene.id,
-        baseRevisionId: s.scene.revisionId,
+        chapterId: s.chapter.id,
+        baseRevisionId: s.chapter.revisionId,
         content: ManuscriptContent.plainText('主角在候选中失踪。'),
         summary: '悬疑方向',
       );
       expect(
         (await repository.getStory(s.novel.activeBranchId))
-            .scenes
+            .chapters
             .single
             .content
             .text,
@@ -113,10 +105,10 @@ void main() {
       );
       expect(
         (await repository.getStory(s.novel.activeBranchId))
-            .scenes
+            .chapters
             .single
             .revisionId,
-        s.scene.revisionId,
+        s.chapter.revisionId,
       );
     },
   );
@@ -125,8 +117,8 @@ void main() {
     final s = await seed();
     final proposal = await repository.createProposal(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      baseRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      baseRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('林舟终于等到了信。'),
     );
     final first = await repository.acceptProposal(proposal.id);
@@ -134,7 +126,7 @@ void main() {
     expect(second.id, first.id);
     expect(
       (await repository.getStory(s.novel.activeBranchId))
-          .scenes
+          .chapters
           .single
           .content
           .text,
@@ -143,7 +135,7 @@ void main() {
     expect(
       await repository.listRevisions(
         branchId: s.novel.activeBranchId,
-        sceneId: s.scene.id,
+        chapterId: s.chapter.id,
       ),
       hasLength(2),
     );
@@ -153,14 +145,14 @@ void main() {
     final s = await seed();
     final proposal = await repository.createProposal(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      baseRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      baseRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('AI 返回的旧候选。'),
     );
-    await repository.saveScene(
+    await repository.saveChapter(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      expectedRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      expectedRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('用户刚刚写下的新内容。'),
     );
     await expectLater(
@@ -173,7 +165,7 @@ void main() {
     );
     expect(
       (await repository.getStory(s.novel.activeBranchId))
-          .scenes
+          .chapters
           .single
           .content
           .text,
@@ -181,39 +173,38 @@ void main() {
     );
   });
 
-  test('forks pin old revisions and exclude later scenes', () async {
+  test('forks pin old revisions and exclude later chapters', () async {
     final s = await seed();
-    await repository.createScene(
+    await repository.createChapter(
       branchId: s.novel.activeBranchId,
-      chapterId: s.chapter.id,
       title: '秘密',
       content: ManuscriptContent.plainText('送信人其实是他的父亲。'),
     );
     final branch = await repository.forkBranch(
       branchId: s.novel.activeBranchId,
       name: '另一封信',
-      atSceneId: s.scene.id,
+      atChapterId: s.chapter.id,
     );
-    await repository.saveScene(
+    await repository.saveChapter(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      expectedRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      expectedRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('主线改为没有来信。'),
     );
     final fork = await repository.getStory(branch.id);
-    expect(fork.scenes, hasLength(1));
-    expect(fork.scenes.single.revisionId, s.scene.revisionId);
-    expect(fork.scenes.single.content.text, '林舟在渡口等一封信。\n');
-    final edited = await repository.saveScene(
+    expect(fork.chapters, hasLength(1));
+    expect(fork.chapters.single.revisionId, s.chapter.revisionId);
+    expect(fork.chapters.single.content.text, '林舟在渡口等一封信。\n');
+    final edited = await repository.saveChapter(
       branchId: branch.id,
-      sceneId: s.scene.id,
-      expectedRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      expectedRevisionId: s.chapter.revisionId,
       content: ManuscriptContent.plainText('分支里来了一封蓝色的信。'),
     );
-    expect(edited.revisionId, isNot(s.scene.revisionId));
+    expect(edited.revisionId, isNot(s.chapter.revisionId));
     expect(
       (await repository.getStory(s.novel.activeBranchId))
-          .scenes
+          .chapters
           .first
           .content
           .text,
@@ -221,24 +212,24 @@ void main() {
     );
   });
 
-  test('another novel branch cannot write a foreign scene', () async {
+  test('another novel branch cannot write a foreign chapter', () async {
     final s = await seed();
     final other = await repository.createNovel(title: '另一部小说');
     await expectLater(
-      repository.saveScene(
+      repository.saveChapter(
         branchId: other.activeBranchId,
-        sceneId: s.scene.id,
-        expectedRevisionId: s.scene.revisionId,
+        chapterId: s.chapter.id,
+        expectedRevisionId: s.chapter.revisionId,
         content: ManuscriptContent.plainText('错误的跨项目写入'),
       ),
       throwsA(isA<StoryNotFound>()),
     );
     expect(
       (await repository.getStory(s.novel.activeBranchId))
-          .scenes
+          .chapters
           .single
           .revisionId,
-      s.scene.revisionId,
+      s.chapter.revisionId,
     );
   });
 
@@ -246,19 +237,19 @@ void main() {
     'restoring creates a revision and preserves the intervening edit',
     () async {
       final s = await seed();
-      final edit = await repository.saveScene(
+      final edit = await repository.saveChapter(
         branchId: s.novel.activeBranchId,
-        sceneId: s.scene.id,
-        expectedRevisionId: s.scene.revisionId,
+        chapterId: s.chapter.id,
+        expectedRevisionId: s.chapter.revisionId,
         content: ManuscriptContent.plainText('第二版'),
       );
       final restored = await repository.restoreRevision(
         branchId: s.novel.activeBranchId,
-        sceneId: s.scene.id,
+        chapterId: s.chapter.id,
         expectedRevisionId: edit.revisionId,
-        revisionId: s.scene.revisionId,
+        revisionId: s.chapter.revisionId,
       );
-      expect(restored.revisionId, isNot(s.scene.revisionId));
+      expect(restored.revisionId, isNot(s.chapter.revisionId));
       expect(restored.content.text, '林舟在渡口等一封信。\n');
       expect(
         (await repository.getRevision(edit.revisionId)).content.text,
@@ -267,46 +258,40 @@ void main() {
       expect(
         await repository.listRevisions(
           branchId: s.novel.activeBranchId,
-          sceneId: s.scene.id,
+          chapterId: s.chapter.id,
         ),
         hasLength(3),
       );
     },
   );
 
-  test(
-    'reorder validates a full permutation and keeps chapter boundaries',
-    () async {
-      final s = await seed();
-      final second = await repository.createScene(
+  test('reorder validates a full permutation of branch chapters', () async {
+    final s = await seed();
+    final second = await repository.createChapter(
+      branchId: s.novel.activeBranchId,
+      title: '第二幕',
+    );
+    await repository.reorderChapters(
+      branchId: s.novel.activeBranchId,
+      chapterIds: [second.id, s.chapter.id],
+    );
+    expect(
+      (await repository.getStory(s.novel.activeBranchId)).chapters
+          .map((s) => s.id),
+      [second.id, s.chapter.id],
+    );
+    await expectLater(
+      repository.reorderChapters(
         branchId: s.novel.activeBranchId,
-        chapterId: s.chapter.id,
-        title: '第二幕',
-      );
-      await repository.reorderScenes(
-        branchId: s.novel.activeBranchId,
-        chapterId: s.chapter.id,
-        sceneIds: [second.id, s.scene.id],
-      );
-      expect(
-        (await repository.getStory(s.novel.activeBranchId)).scenes
-            .map((s) => s.id),
-        [second.id, s.scene.id],
-      );
-      await expectLater(
-        repository.reorderScenes(
-          branchId: s.novel.activeBranchId,
-          chapterId: s.chapter.id,
-          sceneIds: [s.scene.id, s.scene.id],
-        ),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        (await repository.getStory(s.novel.activeBranchId)).scenes.first.id,
-        second.id,
-      );
-    },
-  );
+        chapterIds: [s.chapter.id, s.chapter.id],
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      (await repository.getStory(s.novel.activeBranchId)).chapters.first.id,
+      second.id,
+    );
+  });
 
   test(
     'archived novels can be recovered and empty titles are rejected',
@@ -335,14 +320,14 @@ void main() {
     final content = ManuscriptContent.fromDelta(delta);
     (delta.first['attributes'] as Map<String, dynamic>)['bold'] = false;
     final s = await seed();
-    await repository.saveScene(
+    await repository.saveChapter(
       branchId: s.novel.activeBranchId,
-      sceneId: s.scene.id,
-      expectedRevisionId: s.scene.revisionId,
+      chapterId: s.chapter.id,
+      expectedRevisionId: s.chapter.revisionId,
       content: content,
     );
     final restored = (await repository.getStory(s.novel.activeBranchId))
-        .scenes
+        .chapters
         .single
         .content;
     expect(restored.text, '加粗\n');

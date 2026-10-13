@@ -186,24 +186,19 @@ final class StoryRepository {
   Future<StorySnapshot> getStory(String branchId) => _db.transaction(() async {
     final branch = await getBranch(branchId);
     final chapters = await _rows(
-      'SELECT * FROM branch_chapters WHERE branch_id = ? ORDER BY position, chapter_id',
-      [branchId],
-    );
-    final scenes = await _rows(
-      '$_sceneQuery WHERE s.branch_id = ? ORDER BY c.position, s.position, s.scene_id',
+      '$_chapterQuery WHERE s.branch_id = ? ORDER BY s.position, s.chapter_id',
       [branchId],
     );
     return StorySnapshot(
       novel: await getNovel(branch.novelId),
       branch: branch,
       chapters: chapters.map(_chapter).toList(),
-      scenes: scenes.map(_scene).toList(),
     );
   });
 
-  static const _sceneQuery = '''SELECT s.*, r.content_json FROM branch_scenes s
-    JOIN revisions r ON r.id = s.revision_id
-    JOIN branch_chapters c ON c.branch_id = s.branch_id AND c.chapter_id = s.chapter_id''';
+  static const _chapterQuery =
+      '''SELECT s.*, r.content_json FROM branch_chapters s
+    JOIN revisions r ON r.id = s.revision_id''';
 }
 
 String _id() => const Uuid().v4();

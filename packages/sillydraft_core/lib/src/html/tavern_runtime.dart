@@ -310,7 +310,7 @@ const tavernRuntimeJs = r'''
   async function deleteChatMessages(ids, option) {
     await call('deleteChatMessages', [clone(ids), option || {}]);
   }
-  async function rotateChatMessages() { fail('SillyDraft 不支持移动正文场景顺序'); }
+  async function rotateChatMessages() { fail('SillyDraft 不支持移动正文章节顺序'); }
   function getLastMessageId() { return S.messages.length - 1; }
   function getCurrentMessageId() { return S.message_id; }
   function getIframeName() { return S.iframe_name; }

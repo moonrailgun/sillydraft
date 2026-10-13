@@ -42,7 +42,7 @@ final class HtmlBlock {
 
 /// Finds HTML blocks in text and prepares them for a sandboxed web view.
 abstract final class HtmlBlocks {
-  /// Largest text scanned for blocks; longer scenes show as prose.
+  /// Largest text scanned for blocks; longer chapters show as prose.
   static const maxScanLength = 4 * 1024 * 1024;
 
   /// Languages whose fences always render, even for fragments.

@@ -35,7 +35,7 @@ final _placeholderRun = RegExp(
 /// values, a display copy where changed paths read `old->new (reason)`,
 /// the changes of the latest update, the structure schema and which world
 /// books initialised it. Stored as the `stat_data`, `display_data`,
-/// `delta_data`, `schema` and `initialized_lorebooks` variables of a scene.
+/// `delta_data`, `schema` and `initialized_lorebooks` variables of a chapter.
 final class MvuData {
   MvuData({
     Map<String, dynamic>? statData,
@@ -109,7 +109,7 @@ final class MvuData {
     'initialized_lorebooks': initializedLorebooks,
   };
 
-  /// The record as stored variables, to merge into a scene's local table.
+  /// The record as stored variables, to merge into a chapter's local table.
   Map<String, String> toStored() => {
     for (final entry in toJson().entries) entry.key: jsonEncode(entry.value),
   };

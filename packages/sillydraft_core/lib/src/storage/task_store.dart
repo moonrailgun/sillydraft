@@ -5,24 +5,27 @@ extension TaskOperations on StoryRepository {
     required String branchId,
     required TaskKind kind,
     required Map<String, dynamic> input,
-    String? sceneId,
+    String? chapterId,
     String? baseRevisionId,
     String? retryOf,
   }) => _write(() async {
     await getBranch(branchId);
-    if (sceneId != null) {
-      final scene = await getScene(branchId: branchId, sceneId: sceneId);
-      if (baseRevisionId != null && scene.revisionId != baseRevisionId) {
+    if (chapterId != null) {
+      final chapter = await getChapter(
+        branchId: branchId,
+        chapterId: chapterId,
+      );
+      if (baseRevisionId != null && chapter.revisionId != baseRevisionId) {
         final historicalImage =
             kind == TaskKind.illustration &&
             (await listRevisions(
               branchId: branchId,
-              sceneId: sceneId,
+              chapterId: chapterId,
             )).any((r) => r.id == baseRevisionId);
         if (!historicalImage) {
           throw RevisionConflict(
             expected: baseRevisionId,
-            actual: scene.revisionId,
+            actual: chapter.revisionId,
           );
         }
       }
@@ -30,13 +33,13 @@ extension TaskOperations on StoryRepository {
     final id = _id(), now = _now();
     await _execute(
       '''INSERT INTO generation_tasks
-      (id, branch_id, kind, status, scene_id, base_revision_id, input_json, retry_of, created_at, updated_at)
+      (id, branch_id, kind, status, chapter_id, base_revision_id, input_json, retry_of, created_at, updated_at)
       VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)''',
       [
         id,
         branchId,
         kind.name,
-        sceneId,
+        chapterId,
         baseRevisionId,
         jsonEncode(redactCredentials(input)),
         retryOf,
@@ -99,7 +102,7 @@ extension TaskOperations on StoryRepository {
     return rows.length;
   });
 
-  /// Reattach only to the same immutable remote request. Historical scene bases
+  /// Reattach only to the same immutable remote request. Historical chapter bases
   /// remain valid for retrieval; accepting the eventual proposal still uses CAS.
   Future<GenerationTask> requeueRemoteTask(String id) => _write(() async {
     final task = await getTask(id);
@@ -145,7 +148,7 @@ extension TaskOperations on StoryRepository {
   }) => _write(() async {
     final task = await getTask(id);
     if (task.status != TaskStatus.running) return task;
-    if (task.sceneId == null || task.baseRevisionId == null) {
+    if (task.chapterId == null || task.baseRevisionId == null) {
       throw StateError('写作任务缺少正文依据');
     }
     if (![TaskKind.writing, TaskKind.rewrite].contains(task.kind)) {
@@ -153,7 +156,7 @@ extension TaskOperations on StoryRepository {
     }
     final history = await listRevisions(
       branchId: task.branchId,
-      sceneId: task.sceneId!,
+      chapterId: task.chapterId!,
     );
     if (!history.any((r) => r.id == task.baseRevisionId)) {
       throw const StoryNotFound('任务依据版本');
@@ -161,12 +164,12 @@ extension TaskOperations on StoryRepository {
     final proposalId = _id();
     await _execute(
       '''INSERT INTO proposals
-      (id, branch_id, scene_id, base_revision_id, content_json, summary, status, task_id, created_at)
+      (id, branch_id, chapter_id, base_revision_id, content_json, summary, status, task_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)''',
       [
         proposalId,
         task.branchId,
-        task.sceneId,
+        task.chapterId,
         task.baseRevisionId,
         content.encoded,
         summary,
@@ -194,12 +197,12 @@ extension TaskOperations on StoryRepository {
 
   Future<BranchVariables> getBranchVariables(
     String branchId, {
-    String? throughSceneId,
-  }) => _variablesAt(branchId, throughSceneId: throughSceneId);
+    String? throughChapterId,
+  }) => _variablesAt(branchId, throughChapterId: throughChapterId);
 
   Future<void> _commitProposalVariables(
     ManuscriptProposal proposal,
-    Scene scene,
+    Chapter chapter,
   ) async {
     if (proposal.taskId == null) return;
     final task = await getTask(proposal.taskId!);
@@ -212,7 +215,7 @@ extension TaskOperations on StoryRepository {
     }
     await _setBranchVariables(
       branchId: proposal.branchId,
-      scene: scene,
+      chapter: chapter,
       expectedVersion: variables.version,
       local: (result['local'] as Map? ?? {}).cast<String, String>(),
       global: (result['global'] as Map? ?? {}).cast<String, String>(),
@@ -230,7 +233,7 @@ GenerationTask _task(Map<String, Object?> row) => GenerationTask(
   reasoning: row['reasoning'] as String,
   error: row['error'] as String,
   result: jsonDecode(row['result_json'] as String) as Map<String, dynamic>,
-  sceneId: row['scene_id'] as String?,
+  chapterId: row['chapter_id'] as String?,
   baseRevisionId: row['base_revision_id'] as String?,
   retryOf: row['retry_of'] as String?,
   createdAt: DateTime.fromMillisecondsSinceEpoch(

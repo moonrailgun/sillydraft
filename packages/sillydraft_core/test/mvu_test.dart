@@ -409,7 +409,7 @@ _.add('主角.姓名', 1);
       );
     }
 
-    test('creating a novel from a card seeds the opening scene', () async {
+    test('creating a novel from a card seeds the opening chapter', () async {
       final novel = await novelWith(
         opening: '{{user}}踏入山门。\n<UpdateVariable>\n_.set(\'主角.姓名\', \'未知\', \'玖神\');//开局\n</UpdateVariable>',
       );
@@ -466,7 +466,7 @@ _.set('主角.好感度', 33, 40);//初见
         );
         final draft = await service.prepare(
           branchId: branchId,
-          sceneId: story.scenes.single.id,
+          chapterId: story.chapters.single.id,
           connection: connection,
           brief: '继续',
           append: true,
@@ -503,7 +503,7 @@ _.set('主角.好感度', 33, 40);//初见
         final updated = await repo.getStory(branchId);
         final next = await service.prepare(
           branchId: branchId,
-          sceneId: updated.scenes.single.id,
+          chapterId: updated.chapters.single.id,
           connection: connection,
           brief: '再来',
           append: true,
@@ -527,23 +527,21 @@ _.set('主角.好感度', 33, 40);//初见
         );
         await repo.acceptProposal(secondProposal.id);
         final replayed = (await MvuService(repo).storedAt(branchId))!;
-        // Both replies live in the opening scene, so its record is the
-        // opening's base plus every command in the scene text.
+        // Both replies live in the opening chapter, so its record is the
+        // opening's base plus every command in the chapter text.
         expect(replayed.statData['世界']['遭遇冷却'], 18);
       },
     );
 
     test(
-      'reprocess and reloadInitVar rebuild records from the scenes',
+      'reprocess and reloadInitVar rebuild records from the chapters',
       () async {
         final novel = await novelWith();
         final branchId = novel.activeBranchId;
         final service = MvuService(repo);
         final story = await repo.getStory(branchId);
-        final chapter = story.chapters.single;
-        final second = await repo.createScene(
+        final second = await repo.createChapter(
           branchId: branchId,
-          chapterId: chapter.id,
           content: ManuscriptContent.plainText(
             "第二幕。\n_.set('主角.生命', 100, 60);//受伤\n",
           ),
@@ -551,18 +549,18 @@ _.set('主角.好感度', 33, 40);//初见
         expect(
           (await service.storedAt(
             branchId,
-            sceneId: second.id,
+            chapterId: second.id,
           ))!.statData['主角']['生命'],
           100,
         );
         final errors = await service.reprocess(branchId);
         expect(errors, isEmpty);
-        final at2 = (await service.storedAt(branchId, sceneId: second.id))!;
+        final at2 = (await service.storedAt(branchId, chapterId: second.id))!;
         expect(at2.statData['主角']['生命'], 60);
         expect(at2.deltaData['主角']['生命'], '100->60 (受伤)');
         final at1 = (await service.storedAt(
           branchId,
-          sceneId: story.scenes.single.id,
+          chapterId: story.chapters.single.id,
         ))!;
         expect(at1.statData['主角']['生命'], 100);
         final base = await service.baseFor(branchId, second.id);
@@ -601,116 +599,109 @@ _.set('主角.好感度', 33, 40);//初见
       },
     );
 
-    test(
-      'an opening <initvar> override survives reprocess and seeding',
-      () async {
-        final novel = await novelWith(
-          opening:
-              '<initvar>\n{"主角": {"生命": 50, "姓名": "阿雾"}}\n</initvar>\n'
-              "_.set('主角.生命', 50, 45);//开局",
-        );
-        final branchId = novel.activeBranchId;
-        final service = MvuService(repo);
-        final created = (await service.storedAt(branchId))!;
-        expect(created.statData['主角'], {'生命': 45, '姓名': '阿雾'});
-        expect(created.statData, isNot(contains('世界')));
-        final story = await repo.getStory(branchId);
-        final opening = story.scenes.single;
-        // The opening's base is the seed: override applied, commands not yet.
-        final base = (await service.baseFor(branchId, opening.id))!;
-        expect(base.statData['主角']['生命'], 50);
-        await service.reprocess(branchId);
-        final replayed = (await service.storedAt(branchId))!;
-        expect(replayed.statData['主角'], {'生命': 45, '姓名': '阿雾'});
-        // A later scene without a stored record also starts from the override.
-        final second = await repo.createScene(
-          branchId: branchId,
-          chapterId: story.chapters.single.id,
-          content: ManuscriptContent.plainText('第二幕。'),
-        );
-        final fromOpening = (await service.baseFor(branchId, second.id))!;
-        expect(fromOpening.statData['主角']['生命'], 45);
-        // Entries supplied by a writing request give the same record.
-        final supplied = (await service.baseFor(
-          branchId,
-          second.id,
-          entries: MvuService.entriesOfCard(_card()),
-          schemaChecks: true,
-        ))!;
-        expect(supplied.statData, fromOpening.statData);
-      },
-    );
+    test('an opening <initvar> override survives reprocess and seeding', () async {
+      final novel = await novelWith(
+        opening:
+            '<initvar>\n{"主角": {"生命": 50, "姓名": "阿雾"}}\n</initvar>\n'
+            "_.set('主角.生命', 50, 45);//开局",
+      );
+      final branchId = novel.activeBranchId;
+      final service = MvuService(repo);
+      final created = (await service.storedAt(branchId))!;
+      expect(created.statData['主角'], {'生命': 45, '姓名': '阿雾'});
+      expect(created.statData, isNot(contains('世界')));
+      final story = await repo.getStory(branchId);
+      final opening = story.chapters.single;
+      // The opening's base is the seed: override applied, commands not yet.
+      final base = (await service.baseFor(branchId, opening.id))!;
+      expect(base.statData['主角']['生命'], 50);
+      await service.reprocess(branchId);
+      final replayed = (await service.storedAt(branchId))!;
+      expect(replayed.statData['主角'], {'生命': 45, '姓名': '阿雾'});
+      // A later chapter without a stored record also starts from the override.
+      final second = await repo.createChapter(
+        branchId: branchId,
+        content: ManuscriptContent.plainText('第二幕。'),
+      );
+      final fromOpening = (await service.baseFor(branchId, second.id))!;
+      expect(fromOpening.statData['主角']['生命'], 45);
+      // Entries supplied by a writing request give the same record.
+      final supplied = (await service.baseFor(
+        branchId,
+        second.id,
+        entries: MvuService.entriesOfCard(_card()),
+        schemaChecks: true,
+      ))!;
+      expect(supplied.statData, fromOpening.statData);
+    });
 
-    test(
-      'rewrites inside an MVU scene keep offsets and a single tidy placeholder',
-      () async {
-        final novel = await novelWith();
-        final branchId = novel.activeBranchId;
-        final card = const CardImporter().decode(
-          Uint8List.fromList(utf8.encode(jsonEncode(_card()))),
-          'card.json',
+    test('rewrites inside an MVU chapter keep offsets and a single tidy placeholder', () async {
+      final novel = await novelWith();
+      final branchId = novel.activeBranchId;
+      final card = const CardImporter().decode(
+        Uint8List.fromList(utf8.encode(jsonEncode(_card()))),
+        'card.json',
+      );
+      final connection = ModelConnection(
+        id: 'local',
+        name: 'Test',
+        baseUrl: 'http://localhost:1234/v1',
+        model: 'm',
+      );
+      Future<String> run(
+        String reply, {
+        int? start,
+        int? end,
+        bool append = true,
+      }) async {
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (c) async => _ScriptProvider(c, reply),
         );
-        final connection = ModelConnection(
-          id: 'local',
-          name: 'Test',
-          baseUrl: 'http://localhost:1234/v1',
-          model: 'm',
-        );
-        Future<String> run(
-          String reply, {
-          int? start,
-          int? end,
-          bool append = true,
-        }) async {
-          final runner = TaskRunner(
-            repository: repo,
-            providerFactory: (c) async => _ScriptProvider(c, reply),
+        try {
+          final service = WritingService(repository: repo, runner: runner);
+          final chapter = (await repo.getStory(branchId)).chapters.single;
+          final draft = await service.prepare(
+            branchId: branchId,
+            chapterId: chapter.id,
+            connection: connection,
+            brief: '写',
+            append: append,
+            card: card,
+            rangeStart: start,
+            rangeEnd: end,
           );
-          try {
-            final service = WritingService(repository: repo, runner: runner);
-            final scene = (await repo.getStory(branchId)).scenes.single;
-            final draft = await service.prepare(
-              branchId: branchId,
-              sceneId: scene.id,
-              connection: connection,
-              brief: '写',
-              append: append,
-              card: card,
-              rangeStart: start,
-              rangeEnd: end,
-            );
-            final task = await service.startPrepared(draft);
-            await runner.wait(task.id);
-            final done = await repo.getTask(task.id);
-            expect(done.status, TaskStatus.completed, reason: done.error);
-            await repo.acceptProposal(done.result['proposalId'] as String);
-            return (await repo.getStory(branchId)).scenes.single.content.text;
-          } finally {
-            await runner.close();
-          }
+          final task = await service.startPrepared(draft);
+          await runner.wait(task.id);
+          final done = await repo.getTask(task.id);
+          expect(done.status, TaskStatus.completed, reason: done.error);
+          await repo.acceptProposal(done.result['proposalId'] as String);
+          return (await repo.getStory(branchId)).chapters.single.content.text;
+        } finally {
+          await runner.close();
         }
+      }
 
-        var text = await run('第一段。');
-        expect(text, '开场。\n\n第一段。\n\n<StatusPlaceHolderImpl/>\n');
-        text = await run('第二段。');
-        expect(text, '开场。\n\n第一段。\n\n第二段。\n\n<StatusPlaceHolderImpl/>\n');
-        // Replace the last paragraph up to the very end of the scene.
-        final from = text.indexOf('第二段');
-        text = await run(
-          "改写段。\n_.set('主角.生命', 100, 70);",
-          start: from,
-          end: text.length - 1,
-          append: false,
-        );
-        expect(text, startsWith('开场。\n\n第一段。\n\n改写段。'));
-        expect('<StatusPlaceHolderImpl/>'.allMatches(text), hasLength(1));
-        expect(text, endsWith('\n\n<StatusPlaceHolderImpl/>\n'));
-        expect(
-          (await MvuService(repo).storedAt(branchId))!.statData['主角']['生命'],
-          70,
-        );
-      },
-    );
+      var text = await run('第一段。');
+      expect(text, '开场。\n\n第一段。\n\n<StatusPlaceHolderImpl/>\n');
+      text = await run('第二段。');
+      expect(text, '开场。\n\n第一段。\n\n第二段。\n\n<StatusPlaceHolderImpl/>\n');
+      // Replace the last paragraph up to the very end of the chapter.
+      final from = text.indexOf('第二段');
+      text = await run(
+        "改写段。\n_.set('主角.生命', 100, 70);",
+        start: from,
+        end: text.length - 1,
+        append: false,
+      );
+      expect(text, startsWith('开场。\n\n第一段。\n\n改写段。'));
+      expect('<StatusPlaceHolderImpl/>'.allMatches(text), hasLength(1));
+      expect(text, endsWith('\n\n<StatusPlaceHolderImpl/>\n'));
+      expect(
+        (await MvuService(repo).storedAt(branchId))!.statData['主角']['生命'],
+        70,
+      );
+    });
 
     test('{{lastMessage}} never carries the placeholder', () async {
       final preset = PresetImporter().decode({
@@ -742,10 +733,10 @@ _.set('主角.好感度', 33, 40);//初见
           clock: DateTime.utc(2026),
           randomSeed: 1,
           history: const [
-            ContextScene(
+            ContextChapter(
               branchId: 'b',
               position: 0,
-              sceneId: 's',
+              chapterId: 's',
               revisionId: 'r',
               content: '她笑了。\n\n<StatusPlaceHolderImpl/>\n',
             ),

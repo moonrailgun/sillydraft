@@ -4,16 +4,16 @@ extension AgentOperations on StoryRepository {
   Future<String> createConversation({
     required String branchId,
     String title = '创作会话',
-    String? throughSceneId,
+    String? throughChapterId,
   }) => _write(() async {
     await getBranch(branchId);
-    if (throughSceneId != null) {
-      await getScene(branchId: branchId, sceneId: throughSceneId);
+    if (throughChapterId != null) {
+      await getChapter(branchId: branchId, chapterId: throughChapterId);
     }
     final id = _id();
     await _execute(
-      'INSERT INTO agent_conversations (id, branch_id, title, created_at, through_scene_id) VALUES (?, ?, ?, ?, ?)',
-      [id, branchId, title, _now(), throughSceneId],
+      'INSERT INTO agent_conversations (id, branch_id, title, created_at, through_chapter_id) VALUES (?, ?, ?, ?, ?)',
+      [id, branchId, title, _now(), throughChapterId],
     );
     return id;
   });
@@ -30,12 +30,12 @@ extension AgentOperations on StoryRepository {
           ], '编辑会话'))['branch_id']
           as String;
 
-  Future<String?> conversationScene(String id) async =>
+  Future<String?> conversationChapter(String id) async =>
       (await _one(
-            'SELECT through_scene_id FROM agent_conversations WHERE id = ?',
+            'SELECT through_chapter_id FROM agent_conversations WHERE id = ?',
             [id],
             '编辑会话',
-          ))['through_scene_id']
+          ))['through_chapter_id']
           as String?;
 
   Future<AgentMessage> appendAgentMessage(

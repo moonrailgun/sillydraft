@@ -34,23 +34,22 @@ void main() {
     );
     final sa = device(a, 'a'), sb = device(b, 'b');
     final novel = await a.createNovel(title: '同步小说');
-    final c = await a.createChapter(branchId: novel.activeBranchId, title: '一');
-    final scene = await a.createScene(
+
+    final chapter = await a.createChapter(
       branchId: novel.activeBranchId,
-      chapterId: c.id,
       content: ManuscriptContent.plainText('初稿'),
     );
     expect((await sa.synchronize(novel.id)).action, SyncAction.uploaded);
     final imported = await sb.connect();
     expect(imported.id, novel.id);
     Future<void> edit(StoryRepository repo, String text) async {
-      final s = await repo.getScene(
-        branchId: scene.branchId,
-        sceneId: scene.id,
+      final s = await repo.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
       );
-      await repo.saveScene(
+      await repo.saveChapter(
         branchId: s.branchId,
-        sceneId: s.id,
+        chapterId: s.id,
         expectedRevisionId: s.revisionId,
         content: ManuscriptContent.plainText(text),
       );
@@ -59,14 +58,14 @@ void main() {
     await edit(a, '甲设备修改');
     expect((await sa.synchronize(novel.id)).action, SyncAction.uploaded);
     expect((await sb.synchronize(novel.id)).action, SyncAction.downloaded);
-    expect((await b.getStory(scene.branchId)).text.trim(), '甲设备修改');
+    expect((await b.getStory(chapter.branchId)).text.trim(), '甲设备修改');
     await edit(a, '甲设备同时修改');
     await edit(b, '乙设备同时修改');
     await sa.synchronize(novel.id);
     final conflict = await sb.synchronize(novel.id);
     expect(conflict.action, SyncAction.conflict);
     expect(conflict.conflictNovelId, isNotNull);
-    expect((await b.getStory(scene.branchId)).text.trim(), '乙设备同时修改');
+    expect((await b.getStory(chapter.branchId)).text.trim(), '乙设备同时修改');
     final copy = await b.getNovel(conflict.conflictNovelId!);
     expect((await b.getStory(copy.activeBranchId)).text.trim(), '甲设备同时修改');
     expect((await sb.synchronize(novel.id)).conflictNovelId, copy.id);
@@ -87,7 +86,7 @@ void main() {
       SyncAction.uploaded,
     );
     expect((await sa.synchronize(novel.id)).action, SyncAction.downloaded);
-    expect((await a.getStory(scene.branchId)).text.trim(), '乙设备同时修改');
+    expect((await a.getStory(chapter.branchId)).text.trim(), '乙设备同时修改');
     await edit(a, '采用的远端结尾');
     await edit(b, '仍须保留的本机结尾');
     await sa.synchronize(novel.id);
@@ -96,7 +95,7 @@ void main() {
       novel.id,
       observedEtag: nextConflict.remoteEtag!,
     );
-    expect((await b.getStory(scene.branchId)).text.trim(), '采用的远端结尾');
+    expect((await b.getStory(chapter.branchId)).text.trim(), '采用的远端结尾');
     final localCopy = await b.getNovel(remoteChoice.conflictNovelId!);
     expect(
       (await b.getStory(localCopy.activeBranchId)).text.trim(),

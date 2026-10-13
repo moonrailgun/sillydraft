@@ -37,7 +37,7 @@ Map<String, dynamic> p(
 PresetInput input(
   ImportedPreset preset, {
   CharacterCard? card,
-  List<ContextScene> history = const [],
+  List<ContextChapter> history = const [],
   int position = 10,
   List<ScopedWorldBook> books = const [],
   Map<String, String> locals = const {},
@@ -97,12 +97,12 @@ void main() {
         input(
           chat(prompts),
           history: [
-            const ContextScene(
+            const ContextChapter(
               branchId: 'main',
               position: 0,
-              sceneId: 's',
+              chapterId: 's',
               revisionId: 'r',
-              content: 'accepted scene',
+              content: 'accepted chapter',
             ),
           ],
         ),
@@ -176,31 +176,31 @@ void main() {
         chat([p('chatHistory', '', marker: true)]),
         position: 2,
         history: [
-          const ContextScene(
+          const ContextChapter(
             branchId: 'main',
             position: 1,
-            sceneId: 's1',
+            chapterId: 's1',
             revisionId: 'r1',
             content: 'known',
           ),
-          const ContextScene(
+          const ContextChapter(
             branchId: 'main',
             position: 3,
-            sceneId: 's2',
+            chapterId: 's2',
             revisionId: 'r2',
             content: 'future',
           ),
-          const ContextScene(
+          const ContextChapter(
             branchId: 'other',
             position: 0,
-            sceneId: 's3',
+            chapterId: 's3',
             revisionId: 'r3',
             content: 'other',
           ),
-          const ContextScene(
+          const ContextChapter(
             branchId: 'main',
             position: 0,
-            sceneId: 's4',
+            chapterId: 's4',
             revisionId: 'r4',
             content: 'candidate',
             accepted: false,

@@ -1,105 +1,72 @@
 part of 'story_repository.dart';
 
 extension ManuscriptOperations on StoryRepository {
-  Future<Chapter> createChapter({
+  Future<Chapter> getChapter({
     required String branchId,
-    String title = '新章节',
-  }) => _write(() async {
-    _validateTitle(title);
-    final branch = await getBranch(branchId);
-    final id = _id();
-    final next = await _one(
-      'SELECT coalesce(max(position), -1) + 1 AS position FROM branch_chapters WHERE branch_id = ?',
-      [branchId],
-      '章节位置',
-    );
-    await _execute(
-      'INSERT INTO branch_chapters (branch_id, chapter_id, title, position) VALUES (?, ?, ?, ?)',
-      [branchId, id, title.trim(), next['position']],
-    );
-    await _touchNovel(branch.novelId);
-    return _getChapter(branchId, id);
-  });
-
-  Future<Chapter> _getChapter(
-    String branchId,
-    String chapterId,
-  ) async => _chapter(
+    required String chapterId,
+  }) async => _chapter(
     await _one(
-      'SELECT * FROM branch_chapters WHERE branch_id = ? AND chapter_id = ?',
+      '${StoryRepository._chapterQuery} WHERE s.branch_id = ? AND s.chapter_id = ?',
       [branchId, chapterId],
       '章节',
     ),
   );
 
-  Future<Scene> getScene({
+  Future<Chapter> createChapter({
     required String branchId,
-    required String sceneId,
-  }) async => _scene(
-    await _one(
-      '${StoryRepository._sceneQuery} WHERE s.branch_id = ? AND s.scene_id = ?',
-      [branchId, sceneId],
-      '场景',
-    ),
-  );
-
-  Future<Scene> createScene({
-    required String branchId,
-    required String chapterId,
-    String title = '新场景',
+    String title = '新章节',
     ManuscriptContent? content,
   }) => _write(() async {
     _validateTitle(title);
     final branch = await getBranch(branchId);
-    await _getChapter(branchId, chapterId);
     final id = _id();
     final revisionId = await _insertRevision(
       novelId: branch.novelId,
       branchId: branchId,
-      sceneId: id,
+      chapterId: id,
       content: content ?? ManuscriptContent.plainText(''),
       reason: 'create',
     );
     final next = await _one(
       '''SELECT coalesce(max(position), -1) + 1 AS position
-      FROM branch_scenes WHERE branch_id = ? AND chapter_id = ?''',
-      [branchId, chapterId],
-      '场景位置',
+      FROM branch_chapters WHERE branch_id = ?''',
+      [branchId],
+      '章节位置',
     );
     await _execute(
-      '''INSERT INTO branch_scenes
-      (branch_id, scene_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?, ?)''',
-      [branchId, id, chapterId, title.trim(), next['position'], revisionId],
+      '''INSERT INTO branch_chapters
+      (branch_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?)''',
+      [branchId, id, title.trim(), next['position'], revisionId],
     );
     await _touchNovel(branch.novelId);
-    return getScene(branchId: branchId, sceneId: id);
+    return getChapter(branchId: branchId, chapterId: id);
   });
 
-  Future<Scene> saveScene({
+  Future<Chapter> saveChapter({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required String expectedRevisionId,
     required ManuscriptContent content,
     String reason = 'edit',
   }) => _write(
-    () => _saveScene(
+    () => _saveChapter(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       expectedRevisionId: expectedRevisionId,
       content: content,
       reason: reason,
     ),
   );
 
-  Future<Scene> _saveScene({
+  Future<Chapter> _saveChapter({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required String expectedRevisionId,
     required ManuscriptContent content,
     required String reason,
     String? sourceProposalId,
   }) async {
-    final current = await getScene(branchId: branchId, sceneId: sceneId);
+    final current = await getChapter(branchId: branchId, chapterId: chapterId);
     if (current.revisionId != expectedRevisionId) {
       throw RevisionConflict(
         expected: expectedRevisionId,
@@ -110,37 +77,37 @@ extension ManuscriptOperations on StoryRepository {
     final revisionId = await _insertRevision(
       novelId: branch.novelId,
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       content: content,
       parentRevisionId: current.revisionId,
       reason: reason,
       sourceProposalId: sourceProposalId,
     );
     final changed = await _db.customUpdate(
-      '''UPDATE branch_scenes SET revision_id = ?
-      WHERE branch_id = ? AND scene_id = ? AND revision_id = ?''',
+      '''UPDATE branch_chapters SET revision_id = ?
+      WHERE branch_id = ? AND chapter_id = ? AND revision_id = ?''',
       variables: _variables([
         revisionId,
         branchId,
-        sceneId,
+        chapterId,
         expectedRevisionId,
       ]),
     );
     if (changed != 1) {
-      final actual = await getScene(branchId: branchId, sceneId: sceneId);
+      final actual = await getChapter(branchId: branchId, chapterId: chapterId);
       throw RevisionConflict(
         expected: expectedRevisionId,
         actual: actual.revisionId,
       );
     }
     await _touchNovel(branch.novelId);
-    return getScene(branchId: branchId, sceneId: sceneId);
+    return getChapter(branchId: branchId, chapterId: chapterId);
   }
 
   Future<String> _insertRevision({
     required String novelId,
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required ManuscriptContent content,
     required String reason,
     String? parentRevisionId,
@@ -150,12 +117,12 @@ extension ManuscriptOperations on StoryRepository {
     await _validateManuscriptAssets(novelId, content);
     await _execute(
       '''INSERT INTO revisions
-      (id, novel_id, scene_id, origin_branch_id, parent_revision_id, content_json,
+      (id, novel_id, chapter_id, origin_branch_id, parent_revision_id, content_json,
        created_at, reason, source_proposal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
       [
         id,
         novelId,
-        sceneId,
+        chapterId,
         branchId,
         parentRevisionId,
         content.encoded,
@@ -173,9 +140,9 @@ extension ManuscriptOperations on StoryRepository {
 
   Future<List<DocumentRevision>> listRevisions({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
   }) async {
-    final current = await getScene(branchId: branchId, sceneId: sceneId);
+    final current = await getChapter(branchId: branchId, chapterId: chapterId);
     final rows = await _rows(
       '''WITH RECURSIVE history AS (
       SELECT *, 0 AS distance FROM revisions WHERE id = ?
@@ -187,18 +154,21 @@ extension ManuscriptOperations on StoryRepository {
     return rows.map(_revision).toList(growable: false);
   }
 
-  Future<Scene> restoreRevision({
+  Future<Chapter> restoreRevision({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required String expectedRevisionId,
     required String revisionId,
   }) => _write(() async {
-    final history = await listRevisions(branchId: branchId, sceneId: sceneId);
+    final history = await listRevisions(
+      branchId: branchId,
+      chapterId: chapterId,
+    );
     final matching = history.where((r) => r.id == revisionId);
     if (matching.isEmpty) throw const StoryNotFound('当前分支的历史版本');
-    return _saveScene(
+    return _saveChapter(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       expectedRevisionId: expectedRevisionId,
       content: matching.single.content,
       reason: 'restore:$revisionId',
@@ -211,7 +181,7 @@ extension ManuscriptOperations on StoryRepository {
     required String title,
   }) => _write(() async {
     _validateTitle(title);
-    await _getChapter(branchId, chapterId);
+    await getChapter(branchId: branchId, chapterId: chapterId);
     await _execute(
       'UPDATE branch_chapters SET title = ? WHERE branch_id = ? AND chapter_id = ?',
       [title.trim(), branchId, chapterId],
@@ -219,40 +189,24 @@ extension ManuscriptOperations on StoryRepository {
     await _touchNovel((await getBranch(branchId)).novelId);
   });
 
-  Future<void> renameScene({
+  Future<void> reorderChapters({
     required String branchId,
-    required String sceneId,
-    required String title,
+    required List<String> chapterIds,
   }) => _write(() async {
-    _validateTitle(title);
-    await getScene(branchId: branchId, sceneId: sceneId);
-    await _execute(
-      'UPDATE branch_scenes SET title = ? WHERE branch_id = ? AND scene_id = ?',
-      [title.trim(), branchId, sceneId],
-    );
-    await _touchNovel((await getBranch(branchId)).novelId);
-  });
-
-  Future<void> reorderScenes({
-    required String branchId,
-    required String chapterId,
-    required List<String> sceneIds,
-  }) => _write(() async {
-    await _getChapter(branchId, chapterId);
     final current = await _rows(
-      'SELECT scene_id FROM branch_scenes WHERE branch_id = ? AND chapter_id = ?',
-      [branchId, chapterId],
+      'SELECT chapter_id FROM branch_chapters WHERE branch_id = ?',
+      [branchId],
     );
-    final ids = current.map((r) => r['scene_id'] as String).toSet();
-    if (sceneIds.length != ids.length ||
-        sceneIds.toSet().length != ids.length ||
-        !ids.containsAll(sceneIds)) {
-      throw ArgumentError('场景顺序必须完整包含本章的每个场景，且不能重复。');
+    final ids = current.map((r) => r['chapter_id'] as String).toSet();
+    if (chapterIds.length != ids.length ||
+        chapterIds.toSet().length != ids.length ||
+        !ids.containsAll(chapterIds)) {
+      throw ArgumentError('章节顺序必须完整包含当前分支的每一章，且不能重复。');
     }
-    for (var index = 0; index < sceneIds.length; index++) {
+    for (var index = 0; index < chapterIds.length; index++) {
       await _execute(
-        'UPDATE branch_scenes SET position = ? WHERE branch_id = ? AND scene_id = ?',
-        [index, branchId, sceneIds[index]],
+        'UPDATE branch_chapters SET position = ? WHERE branch_id = ? AND chapter_id = ?',
+        [index, branchId, chapterIds[index]],
       );
     }
     await _touchNovel((await getBranch(branchId)).novelId);

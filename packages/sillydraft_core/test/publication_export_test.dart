@@ -20,13 +20,9 @@ void main() {
       directory: Directory('${dir.path}/assets'),
     );
     final novel = await repo.createNovel(title: '海 <雾> & 灯');
-    final chapter = await repo.createChapter(
+
+    var chapter = await repo.createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章 & 开端',
-    );
-    var scene = await repo.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       title: '港口',
       content: ManuscriptContent.fromDelta([
         {
@@ -52,38 +48,38 @@ void main() {
       ]),
     );
     final image = await assets.importImage(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       name: '灯塔 & 海',
       bytes: testPicture(),
     );
-    scene = await repo.insertIllustration(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      expectedRevisionId: scene.revisionId,
+    chapter = await repo.insertIllustration(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
       assetId: image.id,
       offset: 0,
     );
     await repo.setCover(novel.id, image.id);
     final other = await repo.forkBranch(
-      branchId: scene.branchId,
-      atSceneId: scene.id,
+      branchId: chapter.branchId,
+      atChapterId: chapter.id,
       name: '另一条路',
     );
-    final otherScene = (await repo.getStory(other.id)).scenes.single;
-    await repo.saveScene(
+    final otherChapter = (await repo.getStory(other.id)).chapters.single;
+    await repo.saveChapter(
       branchId: other.id,
-      sceneId: otherScene.id,
-      expectedRevisionId: otherScene.revisionId,
+      chapterId: otherChapter.id,
+      expectedRevisionId: otherChapter.revisionId,
       content: ManuscriptContent.plainText('其他分支秘密'),
     );
     await repo.createProposal(
-      branchId: scene.branchId,
-      sceneId: scene.id,
-      baseRevisionId: scene.revisionId,
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+      baseRevisionId: chapter.revisionId,
       content: ManuscriptContent.plainText('未采纳秘密'),
     );
     final conversation = await repo.createConversation(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       title: '编辑器',
     );
     await repo.appendAgentMessage(
@@ -93,7 +89,7 @@ void main() {
     );
     final exporter = PublicationExporter(repository: repo, assets: assets);
     final txt = await exporter.export(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       format: PublicationFormat.text,
     );
     final plain = utf8.decode(txt.bytes);
@@ -103,17 +99,17 @@ void main() {
       expect(plain, isNot(contains(secret)));
     }
     final md = await exporter.export(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       format: PublicationFormat.markdown,
     );
     final markdown = ZipDecoder().decodeBytes(md.bytes);
-    expect(
-      utf8.decode(markdown.findFile('book.md')!.content),
-      contains('**灯亮了。**'),
-    );
+    final markdownText = utf8.decode(markdown.findFile('book.md')!.content);
+    expect(markdownText, contains('## 港口\n'));
+    expect(markdownText, isNot(contains('### ')));
+    expect(markdownText, contains('**灯亮了。**'));
     expect(markdown.findFile('assets/${image.hash}.png'), isNotNull);
     final epub = await exporter.export(
-      branchId: scene.branchId,
+      branchId: chapter.branchId,
       format: PublicationFormat.epub,
     );
     final onDisk = File('${dir.path}/book.epub');
@@ -130,6 +126,8 @@ void main() {
     final chapterText = utf8.decode(
       archive.findFile('EPUB/chapter-1.xhtml')!.content,
     );
+    expect(chapterText, contains('<h1>港口</h1>'));
+    expect(chapterText, isNot(contains('<h2>')));
     expect(chapterText, contains('<strong>灯亮了。</strong>'));
     expect(chapterText, contains('<ol><li>第一项</li><li>第二项</li></ol>'));
     expect(chapterText, contains('&lt;script&gt;并非脚本&lt;/script&gt;'));

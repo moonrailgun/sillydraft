@@ -35,25 +35,28 @@ extension ProposalOperations on StoryRepository {
 
   Future<ManuscriptProposal> createProposal({
     required String branchId,
-    required String sceneId,
+    required String chapterId,
     required String baseRevisionId,
     required ManuscriptContent content,
     String summary = '',
     String? taskId,
   }) => _write(() async {
-    final history = await listRevisions(branchId: branchId, sceneId: sceneId);
+    final history = await listRevisions(
+      branchId: branchId,
+      chapterId: chapterId,
+    );
     if (!history.any((r) => r.id == baseRevisionId)) {
       throw const StoryNotFound('提案依据的正文版本');
     }
     final id = _id();
     await _execute(
       '''INSERT INTO proposals
-      (id, branch_id, scene_id, base_revision_id, content_json, summary, status, task_id, created_at)
+      (id, branch_id, chapter_id, base_revision_id, content_json, summary, status, task_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)''',
       [
         id,
         branchId,
-        sceneId,
+        chapterId,
         baseRevisionId,
         content.encoded,
         summary,
@@ -88,20 +91,20 @@ extension ProposalOperations on StoryRepository {
     if (proposal.status != ProposalStatus.pending) {
       throw StateError('该提案已经被拒绝。');
     }
-    final scene = await _saveScene(
+    final chapter = await _saveChapter(
       branchId: proposal.branchId,
-      sceneId: proposal.sceneId,
+      chapterId: proposal.chapterId,
       expectedRevisionId: proposal.baseRevisionId,
       content: proposal.content,
       reason: 'accept',
       sourceProposalId: proposal.id,
     );
-    await _commitProposalVariables(proposal, scene);
+    await _commitProposalVariables(proposal, chapter);
     await _execute(
       "UPDATE proposals SET status = 'accepted', accepted_revision_id = ? WHERE id = ?",
-      [scene.revisionId, proposal.id],
+      [chapter.revisionId, proposal.id],
     );
-    return getRevision(scene.revisionId);
+    return getRevision(chapter.revisionId);
   });
 
   Future<void> rejectProposal(String id) => _write(() async {

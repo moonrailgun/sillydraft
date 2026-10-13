@@ -33,57 +33,41 @@ extension BranchOperations on StoryRepository {
   Future<StoryBranch> forkBranch({
     required String branchId,
     required String name,
-    String? atSceneId,
+    String? atChapterId,
   }) => _write(() async {
     _validateTitle(name);
     final source = await getStory(branchId);
-    final index = atSceneId == null
-        ? source.scenes.length - 1
-        : source.scenes.indexWhere((s) => s.id == atSceneId);
-    if (atSceneId != null && index < 0) throw const StoryNotFound('分叉场景');
-    final forkScene = index < 0 ? null : source.scenes[index];
-    final selectedScenes = atSceneId == null
-        ? source.scenes
-        : source.scenes.take(index + 1).toList();
-    final chapterCutoff = atSceneId == null || forkScene == null
+    final index = atChapterId == null
         ? source.chapters.length - 1
-        : source.chapters.indexWhere((c) => c.id == forkScene.chapterId);
+        : source.chapters.indexWhere((s) => s.id == atChapterId);
+    if (atChapterId != null && index < 0) throw const StoryNotFound('分叉章节');
+    final forkChapter = index < 0 ? null : source.chapters[index];
+    final selectedChapters = atChapterId == null
+        ? source.chapters
+        : source.chapters.take(index + 1).toList();
     final id = _id();
     await _execute(
       '''INSERT INTO branches
-      (id, novel_id, name, parent_branch_id, fork_scene_id, fork_revision_id, created_at)
+      (id, novel_id, name, parent_branch_id, fork_chapter_id, fork_revision_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)''',
       [
         id,
         source.novel.id,
         name.trim(),
         branchId,
-        forkScene?.id,
-        forkScene?.revisionId,
+        forkChapter?.id,
+        forkChapter?.revisionId,
         _now(),
       ],
     );
-    for (final chapter in source.chapters.take(chapterCutoff + 1)) {
+    for (final chapter in selectedChapters) {
       await _execute(
-        'INSERT INTO branch_chapters (branch_id, chapter_id, title, position) VALUES (?, ?, ?, ?)',
-        [id, chapter.id, chapter.title, chapter.position],
+        '''INSERT INTO branch_chapters
+        (branch_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?)''',
+        [id, chapter.id, chapter.title, chapter.position, chapter.revisionId],
       );
     }
-    for (final scene in selectedScenes) {
-      await _execute(
-        '''INSERT INTO branch_scenes
-        (branch_id, scene_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?, ?)''',
-        [
-          id,
-          scene.id,
-          scene.chapterId,
-          scene.title,
-          scene.position,
-          scene.revisionId,
-        ],
-      );
-    }
-    await _forkSideData(source, id, selectedScenes);
+    await _forkSideData(source, id, selectedChapters);
     await _touchNovel(source.novel.id);
     return getBranch(id);
   });

@@ -144,10 +144,10 @@ void main() {
 
   test('editor tools are emulated: a split fence becomes tool calls', () async {
     final tool = await _fakeTool(dir, [
-      _delta('我先看看场景。\n``'),
+      _delta('我先看看章节。\n``'),
       _delta('`sillydraft-tool'),
-      _delta('-calls\n[{"name": "read_scene", '),
-      _delta('"arguments": {"sceneId": "s1"}}]\n```'),
+      _delta('-calls\n[{"name": "read_chapter", '),
+      _delta('"arguments": {"chapterId": "s1"}}]\n```'),
       {'type': 'result', 'subtype': 'success', 'is_error': false},
     ]);
     final provider = LocalCliProvider(
@@ -165,7 +165,7 @@ void main() {
                   {
                     'id': 'old',
                     'type': 'function',
-                    'function': {'name': 'list_scenes', 'arguments': '{}'},
+                    'function': {'name': 'list_chapters', 'arguments': '{}'},
                   },
                 ],
               },
@@ -175,8 +175,8 @@ void main() {
               {
                 'type': 'function',
                 'function': {
-                  'name': 'read_scene',
-                  'description': '读取场景',
+                  'name': 'read_chapter',
+                  'description': '读取章节',
                   'parameters': {'type': 'object'},
                 },
               },
@@ -186,18 +186,18 @@ void main() {
         .toList();
     expect(
       events.whereType<TextDelta>().map((e) => e.text).join(),
-      '我先看看场景。\n',
+      '我先看看章节。\n',
     );
     final call = events.whereType<ToolCallReady>().single;
-    expect(call.name, 'read_scene');
-    expect(call.arguments, {'sceneId': 's1'});
+    expect(call.name, 'read_chapter');
+    expect(call.arguments, {'chapterId': 's1'});
     expect(events.whereType<GenerationFinished>().single.reason, 'tool_calls');
 
     final args = await File('${dir.path}/args').readAsString();
-    expect(args, contains('read_scene'), reason: 'tools described to model');
+    expect(args, contains('read_chapter'), reason: 'tools described to model');
     final stdin = await File('${dir.path}/stdin').readAsString();
     expect(stdin, contains('【助手调用工具】'));
-    expect(stdin, contains('"name":"list_scenes"'));
+    expect(stdin, contains('"name":"list_chapters"'));
     expect(stdin, contains('【工具结果】\n[s1]'));
   });
 
@@ -217,7 +217,7 @@ void main() {
               tools: [
                 {
                   'type': 'function',
-                  'function': {'name': 'list_scenes'},
+                  'function': {'name': 'list_chapters'},
                 },
               ],
             ),

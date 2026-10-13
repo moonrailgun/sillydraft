@@ -14,9 +14,9 @@ import 'tavern_bridge.dart';
 
 export '../st/variable_codec.dart';
 
-/// The scenes of a branch as a chat: scene N is message N, the opening
-/// scene's swipes are the card's greetings, and variables are the branch's
-/// versioned variables at each scene.
+/// The chapters of a branch as a chat: chapter N is message N, the opening
+/// chapter's swipes are the card's greetings, and variables are the branch's
+/// versioned variables at each chapter.
 final class BranchChatBackend implements TavernChatBackend {
   BranchChatBackend({
     required this.repository,
@@ -32,7 +32,7 @@ final class BranchChatBackend implements TavernChatBackend {
   final DisplayContext context;
   final DateTime Function() _clock;
 
-  /// Text past this budget is left out of the snapshot for older scenes.
+  /// Text past this budget is left out of the snapshot for older chapters.
   static const maxSnapshotTextBytes = 1536 * 1024;
 
   MacroEngine _macros({
@@ -50,35 +50,35 @@ final class BranchChatBackend implements TavernChatBackend {
     for (final greeting in context.greetings) _macros().render(greeting),
   ];
 
-  /// Scene text as a message: without the newline every document ends with.
-  static String messageText(Scene scene) {
-    final text = scene.content.text;
+  /// Chapter text as a message: without the newline every document ends with.
+  static String messageText(Chapter chapter) {
+    final text = chapter.content.text;
     return text.endsWith('\n') ? text.substring(0, text.length - 1) : text;
   }
 
   @override
   Future<Map<String, dynamic>> snapshot(int messageId) async {
     final story = await repository.getStory(branchId);
-    final scenes = story.scenes;
-    final greetings = scenes.isEmpty ? const <String>[] : renderedGreetings();
+    final chapters = story.chapters;
+    final greetings = chapters.isEmpty ? const <String>[] : renderedGreetings();
     final latest = await repository.getBranchVariables(branchId);
-    // Per-scene variables only for the scenes a page addresses by default:
+    // Per-chapter variables only for the chapters a page addresses by default:
     // the opening, its own and the latest. Each lookup projects the branch's
     // revisions, so this stays constant instead of growing with the story.
-    final selected = <int>{0, messageId, scenes.length - 1};
-    final perScene = <String, Map<String, dynamic>>{};
+    final selected = <int>{0, messageId, chapters.length - 1};
+    final perChapter = <String, Map<String, dynamic>>{};
     for (final i in selected) {
-      if (i < 0 || i >= scenes.length) continue;
+      if (i < 0 || i >= chapters.length) continue;
       final variables = await repository.getBranchVariables(
         branchId,
-        throughSceneId: scenes[i].id,
+        throughChapterId: chapters[i].id,
       );
-      perScene['$i'] = decodeVariables(variables.local);
+      perChapter['$i'] = decodeVariables(variables.local);
     }
     var budget = maxSnapshotTextBytes;
     final messages = <Map<String, dynamic>>[];
-    for (var i = scenes.length - 1; i >= 0; i--) {
-      final text = messageText(scenes[i]);
+    for (var i = chapters.length - 1; i >= 0; i--) {
+      final text = messageText(chapters[i]);
       final keep = selected.contains(i) || budget > 0;
       budget -= text.length;
       messages.add({
@@ -99,7 +99,7 @@ final class BranchChatBackend implements TavernChatBackend {
                       : g,
               ]
             : [if (keep) text],
-        'data': perScene['$i'] ?? const <String, dynamic>{},
+        'data': perChapter['$i'] ?? const <String, dynamic>{},
         'extra': const <String, dynamic>{},
       });
     }
@@ -112,7 +112,7 @@ final class BranchChatBackend implements TavernChatBackend {
       'variables': {
         'chat': decodeVariables(latest.local),
         'global': decodeVariables(latest.global),
-        'messages': perScene,
+        'messages': perChapter,
         'other': await _otherVariables(),
       },
       'version': 'sillydraft',
@@ -125,7 +125,7 @@ final class BranchChatBackend implements TavernChatBackend {
 
   int _normalize(int id, int count) {
     final index = id < 0 ? count + id : id;
-    if (index < 0 || index >= count) throw StoryNotFound('第 $id 楼场景');
+    if (index < 0 || index >= count) throw StoryNotFound('第 $id 楼章节');
     return index;
   }
 
@@ -135,8 +135,8 @@ final class BranchChatBackend implements TavernChatBackend {
       final story = await repository.getStory(branchId);
       final id = change['message_id'];
       if (id is! num) throw const FormatException('缺少 message_id');
-      final index = _normalize(id.toInt(), story.scenes.length);
-      final scene = story.scenes[index];
+      final index = _normalize(id.toInt(), story.chapters.length);
+      final chapter = story.chapters[index];
       final swipe = change['swipe_id'];
       String? text = change['message'] is String
           ? change['message'] as String
@@ -153,11 +153,11 @@ final class BranchChatBackend implements TavernChatBackend {
         if (k < 0 || k >= swipes.length) throw const FormatException('备用开场不存在');
         text = swipes[k];
       }
-      if (text != null && text != messageText(scene)) {
-        await repository.saveScene(
+      if (text != null && text != messageText(chapter)) {
+        await repository.saveChapter(
           branchId: branchId,
-          sceneId: scene.id,
-          expectedRevisionId: scene.revisionId,
+          chapterId: chapter.id,
+          expectedRevisionId: chapter.revisionId,
           content: ManuscriptContent.plainText(text),
           reason: 'html-block',
         );
@@ -173,7 +173,7 @@ final class BranchChatBackend implements TavernChatBackend {
       }
       if (change['data'] is Map) {
         await _write(
-          scene.id,
+          chapter.id,
           local: encodeVariables(
             (change['data'] as Map).cast<String, dynamic>(),
           ),
@@ -188,36 +188,34 @@ final class BranchChatBackend implements TavernChatBackend {
     int? insertBefore,
   }) async {
     if (insertBefore != null) {
-      throw const FormatException('SillyDraft 只能在正文末尾添加场景');
+      throw const FormatException('SillyDraft 只能在正文末尾添加章节');
     }
-    final story = await repository.getStory(branchId);
-    final chapterId =
-        story.chapters.lastOrNull?.id ??
-        (await repository.createChapter(branchId: branchId, title: '第一章')).id;
     for (final message in messages) {
       final text = message['message'];
       if (text is! String) throw const FormatException('消息缺少 message 字段');
-      await repository.createScene(
+      await repository.createChapter(
         branchId: branchId,
-        chapterId: chapterId,
-        title: message['role'] == 'user' ? '来自界面的输入' : '新场景',
+        title: message['role'] == 'user' ? '来自界面的输入' : '新章节',
         content: ManuscriptContent.plainText(text),
       );
     }
   }
 
   /// Where a variable store lives: `message` variables at the addressed
-  /// scene; `chat` and `global` at the latest scene, which is what every
-  /// read of them projects, so a page in an earlier scene sees its own
-  /// writes and never overwrites that scene's recorded state.
-  Future<Scene> _sceneFor(Map<String, dynamic> option, int messageId) async {
+  /// chapter; `chat` and `global` at the latest chapter, which is what every
+  /// read of them projects, so a page in an earlier chapter sees its own
+  /// writes and never overwrites that chapter's recorded state.
+  Future<Chapter> _chapterFor(
+    Map<String, dynamic> option,
+    int messageId,
+  ) async {
     final story = await repository.getStory(branchId);
-    if (story.scenes.isEmpty) throw const StoryNotFound('场景');
+    if (story.chapters.isEmpty) throw const StoryNotFound('章节');
     final raw = option['message_id'];
     final index = option['type'] == 'message' && raw is num
-        ? _normalize(raw.toInt(), story.scenes.length)
-        : story.scenes.length - 1;
-    return story.scenes[index];
+        ? _normalize(raw.toInt(), story.chapters.length)
+        : story.chapters.length - 1;
+    return story.chapters[index];
   }
 
   @override
@@ -231,11 +229,11 @@ final class BranchChatBackend implements TavernChatBackend {
           (await repository.getBranchVariables(branchId)).global,
         );
       case 'message':
-        final scene = await _sceneFor(option, messageId);
+        final chapter = await _chapterFor(option, messageId);
         return decodeVariables(
           (await repository.getBranchVariables(
             branchId,
-            throughSceneId: scene.id,
+            throughChapterId: chapter.id,
           )).local,
         );
       case 'chat' || null:
@@ -265,11 +263,11 @@ final class BranchChatBackend implements TavernChatBackend {
   }) async {
     switch (option['type']) {
       case 'global':
-        final scene = await _sceneFor(option, messageId);
-        await _write(scene.id, global: encodeVariables(variables));
+        final chapter = await _chapterFor(option, messageId);
+        await _write(chapter.id, global: encodeVariables(variables));
       case 'message' || 'chat' || null:
-        final scene = await _sceneFor(option, messageId);
-        await _write(scene.id, local: encodeVariables(variables));
+        final chapter = await _chapterFor(option, messageId);
+        await _write(chapter.id, local: encodeVariables(variables));
       default:
         final other = await _otherVariables();
         await repository.setSetting('htmlVariables/$branchId', {
@@ -280,19 +278,19 @@ final class BranchChatBackend implements TavernChatBackend {
   }
 
   Future<void> _write(
-    String sceneId, {
+    String chapterId, {
     Map<String, String>? local,
     Map<String, String>? global,
   }) async {
     var next = local;
     if (next != null && !MvuData.presentIn(next)) {
-      // Long stories only snapshot a few scenes' variables; a page writing
+      // Long stories only snapshot a few chapters' variables; a page writing
       // a table assembled from an empty snapshot must not erase the MVU
       // record. Pages replace it through `replaceMvuData`, which carries
       // `stat_data`.
       final current = await repository.getBranchVariables(
         branchId,
-        throughSceneId: sceneId,
+        throughChapterId: chapterId,
       );
       if (MvuData.presentIn(current.local)) {
         next = {
@@ -303,7 +301,7 @@ final class BranchChatBackend implements TavernChatBackend {
     }
     await repository.patchBranchVariables(
       branchId: branchId,
-      sceneId: sceneId,
+      chapterId: chapterId,
       local: next,
       global: global,
     );
@@ -463,7 +461,7 @@ final class PreviewChatBackend implements TavernChatBackend {
     List<Map<String, dynamic>> messages, {
     int? insertBefore,
   }) async {
-    throw const FormatException('创建小说后才能添加场景');
+    throw const FormatException('创建小说后才能添加章节');
   }
 
   Map<String, dynamic> _store(Map<String, dynamic> option) =>

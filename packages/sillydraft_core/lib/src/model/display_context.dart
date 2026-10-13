@@ -120,7 +120,7 @@ final class DisplayContext {
   /// Raw card greetings: the first message, then the alternates.
   final List<String> greetings;
 
-  /// Which greeting the opening scene was started from.
+  /// Which greeting the opening chapter was started from.
   final int greetingIndex;
   final String? cardId;
 

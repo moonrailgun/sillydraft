@@ -7,9 +7,9 @@ import 'mvu_init.dart';
 import 'mvu_path.dart';
 import 'mvu_schema.dart';
 
-/// MVU over a branch's versioned variables: every scene is a message, its
-/// `stat_data` and companions live in the scene's local variables, and a
-/// scene's record is derived from the previous scene's record plus the
+/// MVU over a branch's versioned variables: every chapter is a message, its
+/// `stat_data` and companions live in the chapter's local variables, and a
+/// chapter's record is derived from the previous chapter's record plus the
 /// update commands in its own text, as MagVarUpdate derives a message's
 /// record from the one before it.
 final class MvuService {
@@ -175,7 +175,7 @@ final class MvuService {
   }
 
   /// [seed] with the opening's own update commands applied: the record of
-  /// a story whose only scene is the opening.
+  /// a story whose only chapter is the opening.
   Future<MvuData?> initialData(
     String branchId, {
     String? opening,
@@ -198,12 +198,12 @@ final class MvuService {
     return data;
   }
 
-  /// The record stored at or before [sceneId]; null when none.
-  Future<MvuData?> storedAt(String branchId, {String? sceneId}) async =>
+  /// The record stored at or before [chapterId]; null when none.
+  Future<MvuData?> storedAt(String branchId, {String? chapterId}) async =>
       MvuData.fromStored(
         (await repository.getBranchVariables(
           branchId,
-          throughSceneId: sceneId,
+          throughChapterId: chapterId,
         )).local,
       );
 
@@ -220,25 +220,25 @@ final class MvuService {
     }
   }
 
-  /// The record a scene's update starts from: the one stored at the scene
-  /// before it, or the initial record for the opening scene (and for any
-  /// scene of a story that was never initialised). An empty [entries]
+  /// The record a chapter's update starts from: the one stored at the chapter
+  /// before it, or the initial record for the opening chapter (and for any
+  /// chapter of a story that was never initialised). An empty [entries]
   /// list falls back to the branch's bound resources; when nothing seeds
-  /// variables any more but the scene already holds a record, that record
+  /// variables any more but the chapter already holds a record, that record
   /// is the base, so an unbound card does not switch MVU off.
   Future<MvuData?> baseFor(
     String branchId,
-    String sceneId, {
+    String chapterId, {
     List<MvuInitEntry>? entries,
     bool? schemaChecks,
     List<String>? errors,
   }) async {
     final story = await repository.getStory(branchId);
-    final index = story.scenes.indexWhere((s) => s.id == sceneId);
-    if (index < 0) throw const StoryNotFound('场景');
+    final index = story.chapters.indexWhere((s) => s.id == chapterId);
+    if (index < 0) throw const StoryNotFound('章节');
     final checks = schemaChecks ?? await this.schemaChecks(branchId);
     final seeds = entries == null || entries.isEmpty ? null : entries;
-    final opening = story.scenes.first.content.text;
+    final opening = story.chapters.first.content.text;
     MvuData? base;
     if (index == 0) {
       base = await seed(
@@ -249,7 +249,7 @@ final class MvuService {
         errors: errors,
       );
     } else {
-      base = await storedAt(branchId, sceneId: story.scenes[index - 1].id);
+      base = await storedAt(branchId, chapterId: story.chapters[index - 1].id);
       base ??= await initialData(
         branchId,
         opening: opening,
@@ -258,51 +258,51 @@ final class MvuService {
         errors: errors,
       );
     }
-    base ??= await storedAt(branchId, sceneId: sceneId);
+    base ??= await storedAt(branchId, chapterId: chapterId);
     if (base != null) applySchemaPolicy(base, checks);
     return base;
   }
 
   /// Makes sure the branch carries a record, as MVU initialises a chat on
-  /// load: the opening scene gets the initial record when it is the only
-  /// scene, otherwise the latest scene does. Returns the record in force.
+  /// load: the opening chapter gets the initial record when it is the only
+  /// chapter, otherwise the latest chapter does. Returns the record in force.
   Future<MvuData?> ensureInitialized(String branchId) async {
     final story = await repository.getStory(branchId);
-    if (story.scenes.isEmpty) return null;
+    if (story.chapters.isEmpty) return null;
     final existing = await storedAt(branchId);
     if (existing != null) return existing;
-    final only = story.scenes.length == 1;
+    final only = story.chapters.length == 1;
     final data = await initialData(
       branchId,
-      opening: story.scenes.first.content.text,
+      opening: story.chapters.first.content.text,
     );
     if (data == null) return null;
-    await _write(branchId, only ? story.scenes.first : story.scenes.last, data);
+    await _write(branchId, only ? story.chapters.first : story.chapters.last, data);
     return data;
   }
 
-  /// Re-derives one scene's record from the scene before it and the
-  /// scene's current text, and stores it.
-  Future<MvuUpdateResult?> processScene(String branchId, String sceneId) async {
+  /// Re-derives one chapter's record from the chapter before it and the
+  /// chapter's current text, and stores it.
+  Future<MvuUpdateResult?> processChapter(String branchId, String chapterId) async {
     final story = await repository.getStory(branchId);
-    final scene = story.scenes.firstWhere(
-      (s) => s.id == sceneId,
-      orElse: () => throw const StoryNotFound('场景'),
+    final chapter = story.chapters.firstWhere(
+      (s) => s.id == chapterId,
+      orElse: () => throw const StoryNotFound('章节'),
     );
-    final base = await baseFor(branchId, sceneId);
+    final base = await baseFor(branchId, chapterId);
     if (base == null) return null;
     final macros = await _macros(branchId);
     final result = MvuUpdater.apply(
-      scene.content.text,
+      chapter.content.text,
       base,
       substitute: macros.render,
     );
-    await _write(branchId, scene, base);
+    await _write(branchId, chapter, base);
     return result;
   }
 
-  /// Re-derives every scene's record in order from the initial record,
-  /// as MVU's "重新处理变量" replays the chat. Returns errors per scene.
+  /// Re-derives every chapter's record in order from the initial record,
+  /// as MVU's "重新处理变量" replays the chat. Returns errors per chapter.
   Future<Map<String, List<String>>> reprocess(String branchId) async {
     final story = await repository.getStory(branchId);
     final errors = <String, List<String>>{};
@@ -310,19 +310,19 @@ final class MvuService {
     final initErrors = <String>[];
     var data = await seed(
       branchId,
-      opening: story.scenes.firstOrNull?.content.text,
+      opening: story.chapters.firstOrNull?.content.text,
       errors: initErrors,
     );
     if (data == null) return errors;
     if (initErrors.isNotEmpty) errors['init'] = initErrors;
-    for (final scene in story.scenes) {
+    for (final chapter in story.chapters) {
       final result = MvuUpdater.apply(
-        scene.content.text,
+        chapter.content.text,
         data!,
         substitute: macros.render,
       );
-      if (result.errors.isNotEmpty) errors[scene.id] = result.errors;
-      await _write(branchId, scene, data);
+      if (result.errors.isNotEmpty) errors[chapter.id] = result.errors;
+      await _write(branchId, chapter, data);
       data = data.clone();
     }
     return errors;
@@ -334,7 +334,7 @@ final class MvuService {
   /// an entry could not be parsed.
   Future<MvuData?> reloadInitVar(String branchId) async {
     final story = await repository.getStory(branchId);
-    if (story.scenes.isEmpty) return null;
+    if (story.chapters.isEmpty) return null;
     final data = await storedAt(branchId) ?? MvuData();
     data.initializedLorebooks = {};
     final macros = await _macros(branchId);
@@ -349,28 +349,28 @@ final class MvuService {
     if (!updated) return null;
     MvuInit.finalizeSchema(data);
     if (!await schemaChecks(branchId)) data.schema = anySchema;
-    await _write(branchId, story.scenes.last, data);
+    await _write(branchId, story.chapters.last, data);
     return data;
   }
 
-  /// Stores a record edited by hand at [sceneId].
-  Future<void> replaceAt(String branchId, String sceneId, MvuData data) async {
+  /// Stores a record edited by hand at [chapterId].
+  Future<void> replaceAt(String branchId, String chapterId, MvuData data) async {
     final story = await repository.getStory(branchId);
-    final scene = story.scenes.firstWhere(
-      (s) => s.id == sceneId,
-      orElse: () => throw const StoryNotFound('场景'),
+    final chapter = story.chapters.firstWhere(
+      (s) => s.id == chapterId,
+      orElse: () => throw const StoryNotFound('章节'),
     );
-    await _write(branchId, scene, data);
+    await _write(branchId, chapter, data);
   }
 
-  Future<void> _write(String branchId, Scene scene, MvuData data) async {
+  Future<void> _write(String branchId, Chapter chapter, MvuData data) async {
     final current = await repository.getBranchVariables(
       branchId,
-      throughSceneId: scene.id,
+      throughChapterId: chapter.id,
     );
     await repository.patchBranchVariables(
       branchId: branchId,
-      sceneId: scene.id,
+      chapterId: chapter.id,
       local: {...current.local, ...data.toStored()},
     );
   }

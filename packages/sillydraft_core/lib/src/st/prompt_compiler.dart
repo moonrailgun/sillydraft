@@ -22,16 +22,16 @@ final class PromptMessage {
   };
 }
 
-final class ContextScene {
-  const ContextScene({
+final class ContextChapter {
+  const ContextChapter({
     required this.branchId,
     required this.position,
-    required this.sceneId,
+    required this.chapterId,
     required this.revisionId,
     required this.content,
     this.accepted = true,
   });
-  final String branchId, sceneId, revisionId, content;
+  final String branchId, chapterId, revisionId, content;
   final int position;
   final bool accepted;
 }
@@ -49,7 +49,7 @@ final class PresetInput {
     this.persona = '',
     this.generationType = 'normal',
     this.selectedOrderId,
-    List<ContextScene> history = const [],
+    List<ContextChapter> history = const [],
     List<ScopedWorldBook> worldBooks = const [],
     Map<String, String> localVariables = const {},
     Map<String, String> globalVariables = const {},
@@ -69,9 +69,9 @@ final class PresetInput {
   final int? selectedOrderId;
   final DateTime clock;
   final CharacterCard? card;
-  final List<ContextScene> history;
+  final List<ContextChapter> history;
 
-  /// A chat to use as `chatHistory` instead of story scenes and [brief], for
+  /// A chat to use as `chatHistory` instead of story chapters and [brief], for
   /// the editing assistant. Its last user message is the current input.
   final List<PromptMessage>? conversation;
   final List<ScopedWorldBook> worldBooks;
@@ -142,10 +142,10 @@ final class PromptCompiler {
             )
             .map(
               (s) => hasMvuMarkup(s.content)
-                  ? ContextScene(
+                  ? ContextChapter(
                       branchId: s.branchId,
                       position: s.position,
-                      sceneId: s.sceneId,
+                      chapterId: s.chapterId,
                       revisionId: s.revisionId,
                       content: stripMvuMarkup(s.content),
                       accepted: s.accepted,
@@ -217,19 +217,19 @@ final class PromptCompiler {
         );
       }
     }
-    for (final (i, scene)
-        in (conversation == null ? filtered : const <ContextScene>[]).indexed) {
+    for (final (i, chapter)
+        in (conversation == null ? filtered : const <ContextChapter>[]).indexed) {
       history.add(
         PromptMessage(
           'assistant',
           regex.apply(
-            scene.content,
+            chapter.content,
             placement: 2,
             stage: RegexStage.prompt,
             macros: macros,
             depth: filtered.length - i,
           ),
-          source: 'scene:${scene.sceneId}@${scene.revisionId}',
+          source: 'chapter:${chapter.chapterId}@${chapter.revisionId}',
         ),
       );
     }

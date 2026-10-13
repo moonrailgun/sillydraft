@@ -1,24 +1,21 @@
 import 'dart:io';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
-import 'package:sillydraft_core/src/storage/database.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
+
+import 'support/legacy_database.dart';
 
 void main() {
   late StoryRepository store;
   late Novel novel;
-  late Scene scene;
+  late Chapter chapter;
   setUp(() async {
     store = StoryRepository.memory();
     novel = await store.createNovel(title: '任务测试');
-    final chapter = await store.createChapter(
+
+    chapter = await store.createChapter(
       branchId: novel.activeBranchId,
-      title: '一',
-    );
-    scene = await store.createScene(
-      branchId: novel.activeBranchId,
-      chapterId: chapter.id,
       content: ManuscriptContent.plainText('原文'),
     );
   });
@@ -34,16 +31,13 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
       final path = '${dir.path}/old.sqlite';
       final old = sqlite.sqlite3.open(path);
-      for (final statement in StoryDatabase.schema) {
-        old.execute(statement);
-      }
+      createLegacyDatabase(old, version: 1);
       old.execute(
         "INSERT INTO novels (id,title,synopsis,genre,language,style,point_of_view,active_branch_id,created_at,updated_at) VALUES ('old','旧项目','','','','','','branch',1,1)",
       );
       old.execute(
         "INSERT INTO branches (id,novel_id,name,created_at) VALUES ('branch','old','主线',1)",
       );
-      old.execute('PRAGMA user_version = 1');
       old.close();
       store = StoryRepository.open(path);
       expect((await store.getNovel('old')).title, '旧项目');
@@ -59,8 +53,8 @@ void main() {
   Future<GenerationTask> queued() => store.createTask(
     branchId: novel.activeBranchId,
     kind: TaskKind.writing,
-    sceneId: scene.id,
-    baseRevisionId: scene.revisionId,
+    chapterId: chapter.id,
+    baseRevisionId: chapter.revisionId,
     input: {
       'request': {'messages': <Object?>[]},
       'variableBaseVersion': 0,
@@ -86,9 +80,9 @@ void main() {
     );
     expect(finished.status, TaskStatus.completed);
     expect(
-      (await store.getScene(
+      (await store.getChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
       )).content.text,
       '原文\n',
     );
@@ -102,9 +96,9 @@ void main() {
       'n': '1',
     });
     expect(
-      (await store.getScene(
+      (await store.getChapter(
         branchId: novel.activeBranchId,
-        sceneId: scene.id,
+        chapterId: chapter.id,
       )).content.text,
       '候选\n',
     );
@@ -141,14 +135,8 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
       store = StoryRepository.open('${dir.path}/jobs.sqlite');
       novel = await store.createNovel(title: '恢复任务');
-      final chapter = await store.createChapter(
-        branchId: novel.activeBranchId,
-        title: '一',
-      );
-      scene = await store.createScene(
-        branchId: novel.activeBranchId,
-        chapterId: chapter.id,
-      );
+
+      chapter = await store.createChapter(branchId: novel.activeBranchId);
       final task = await queued();
       await store.updateTask(
         task.id,
@@ -163,7 +151,7 @@ void main() {
       expect(restored.status, TaskStatus.interrupted);
       expect(restored.partialText, '已经收到');
       expect(restored.reasoning, '旁路内容');
-      expect(restored.baseRevisionId, scene.revisionId);
+      expect(restored.baseRevisionId, chapter.revisionId);
       expect(restored.input['variableBaseVersion'], 0);
     },
   );
@@ -199,9 +187,9 @@ void main() {
       expect(await store.getAgentMessages(session), hasLength(2));
       await store.deleteConversation(session);
       expect(
-        (await store.getScene(
+        (await store.getChapter(
           branchId: novel.activeBranchId,
-          sceneId: scene.id,
+          chapterId: chapter.id,
         )).content.text,
         '原文\n',
       );

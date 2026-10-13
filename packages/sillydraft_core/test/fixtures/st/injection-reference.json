@@ -57,7 +57,7 @@
     },
     {
       "role": "assistant",
-      "content": "accepted scene"
+      "content": "accepted chapter"
     }
   ],
   "expected": [
@@ -68,7 +68,7 @@
     },
     {
       "role": "assistant",
-      "content": "accepted scene"
+      "content": "accepted chapter"
     },
     {
       "role": "assistant",

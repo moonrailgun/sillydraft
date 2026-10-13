@@ -4,6 +4,9 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
 import '../st/import_types.dart';
+import '../migration/chapter_migration.dart';
+import '../migration/legacy_schema.dart';
+import '../transfer/project_snapshot.dart';
 
 /// Explicit migrations keep the same database usable by Flutter and the runner.
 final class StoryDatabase extends GeneratedDatabase {
@@ -18,7 +21,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -40,30 +43,31 @@ final class StoryDatabase extends GeneratedDatabase {
     onUpgrade: (_, from, to) async {
       if (from < 2) {
         for (final sql in taskSchema) {
-          await customStatement(sql);
+          await customStatement(legacyChapterSql(sql));
         }
       }
       if (from < 3) {
         for (final sql in preferencesSchema) {
-          await customStatement(sql);
+          await customStatement(legacyChapterSql(sql));
         }
       }
       if (from < 4) {
         for (final sql in resourceSchema) {
-          await customStatement(sql);
+          await customStatement(legacyChapterSql(sql));
         }
       }
       if (from < 5) {
         for (final sql in loreSchema) {
-          await customStatement(sql);
+          await customStatement(legacyChapterSql(sql));
         }
       }
       if (from < 6) {
         for (final sql in assetSchema) {
-          await customStatement(sql);
+          await customStatement(legacyChapterSql(sql));
         }
       }
       if (from < 7) await _nameUnnamedPresets();
+      if (from < 8) await _migrateChapters();
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -71,6 +75,44 @@ final class StoryDatabase extends GeneratedDatabase {
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
+
+  Future<void> _migrateChapters() async {
+    await transaction(() async {
+      await customStatement('PRAGMA defer_foreign_keys = ON');
+      final tables = <String, List<Map<String, dynamic>>>{};
+      for (final name in legacyProjectTables) {
+        tables[name] = (await customSelect(
+          'SELECT * FROM $name',
+        ).get()).map((row) => Map<String, dynamic>.from(row.data)).toList();
+      }
+      final migrated = migrateLegacyChapters(tables);
+      for (final name in legacyProjectTables.reversed) {
+        await customStatement('DROP TABLE $name');
+      }
+      for (final sql in [
+        ...schema,
+        ...taskSchema,
+        ...preferencesSchema,
+        ...resourceSchema,
+        ...loreSchema,
+        ...assetSchema,
+      ]) {
+        await customStatement(sql);
+      }
+      for (final name in projectTables) {
+        for (final row in migrated[name]!) {
+          final keys = row.keys.toList();
+          await customStatement(
+            'INSERT INTO $name (${keys.join(',')}) VALUES (${List.filled(keys.length, '?').join(',')})',
+            keys.map((key) => row[key]).toList(),
+          );
+        }
+      }
+      if ((await customSelect('PRAGMA foreign_key_check').get()).isNotEmpty) {
+        throw StateError('章节迁移包含无效引用，原资料库未改动。');
+      }
+    });
+  }
 
   /// Before v7 a preset file without a `name` (SillyTavern keeps preset
   /// names in file names) was stored as 导入的预设. Name those after the file
@@ -107,7 +149,7 @@ final class StoryDatabase extends GeneratedDatabase {
       branch_id TEXT NOT NULL REFERENCES branches(id), name TEXT NOT NULL,
       content_hash TEXT NOT NULL, thumbnail_hash TEXT NOT NULL,
       width INTEGER NOT NULL, height INTEGER NOT NULL, byte_length INTEGER NOT NULL,
-      purpose TEXT NOT NULL, source_scene_id TEXT, source_revision_id TEXT REFERENCES revisions(id),
+      purpose TEXT NOT NULL, source_chapter_id TEXT, source_revision_id TEXT REFERENCES revisions(id),
       task_id TEXT REFERENCES generation_tasks(id), metadata_json TEXT NOT NULL,
       archived INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
     )''',
@@ -126,40 +168,34 @@ final class StoryDatabase extends GeneratedDatabase {
     '''CREATE TABLE branches (
       id TEXT PRIMARY KEY, novel_id TEXT NOT NULL REFERENCES novels(id),
       name TEXT NOT NULL, parent_branch_id TEXT REFERENCES branches(id),
-      fork_scene_id TEXT, fork_revision_id TEXT REFERENCES revisions(id),
+      fork_chapter_id TEXT, fork_revision_id TEXT REFERENCES revisions(id),
       created_at INTEGER NOT NULL
-    )''',
-    '''CREATE TABLE branch_chapters (
-      branch_id TEXT NOT NULL REFERENCES branches(id), chapter_id TEXT NOT NULL,
-      title TEXT NOT NULL, position INTEGER NOT NULL CHECK(position >= 0),
-      PRIMARY KEY(branch_id, chapter_id)
     )''',
     '''CREATE TABLE revisions (
       id TEXT PRIMARY KEY, novel_id TEXT NOT NULL REFERENCES novels(id),
-      scene_id TEXT NOT NULL, origin_branch_id TEXT NOT NULL REFERENCES branches(id),
+      chapter_id TEXT NOT NULL, origin_branch_id TEXT NOT NULL REFERENCES branches(id),
       parent_revision_id TEXT REFERENCES revisions(id),
       content_json TEXT NOT NULL, created_at INTEGER NOT NULL,
       reason TEXT NOT NULL, source_proposal_id TEXT
     )''',
-    '''CREATE TABLE branch_scenes (
-      branch_id TEXT NOT NULL, scene_id TEXT NOT NULL, chapter_id TEXT NOT NULL,
+    '''CREATE TABLE branch_chapters (
+      branch_id TEXT NOT NULL REFERENCES branches(id), chapter_id TEXT NOT NULL,
       title TEXT NOT NULL, position INTEGER NOT NULL CHECK(position >= 0),
       revision_id TEXT NOT NULL REFERENCES revisions(id),
-      PRIMARY KEY(branch_id, scene_id),
-      FOREIGN KEY(branch_id, chapter_id) REFERENCES branch_chapters(branch_id, chapter_id)
+      PRIMARY KEY(branch_id, chapter_id)
     )''',
     '''CREATE TABLE proposals (
-      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, scene_id TEXT NOT NULL,
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, chapter_id TEXT NOT NULL,
       base_revision_id TEXT NOT NULL REFERENCES revisions(id),
       content_json TEXT NOT NULL, summary TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'rejected')),
       accepted_revision_id TEXT REFERENCES revisions(id), task_id TEXT,
       created_at INTEGER NOT NULL,
-      FOREIGN KEY(branch_id, scene_id) REFERENCES branch_scenes(branch_id, scene_id)
+      FOREIGN KEY(branch_id, chapter_id) REFERENCES branch_chapters(branch_id, chapter_id)
     )''',
     'CREATE INDEX branches_novel ON branches(novel_id)',
-    'CREATE INDEX scenes_order ON branch_scenes(branch_id, chapter_id, position)',
-    'CREATE INDEX revisions_scene ON revisions(scene_id)',
+    'CREATE INDEX chapters_order ON branch_chapters(branch_id, position)',
+    'CREATE INDEX revisions_chapter ON revisions(chapter_id)',
     'CREATE INDEX proposals_branch ON proposals(branch_id, status)',
   ];
 
@@ -167,7 +203,7 @@ final class StoryDatabase extends GeneratedDatabase {
     '''CREATE TABLE generation_tasks (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id),
       kind TEXT NOT NULL, status TEXT NOT NULL,
-      scene_id TEXT, base_revision_id TEXT REFERENCES revisions(id),
+      chapter_id TEXT, base_revision_id TEXT REFERENCES revisions(id),
       input_json TEXT NOT NULL, partial_text TEXT NOT NULL DEFAULT '',
       reasoning TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
       result_json TEXT NOT NULL DEFAULT '{}', retry_of TEXT REFERENCES generation_tasks(id),
@@ -180,7 +216,7 @@ final class StoryDatabase extends GeneratedDatabase {
     )''',
     '''CREATE TABLE variable_revisions (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id),
-      version INTEGER NOT NULL, scene_id TEXT NOT NULL,
+      version INTEGER NOT NULL, chapter_id TEXT NOT NULL,
       revision_id TEXT NOT NULL REFERENCES revisions(id),
       local_json TEXT NOT NULL, global_json TEXT NOT NULL, created_at INTEGER NOT NULL
     )''',
@@ -198,9 +234,9 @@ final class StoryDatabase extends GeneratedDatabase {
   static const preferencesSchema = <String>[
     'CREATE TABLE app_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL)',
     '''CREATE TABLE reading_bookmarks (
-      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, scene_id TEXT NOT NULL,
+      id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, chapter_id TEXT NOT NULL,
       label TEXT NOT NULL, offset INTEGER NOT NULL, created_at INTEGER NOT NULL,
-      FOREIGN KEY(branch_id,scene_id) REFERENCES branch_scenes(branch_id,scene_id)
+      FOREIGN KEY(branch_id,chapter_id) REFERENCES branch_chapters(branch_id,chapter_id)
     )''',
   ];
 
@@ -213,12 +249,12 @@ final class StoryDatabase extends GeneratedDatabase {
     )''',
   ];
   static const loreSchema = <String>[
-    'ALTER TABLE agent_conversations ADD COLUMN through_scene_id TEXT',
+    'ALTER TABLE agent_conversations ADD COLUMN through_chapter_id TEXT',
     '''CREATE TABLE lore_versions (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT, revision_id TEXT NOT NULL UNIQUE, entity_id TEXT NOT NULL,
       branch_id TEXT NOT NULL REFERENCES branches(id), previous_revision_id TEXT REFERENCES lore_versions(revision_id),
       kind TEXT NOT NULL,name TEXT NOT NULL,content TEXT NOT NULL,certainty TEXT NOT NULL,
-      data_json TEXT NOT NULL,provenance_json TEXT NOT NULL,at_scene_id TEXT,deleted INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL
+      data_json TEXT NOT NULL,provenance_json TEXT NOT NULL,at_chapter_id TEXT,deleted INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL
     )''',
     'CREATE INDEX lore_branch ON lore_versions(branch_id,entity_id,sequence)',
     '''CREATE TABLE analysis_acceptances (task_id TEXT NOT NULL REFERENCES generation_tasks(id),entry_index INTEGER NOT NULL,

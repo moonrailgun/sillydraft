@@ -3,26 +3,26 @@ part of 'story_repository.dart';
 extension LoreOperations on StoryRepository {
   Future<List<LoreEntry>> listLore(
     String branchId, {
-    String? throughSceneId,
+    String? throughChapterId,
     LoreKind? kind,
     bool includeDeleted = false,
     String query = '',
   }) async {
     final story = await getStory(branchId);
-    final positions = {for (final (i, s) in story.scenes.indexed) s.id: i};
-    if (throughSceneId != null && !positions.containsKey(throughSceneId)) {
+    final positions = {for (final (i, s) in story.chapters.indexed) s.id: i};
+    if (throughChapterId != null && !positions.containsKey(throughChapterId)) {
       throw const StoryNotFound('资料查询位置');
     }
-    final cutoff = throughSceneId == null
-        ? story.scenes.length - 1
-        : positions[throughSceneId]!;
+    final cutoff = throughChapterId == null
+        ? story.chapters.length - 1
+        : positions[throughChapterId]!;
     final selected = <String, Map<String, Object?>>{};
     final ranks = <String, int>{};
     for (final row in await _rows(
       'SELECT * FROM lore_versions WHERE branch_id = ? ORDER BY sequence',
       [branchId],
     )) {
-      final anchor = row['at_scene_id'] as String?;
+      final anchor = row['at_chapter_id'] as String?;
       if (anchor != null && !positions.containsKey(anchor)) continue;
       final position = anchor == null ? -1 : positions[anchor]!;
       if (position > cutoff) continue;
@@ -33,13 +33,13 @@ extension LoreOperations on StoryRepository {
       }
     }
     final heads = {
-      for (final scene in story.scenes) scene.id: scene.revisionId,
+      for (final chapter in story.chapters) chapter.id: chapter.revisionId,
     };
     final result = <LoreEntry>[];
     for (final row in selected.values) {
       final provenance =
           jsonDecode(row['provenance_json'] as String) as Map<String, dynamic>;
-      final source = provenance['sceneId'] as String?;
+      final source = provenance['chapterId'] as String?;
       final stale = source != null && heads[source] != provenance['revisionId'];
       final entry = _lore(row, stale: stale);
       if ((includeDeleted || !entry.deleted) &&
@@ -57,12 +57,12 @@ extension LoreOperations on StoryRepository {
   Future<LoreEntry> getLoreEntry({
     required String branchId,
     required String id,
-    String? throughSceneId,
+    String? throughChapterId,
     bool includeDeleted = false,
   }) async {
     final entry = (await listLore(
       branchId,
-      throughSceneId: throughSceneId,
+      throughChapterId: throughChapterId,
       includeDeleted: includeDeleted,
     )).where((e) => e.id == id).firstOrNull;
     if (entry == null) throw const StoryNotFound('当前分支的资料条目');
@@ -83,23 +83,23 @@ extension LoreOperations on StoryRepository {
     LoreCertainty certainty = LoreCertainty.fact,
     String? id,
     String? expectedRevisionId,
-    String? atSceneId,
+    String? atChapterId,
     Map<String, dynamic> data = const {},
     Map<String, dynamic> provenance = const {'type': 'manual'},
     bool deleted = false,
   }) => _write(() async {
     _validateTitle(name);
     final story = await getStory(branchId);
-    final anchor = atSceneId ?? story.scenes.lastOrNull?.id;
-    if (anchor != null && !story.scenes.any((s) => s.id == anchor)) {
-      throw const StoryNotFound('资料所在场景');
+    final anchor = atChapterId ?? story.chapters.lastOrNull?.id;
+    if (anchor != null && !story.chapters.any((s) => s.id == anchor)) {
+      throw const StoryNotFound('资料所在章节');
     }
     LoreEntry? previous;
     if (id != null) {
       previous = await getLoreEntry(
         branchId: branchId,
         id: id,
-        throughSceneId: anchor,
+        throughChapterId: anchor,
         includeDeleted: true,
       );
       if (previous.revisionId != expectedRevisionId) throw const LoreConflict();
@@ -109,15 +109,15 @@ extension LoreOperations on StoryRepository {
     } else if (expectedRevisionId != null) {
       throw const LoreConflict();
     }
-    if (provenance['sceneId'] case final String sourceId) {
-      final index = story.scenes.indexWhere((s) => s.id == sourceId),
-          position = story.scenes.indexWhere((s) => s.id == anchor);
+    if (provenance['chapterId'] case final String sourceId) {
+      final index = story.chapters.indexWhere((s) => s.id == sourceId),
+          position = story.chapters.indexWhere((s) => s.id == anchor);
       if (index < 0 || index > position) {
         throw const FormatException('资料不能早于证据出现的位置');
       }
       final history = await listRevisions(
         branchId: branchId,
-        sceneId: sourceId,
+        chapterId: sourceId,
       );
       if (!history.any((r) => r.id == provenance['revisionId'])) {
         throw const StoryNotFound('资料依据版本');
@@ -127,7 +127,7 @@ extension LoreOperations on StoryRepository {
     final entityId = id ?? _id(), revisionId = _id();
     await _execute(
       '''INSERT INTO lore_versions
-        (revision_id,entity_id,branch_id,previous_revision_id,kind,name,content,certainty,data_json,provenance_json,at_scene_id,deleted,created_at)
+        (revision_id,entity_id,branch_id,previous_revision_id,kind,name,content,certainty,data_json,provenance_json,at_chapter_id,deleted,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
       [
         revisionId,
@@ -153,12 +153,12 @@ extension LoreOperations on StoryRepository {
     required String branchId,
     required String id,
     required String expectedRevisionId,
-    String? atSceneId,
+    String? atChapterId,
   }) async {
     final old = await getLoreEntry(
       branchId: branchId,
       id: id,
-      throughSceneId: atSceneId,
+      throughChapterId: atChapterId,
     );
     await saveLoreEntry(
       branchId: branchId,
@@ -170,7 +170,7 @@ extension LoreOperations on StoryRepository {
       certainty: old.certainty,
       data: old.data,
       provenance: old.provenance,
-      atSceneId: atSceneId,
+      atChapterId: atChapterId,
       deleted: true,
     );
   }
@@ -179,7 +179,7 @@ extension LoreOperations on StoryRepository {
     String branchId,
     LoreKind kind,
     Map<String, dynamic> data,
-    String? throughSceneId,
+    String? throughChapterId,
   ) async {
     if (kind == LoreKind.relationship) {
       for (final key in ['fromId', 'toId']) {
@@ -187,7 +187,7 @@ extension LoreOperations on StoryRepository {
         final entry = await getLoreEntry(
           branchId: branchId,
           id: data[key] as String,
-          throughSceneId: throughSceneId,
+          throughChapterId: throughChapterId,
         );
         if (entry.kind == LoreKind.relationship || entry.kind == LoreKind.map) {
           throw const FormatException('关系端点应是人物或世界资料');
@@ -227,7 +227,7 @@ extension LoreOperations on StoryRepository {
           final entry = await getLoreEntry(
             branchId: branchId,
             id: entityId,
-            throughSceneId: throughSceneId,
+            throughChapterId: throughChapterId,
           );
           if (entry.kind != LoreKind.location) {
             throw const FormatException('地图地点只能关联地点条目');
@@ -261,7 +261,7 @@ LoreEntry _lore(Map<String, Object?> r, {bool stale = false}) => LoreEntry(
   data: jsonDecode(r['data_json'] as String) as Map<String, dynamic>,
   provenance:
       jsonDecode(r['provenance_json'] as String) as Map<String, dynamic>,
-  atSceneId: r['at_scene_id'] as String?,
+  atChapterId: r['at_chapter_id'] as String?,
   previousRevisionId: r['previous_revision_id'] as String?,
   deleted: r['deleted'] == 1,
   sourceStale: stale,
