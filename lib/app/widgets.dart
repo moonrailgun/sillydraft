@@ -585,17 +585,26 @@ class AppDialog extends StatelessWidget {
     return FDialog(
       animation: animation,
       constraints: BoxConstraints(minWidth: 280, maxWidth: maxWidth),
+      // Side padding sits on each part, not the column, so the body's
+      // scroll view spans the full width and its scrollbar hugs the edge.
       builder: (context, style) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+        padding: const EdgeInsets.only(top: 22, bottom: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            DefaultTextStyle.merge(style: style.titleTextStyle, child: title),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: DefaultTextStyle.merge(
+                style: style.titleTextStyle,
+                child: title,
+              ),
+            ),
             if (body != null) ...[
               const SizedBox(height: 10),
               Flexible(
                 child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: DefaultTextStyle.merge(
                     style: style.bodyTextStyle,
                     child: body!,
@@ -605,14 +614,19 @@ class AppDialog extends StatelessWidget {
             ],
             if (actions.isNotEmpty) ...[
               const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final action in actions)
-                    action is FButton ? IntrinsicWidth(child: action) : action,
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final action in actions)
+                      action is FButton
+                          ? IntrinsicWidth(child: action)
+                          : action,
+                  ],
+                ),
               ),
             ],
           ],
