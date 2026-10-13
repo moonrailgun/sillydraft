@@ -756,5 +756,31 @@ _.set('主角.好感度', 33, 40);//初见
       expect(text, isNot(contains('StatusPlaceHolderImpl')));
       expect(text, contains('上一幕：她笑了。'));
     });
+
+    test('the HTML bridge parses messages and reloads InitVar', () async {
+      final novel = await novelWith();
+      final backend = BranchChatBackend(
+        repository: repo,
+        branchId: novel.activeBranchId,
+        context: await repo.displayContext(novel.activeBranchId),
+      );
+      final state = await backend.snapshot(0);
+      final data = ((state['variables'] as Map)['chat'] as Map)
+          .cast<String, dynamic>();
+      expect(data['stat_data']['主角']['生命'], 100);
+      final parsed = await backend.mvuParseMessage(
+        "_.set('主角.生命', 100, 70);//试炼",
+        data,
+      );
+      expect(parsed['stat_data']['主角']['生命'], 70);
+      expect(parsed['delta_data']['主角']['生命'], '100->70 (试炼)');
+      expect(data['stat_data']['主角']['生命'], 100);
+      expect(await backend.mvuReloadInitVar(parsed), isNull);
+      final fresh = await backend.mvuReloadInitVar({
+        'stat_data': {'x': 1},
+      });
+      expect(fresh!['stat_data']['x'], 1);
+      expect(fresh['stat_data']['主角']['生命'], 100);
+    });
   });
 }

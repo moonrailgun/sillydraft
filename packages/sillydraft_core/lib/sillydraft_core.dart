@@ -42,6 +42,8 @@ export 'src/st/resource_library.dart';
 export 'src/model/display_context.dart';
 export 'src/html/html_blocks.dart';
 export 'src/html/tavern_runtime.dart';
+export 'src/html/tavern_bridge.dart';
+export 'src/html/branch_chat.dart';
 export 'src/mvu/mvu_path.dart';
 export 'src/mvu/mvu_value.dart';
 export 'src/mvu/mvu_schema.dart';

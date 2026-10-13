@@ -136,4 +136,36 @@ void main() {
     });
     expect(() => service.reloadInitVar(branchId), throwsFormatException);
   });
+
+  test(
+    'a page writing a partial table does not erase the MVU record',
+    () async {
+      final branchId = await branchWith(_card());
+      final backend = BranchChatBackend(
+        repository: repo,
+        branchId: branchId,
+        context: await repo.displayContext(branchId),
+      );
+      await backend.replaceVariables(
+        {'seen': true},
+        {'type': 'message', 'message_id': 0},
+        messageId: 0,
+      );
+      final stored = await repo.getBranchVariables(branchId);
+      expect(stored.local['seen'], 'true');
+      expect(MvuData.fromStored(stored.local)!.statData['主角']['生命'], 90);
+      // A table that carries the record replaces it as asked.
+      await backend.replaceVariables(
+        {
+          'stat_data': {'x': 1},
+          'schema': {'type': 'object', 'properties': <String, dynamic>{}},
+        },
+        {'type': 'message', 'message_id': 0},
+        messageId: 0,
+      );
+      final replaced = await repo.getBranchVariables(branchId);
+      expect(MvuData.fromStored(replaced.local)!.statData, {'x': 1});
+      expect(replaced.local.containsKey('seen'), isFalse);
+    },
+  );
 }
