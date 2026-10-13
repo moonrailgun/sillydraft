@@ -239,6 +239,11 @@ void main() {
           find.descendant(of: row, matching: find.byType(FSwitch)),
         )
         .value;
+    double opacity(Finder row) => tester
+        .widgetList<Opacity>(
+          find.ancestor(of: row, matching: find.byType(Opacity)),
+        )
+        .fold(1, (value, widget) => value * widget.opacity);
 
     await tester.pumpWidget(panel());
     await tester.pumpAndSettle();
@@ -250,6 +255,9 @@ void main() {
     expect(find.text('正则 2'), findsOneWidget);
     expect(enabled(status), isFalse);
     expect(enabled(prompt), isTrue, reason: 'missing disabled defaults to on');
+    final disabledOpacity = tester.element(status).theme.colors.disabledOpacity;
+    expect(opacity(status), disabledOpacity);
+    expect(opacity(prompt), 1);
     await tester.tap(find.byKey(const Key('preset-regex-details-0')));
     await tester.pumpAndSettle();
     final rule = DisplayContext.regexRulesOf(data['extensions']).first;
@@ -282,6 +290,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(enabled(status), isTrue);
+    expect(opacity(status), 1);
     final expected = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
     DisplayContext.regexRulesOf(expected['extensions']).first['disabled'] =
         false;
@@ -322,6 +331,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(enabled(status), isFalse);
+    expect(opacity(status), disabledOpacity);
     expect(
       (await repo.getSetting('writing/$branch'))!['presetOverrides'],
       isNull,

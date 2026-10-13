@@ -528,15 +528,10 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                               '开关自动保存到当前分支；显示正则立即刷新已有章节，不改动原正文。后续生成使用新设置。',
                                             ),
                                             const SizedBox(height: 8),
-                                            FTileGroup(
-                                              children: [
-                                                for (
-                                                  var i = 0;
-                                                  i < regex.length;
-                                                  i++
-                                                )
+                                            FTileGroup.builder(
+                                              count: regex.length,
+                                              tileBuilder: (_, i) =>
                                                   _regexTile(regex[i], i),
-                                              ],
                                             ),
                                           ],
                                         ),
@@ -597,7 +592,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     _persist();
   }
 
-  FTile _regexTile(Map<String, dynamic> rule, int index) {
+  Widget _regexTile(Map<String, dynamic> rule, int index) {
     final rawName = rule['scriptName'];
     final name = rawName is String && rawName.trim().isNotEmpty
         ? rawName
@@ -610,7 +605,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     ];
     // ST 1.19.0 (06bde939), extensions/regex/index.js: enabled = !disabled.
     void toggle(bool value) => _changed(() => rule['disabled'] = !value);
-    return FTile(
+    final tile = FTile(
       key: Key('preset-regex-$index'),
       title: _wrapped(name),
       subtitle: _wrapped('${enabled ? '已启用' : '已停用'} · ${stages.join('、')}'),
@@ -627,6 +622,10 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
         ],
       ),
       onPress: () => toggle(!enabled),
+    );
+    return Opacity(
+      opacity: enabled ? 1 : context.theme.colors.disabledOpacity,
+      child: tile,
     );
   }
 
