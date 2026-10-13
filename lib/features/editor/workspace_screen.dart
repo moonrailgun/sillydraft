@@ -346,15 +346,6 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         child: wide
             ? Row(
                 children: [
-                  AppSidebar(
-                    key: const Key('workspace-sections'),
-                    width: 132,
-                    selectedIndex: open.tools ? _tools.indexOf(_tool) : -1,
-                    onSelect: (i) => _pickTool(_tools[i]),
-                    destinations: [
-                      for (final t in _tools) destinations[t.index],
-                    ],
-                  ),
                   Expanded(
                     // A plain SafeArea rather than a nested scaffold: the
                     // workspace's scaffold already makes room for the
@@ -373,6 +364,37 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                         ),
                         content: _page(story, selected),
                         outline: _outline(story, selected, wide),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    key: const Key('workspace-sections'),
+                    width: 56,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: theme.colors.border),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          spacing: 8,
+                          children: [
+                            for (final t in _tools)
+                              CountBadge(
+                                count: destinations[t.index].badge,
+                                child: IconAction(
+                                  icon: t.icon,
+                                  tooltip: t.label,
+                                  size: 20,
+                                  selected: open.tools && _tool == t,
+                                  onPress: () => _pickTool(t),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

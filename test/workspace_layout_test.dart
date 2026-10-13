@@ -5,11 +5,13 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/finders.dart';
+
 const _rail = Key('workspace-sections');
 
 Future<void> _tool(WidgetTester tester, String label) async {
   await tester.tap(
-    find.descendant(of: find.byKey(_rail), matching: find.text(label)),
+    find.descendant(of: find.byKey(_rail), matching: findAction(label)),
   );
   await tester.pumpAndSettle();
 }
@@ -71,18 +73,18 @@ void main() {
       await tester.tap(find.text('雾港来信'));
       await tester.pumpAndSettle();
 
-      // Left to right: the tool rail, the outline, the page, the assistant.
+      // Left to right: the outline, the page, the assistant, the icon rail.
       final tools = tester.getRect(find.byKey(const Key('workspace-tools')));
       final page = tester.getRect(find.byKey(const Key('reader-page')));
       final outline = tester.getRect(
         find.byKey(const Key('workspace-outline')),
       );
-      expect(
-        tester.getRect(find.byKey(_rail)).right,
-        lessThanOrEqualTo(outline.left),
-      );
       expect(outline.right, lessThan(page.left));
       expect(page.right, lessThan(tools.left));
+      final rail = tester.getRect(find.byKey(_rail));
+      expect(tools.right, lessThanOrEqualTo(rail.left));
+      expect(rail.right, 1400);
+      expect(rail.width, 56);
       expect(find.byKey(const Key('agent-input')), findsOneWidget);
       expect(find.text('正文目录'), findsOneWidget);
       // The rail offers tools only; the manuscript is always on the page.
@@ -90,6 +92,16 @@ void main() {
         find.descendant(of: find.byKey(_rail), matching: find.text('正文')),
         findsNothing,
       );
+      for (final label in ['助手', '资料', '插图']) {
+        expect(
+          find.descendant(of: find.byKey(_rail), matching: findAction(label)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: find.byKey(_rail), matching: find.text(label)),
+          findsNothing,
+        );
+      }
 
       // Picking a chapter in the outline shows it on the page.
       await _chapter(tester, '码头');
@@ -106,6 +118,7 @@ void main() {
       // The tool already open folds its pane; the page widens.
       await _tool(tester, '插图');
       expect(find.text('插图与素材'), findsNothing);
+      expect(tester.getRect(find.byKey(_rail)), rail);
       expect(
         tester.getRect(find.byKey(const Key('reader-page'))).width,
         greaterThan(page.width + 200),

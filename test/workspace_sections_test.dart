@@ -51,16 +51,27 @@ Future<(AppServices, Novel)> _openNovel(
 
 Future<void> _section(WidgetTester tester, String label) async {
   await tester.tap(
-    find.descendant(of: find.byKey(_sections), matching: find.text(label)),
+    find.descendant(
+      of: find.byKey(_sections),
+      matching: tester.widget(find.byKey(_sections)) is AppBottomBar
+          ? find.text(label)
+          : findAction(label),
+    ),
   );
   await tester.pumpAndSettle();
 }
 
 int _selected(WidgetTester tester) {
   final nav = find.byKey(_sections);
-  return nav.evaluate().first.widget is AppSidebar
-      ? tester.widget<AppSidebar>(nav).selectedIndex
-      : tester.widget<AppBottomBar>(nav).selectedIndex;
+  if (tester.widget(nav) is AppBottomBar) {
+    return tester.widget<AppBottomBar>(nav).selectedIndex;
+  }
+  return tester
+      .widgetList<IconAction>(
+        find.descendant(of: nav, matching: find.byType(IconAction)),
+      )
+      .toList()
+      .indexWhere((action) => action.selected);
 }
 
 void main() {
@@ -158,7 +169,7 @@ void main() {
           size: wide ? const Size(1280, 900) : const Size(390, 844),
         );
         expect(find.byKey(_sections), findsOneWidget);
-        expect(find.byType(wide ? AppSidebar : AppBottomBar), findsOneWidget);
+        expect(find.byType(AppBottomBar), wide ? findsNothing : findsOneWidget);
         expect(_selected(tester), 0);
         // The old icon soup is gone: reading is the only action beside the menu.
         expect(findAction('故事资料'), findsNothing);
