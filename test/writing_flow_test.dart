@@ -5,6 +5,8 @@ import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/finders.dart';
+
 class _Writer implements ModelProvider {
   _Writer(this.config);
   @override
@@ -64,7 +66,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('选区写作'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('编辑正文'));
+      await tester.tap(findAction('编辑正文'));
       await tester.pumpAndSettle();
       tester
           .widget<QuillEditor>(find.byType(QuillEditor))
@@ -74,7 +76,7 @@ void main() {
             ChangeSource.local,
           );
       await tester.pump();
-      await tester.tap(find.byTooltip('生成或改写选区'));
+      await tester.tap(findAction('生成或改写选区'));
       await tester.pumpAndSettle();
       expect(find.text('原文'), findsWidgets);
       await tester.enterText(find.byKey(const Key('writing-brief')), '更简洁');
@@ -102,7 +104,7 @@ void main() {
         )).content.text.trim(),
         '甲新句乙',
       );
-      await tester.tap(find.byTooltip('返回'));
+      await tester.tap(findAction('返回'));
       await tester.pumpAndSettle();
       expect(
         tester

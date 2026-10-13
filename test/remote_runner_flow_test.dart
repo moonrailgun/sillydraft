@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/agent/task_screen.dart';
 import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/host.dart';
 
 ModelConnection remote() => ModelConnection(
   id: 'remote',
@@ -81,11 +84,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(
-            home: Builder(
-              builder: (context) => Scaffold(
-                body: TextButton(
-                  onPressed: () => showDialog<void>(
+          child: testHost(
+            Builder(
+              builder: (context) => AppScaffold(
+                child: FButton(
+                  onPress: () => showAppDialog<void>(
                     context: context,
                     builder: (_) => ConnectionDialog(connection: remote()),
                   ),
@@ -146,7 +149,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: MaterialApp(home: TaskScreen(taskId: task.id)),
+          child: testHost(TaskScreen(taskId: task.id)),
         ),
       );
       await tester.pumpAndSettle();

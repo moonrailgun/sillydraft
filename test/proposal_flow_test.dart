@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/theme.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/agent/proposal_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -32,9 +34,16 @@ void main() {
       Widget app() => ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
         child: MaterialApp(
+          builder: (context, child) => FTheme(
+            data: appTheme(Brightness.light),
+            child: FToaster(child: FTooltipGroup(child: child!)),
+          ),
           locale: const Locale('zh', 'CN'),
           supportedLocales: const [Locale('zh', 'CN')],
-          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          localizationsDelegates: [
+            ...GlobalMaterialLocalizations.delegates,
+            ...FLocalizations.localizationsDelegates,
+          ],
           home: ProposalScreen(proposalId: proposal.id),
         ),
       );
@@ -56,9 +65,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '采纳到正文'))
-            .onPressed,
+        tester.widget<FButton>(find.widgetWithText(FButton, '采纳到正文')).onPress,
         isNull,
       );
       expect(find.textContaining('正文已更新'), findsWidgets);

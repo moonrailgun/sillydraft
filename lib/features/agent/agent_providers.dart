@@ -35,6 +35,18 @@ final proposalProvider = FutureProvider.family<ManuscriptProposal, String>((
   return ref.watch(repositoryProvider).getProposal(id);
 });
 
+/// Candidates waiting for the author's decision on [branchId].
+final pendingReviewCountProvider = FutureProvider.family<int, String>((
+  ref,
+  branchId,
+) async {
+  ref.watch(repositoryChangesProvider);
+  final pending = await ref
+      .watch(repositoryProvider)
+      .listProposals(branchId, status: ProposalStatus.pending);
+  return pending.length;
+});
+
 const taskStatusLabels = {
   TaskStatus.queued: '等待开始',
   TaskStatus.running: '正在生成',

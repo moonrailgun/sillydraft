@@ -56,8 +56,8 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('审阅正文候选')),
+  Widget build(BuildContext context) => PageScaffold(
+    title: '审阅正文候选',
     body: AsyncView(
       value: ref.watch(proposalProvider(widget.proposalId)),
       builder: (proposal) => AsyncView(
@@ -69,20 +69,34 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
           return SafeArea(
             top: false,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (stale && pending)
-                  MaterialBanner(
-                    content: const Text(
-                      '正文已更新。这份候选依据旧版本，不能直接采纳。请比较后重新生成，或复制所需片段手动编辑。',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Clipboard.setData(
-                          ClipboardData(text: proposal.content.text),
-                        ),
-                        child: const Text('复制候选'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: FAlert(
+                      variant: FAlertVariant.destructive,
+                      icon: const Icon(FLucideIcons.circleAlert),
+                      title: const Text(
+                        '正文已更新。这份候选依据旧版本，不能直接采纳。请比较后重新生成，或复制所需片段手动编辑。',
                       ),
-                    ],
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FButton(
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: () => Clipboard.setData(
+                              ClipboardData(text: proposal.content.text),
+                            ),
+                            prefix: const Icon(FLucideIcons.copy),
+                            child: const Text('复制候选'),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 if (!pending)
                   Padding(
@@ -101,12 +115,20 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                       children: [
                         if (comparison.before != comparison.base.content.text ||
                             comparison.after != proposal.content.text)
-                          SwitchListTile(
-                            title: const Text('预览显示效果'),
-                            subtitle: const Text('显示正则仅影响预览；采纳与导出保留原正文。'),
-                            value: _displayRules,
-                            onChanged: (value) =>
-                                setState(() => _displayRules = value),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            child: FTile(
+                              title: const Text('预览显示效果'),
+                              subtitle: const Text('显示正则仅影响预览；采纳与导出保留原正文。'),
+                              suffix: FSwitch(
+                                value: _displayRules,
+                                onChange: (value) =>
+                                    setState(() => _displayRules = value),
+                              ),
+                              onPress: () => setState(
+                                () => _displayRules = !_displayRules,
+                              ),
+                            ),
                           ),
                         if (proposal.summary.isNotEmpty)
                           Padding(
@@ -155,16 +177,18 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                           },
                         ),
                         if (stale && pending)
-                          ExpansionTile(
-                            title: const Text('查看最新正文'),
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: SelectableText(
-                                  comparison.current.content.text,
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: FAccordion(
+                              children: [
+                                FAccordionItem(
+                                  title: const Text('查看最新正文'),
+                                  child: SelectableText(
+                                    comparison.current.content.text,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                       ],
                     ),
@@ -175,13 +199,16 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        OutlinedButton(
-                          onPressed: _busy ? null : () => _apply(false),
+                        FButton(
+                          variant: FButtonVariant.outline,
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: _busy ? null : () => _apply(false),
                           child: const Text('拒绝候选'),
                         ),
                         const Spacer(),
-                        FilledButton(
-                          onPressed: _busy || stale ? null : () => _apply(true),
+                        FButton(
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: _busy || stale ? null : () => _apply(true),
                           child: Text(_busy ? '保存中…' : '采纳到正文'),
                         ),
                       ],
@@ -220,13 +247,18 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
       suffix--;
     }
     final text = after ? next : old;
-    return Card(
+    return FCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              title,
+              style: context.theme.typography.body.md.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 16),
             SelectableText.rich(
               TextSpan(
