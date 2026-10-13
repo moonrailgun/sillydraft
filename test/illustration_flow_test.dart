@@ -199,6 +199,8 @@ void main() {
       );
       await tester.tap(findAction('保存并返回'));
       await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       await tester.tap(findAction('阅读'));
       await tester.pump();
       await settleImages();
