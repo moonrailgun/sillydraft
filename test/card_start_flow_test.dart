@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/resources/card_start_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/host.dart';
 
 void main() {
   testWidgets(
@@ -40,20 +43,21 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
-          child: const MaterialApp(home: CardStartScreen(resourceId: 'card')),
+          child: testHost(const CardStartScreen(resourceId: 'card')),
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).at(1), '林舟');
-      await tester.ensureVisible(find.byType(DropdownButtonFormField<int>));
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.enterText(find.byType(EditableText).at(1), '林舟');
+      final greeting = find.byWidgetPredicate((w) => w is FSelect<int>);
+      await tester.ensureVisible(greeting);
+      await tester.tap(greeting);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('备用开场 1').last);
       await tester.pumpAndSettle();
       final opening = tester
-          .widgetList<TextField>(find.byType(TextField))
+          .widgetList<EditableText>(find.byType(EditableText))
           .last
-          .controller!
+          .controller
           .text;
       expect(opening, '苏雾给林舟一封信');
       await tester.ensureVisible(find.text('创建小说与初始资料'));
