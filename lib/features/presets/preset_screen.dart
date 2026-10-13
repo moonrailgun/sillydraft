@@ -1,0 +1,605 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:sillydraft_core/sillydraft_core.dart';
+
+import '../../app/services.dart';
+import '../../app/widgets.dart';
+import '../resources/preset_prompt_editor.dart';
+import '../resources/writing_profile.dart';
+
+const _json = JsonEncoder.withIndent('  ');
+
+/// One sampler control: ST key, label, range, and whether it is an integer.
+typedef _Sampler = (
+  String key,
+  String label,
+  double min,
+  double max,
+  bool integer,
+);
+
+const _chatSamplers = <_Sampler>[
+  ('temperature', '温度 Temperature', 0, 2, false),
+  ('top_p', 'Top P', 0, 1, false),
+  ('top_k', 'Top K', 0, 200, true),
+  ('min_p', 'Min P', 0, 1, false),
+  ('frequency_penalty', '频率惩罚', -2, 2, false),
+  ('presence_penalty', '存在惩罚', -2, 2, false),
+  ('repetition_penalty', '重复惩罚', 1, 2, false),
+];
+const _chatLimits = <_Sampler>[
+  ('openai_max_tokens', '最大回复长度（token）', 1, 0, true),
+  ('openai_max_context', '上下文长度（token）', 1, 0, true),
+  ('seed', '随机种子（-1 为随机）', -1, 0, true),
+];
+const _textSamplers = <_Sampler>[
+  ('temp', '温度 Temperature', 0, 2, false),
+  ('top_p', 'Top P', 0, 1, false),
+  ('top_k', 'Top K', 0, 200, true),
+  ('min_p', 'Min P', 0, 1, false),
+  ('typical_p', 'Typical P', 0, 1, false),
+  ('rep_pen', '重复惩罚', 1, 2, false),
+  ('freq_pen', '频率惩罚', -2, 2, false),
+  ('presence_pen', '存在惩罚', -2, 2, false),
+];
+const _textLimits = <_Sampler>[
+  ('max_length', '最大回复长度（token）', 1, 0, true),
+  ('truncation_length', '上下文长度（token）', 1, 0, true),
+  ('rep_pen_range', '重复惩罚范围', 0, 0, true),
+  ('seed', '随机种子（-1 为随机）', -1, 0, true),
+];
+
+/// ST's “AI 回复配置” for one novel: pick the active preset, tune sampling,
+/// manage prompts, and save/save as/rename/import/export — all in one place.
+/// Every save is a new resource version; the novel follows the new version.
+class PresetScreen extends ConsumerStatefulWidget {
+  const PresetScreen({super.key, required this.branchId});
+  final String branchId;
+  @override
+  ConsumerState<PresetScreen> createState() => _PresetScreenState();
+}
+
+class _PresetScreenState extends ConsumerState<PresetScreen> {
+  Map<String, dynamic>? _setting;
+  LibraryResource? _resource;
+  Map<String, dynamic>? _draft;
+  bool _dirty = false, _busy = false;
+  int _revision = 0; // Rebuilds the prompt editor after save/revert/switch.
+
+  String get _settingKey => 'writing/${widget.branchId}';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({String? select}) async {
+    try {
+      final repo = ref.read(repositoryProvider);
+      final setting = await repo.getSetting(_settingKey) ?? {};
+      final id = select ?? setting['presetId'] as String?;
+      final resource = id == null ? null : await repo.getResource(id);
+      if (!mounted) return;
+      setState(() {
+        _setting = setting;
+        _resource = resource;
+        _draft = resource == null
+            ? null
+            : jsonDecode(jsonEncode(resource.data)) as Map<String, dynamic>;
+        _dirty = false;
+        _revision++;
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _bind(String? presetId) async {
+    final setting = {...?_setting};
+    if (presetId == null) {
+      setting.remove('presetId');
+    } else {
+      setting['presetId'] = presetId;
+    }
+    setting.remove('selectedOrderId');
+    await ref.read(repositoryProvider).setSetting(_settingKey, setting);
+  }
+
+  Future<bool> _discardOk() async {
+    if (!_dirty) return true;
+    final yes = await showAppDialog<bool>(
+      context: context,
+      builder: (context) => AppDialog(
+        title: const Text('放弃未保存的修改？'),
+        actions: [
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, false),
+            child: const Text('继续编辑'),
+          ),
+          FButton(
+            variant: FButtonVariant.destructive,
+            onPress: () => Navigator.pop(context, true),
+            child: const Text('放弃修改'),
+          ),
+        ],
+      ),
+    );
+    return yes == true;
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _switch(String? id) async {
+    if (id == _resource?.id || !await _discardOk()) return;
+    await _run(() async {
+      await _bind(id);
+      await _load(select: id);
+    });
+  }
+
+  /// Saves the working copy as a new version and moves the novel onto it.
+  Future<void> _save({String? rename}) => _run(() async {
+    final resource = _resource!;
+    final data = {...?_draft, 'name': ?rename};
+    final next = await ref
+        .read(servicesProvider)
+        .library
+        .edit(resource.id, data);
+    if (_setting?['presetId'] == resource.id) await _bind(next.id);
+    await _load(select: next.id);
+  });
+
+  Future<void> _saveAs() async {
+    final name = await askText(
+      context,
+      title: '另存为新预设',
+      initial: '${_resource?.name ?? '预设'} 副本',
+      label: '预设名称',
+    );
+    if (name == null) return;
+    await _run(() async {
+      final data = {...?_draft, 'name': name};
+      final created = await ref
+          .read(servicesProvider)
+          .library
+          .import(
+            Uint8List.fromList(utf8.encode(jsonEncode(data))),
+            filename: '$name.json',
+            kind: ResourceKind.preset,
+          );
+      await _bind(created.id);
+      await _load(select: created.id);
+    });
+  }
+
+  Future<void> _rename() async {
+    final name = await askText(
+      context,
+      title: '重命名预设',
+      initial: _resource!.name,
+      label: '预设名称',
+    );
+    if (name != null) await _save(rename: name);
+  }
+
+  Future<void> _import() async {
+    if (!await _discardOk()) return;
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'ST 预设',
+          extensions: ['json'],
+          uniformTypeIdentifiers: ['public.json', 'public.data'],
+        ),
+      ],
+    );
+    if (file == null) return;
+    await _run(() async {
+      if (await file.length() > 8 * 1024 * 1024) {
+        throw const FormatException('预设文件不能超过 8 MB');
+      }
+      final library = ref.read(servicesProvider).library;
+      final bytes = await file.readAsBytes();
+      final preview = library.inspect(
+        bytes,
+        filename: file.name,
+        kind: ResourceKind.preset,
+      );
+      final created = await library.import(
+        bytes,
+        filename: file.name,
+        kind: ResourceKind.preset,
+      );
+      await _bind(created.id);
+      await _load(select: created.id);
+      if (mounted && preview.diagnostics.isNotEmpty) {
+        showError(context, '已导入：${preview.diagnostics.length} 条兼容提示，见页面底部');
+      }
+    });
+  }
+
+  Future<void> _export() => _run(() async {
+    final resource = _resource!;
+    final bytes = Uint8List.fromList(
+      utf8.encode(_json.convert(redactCredentials(_draft!))),
+    );
+    final filename =
+        '${resource.name.replaceAll(RegExp(r'[^\p{L}\p{N}_-]', unicode: true), '_')}.json';
+    final file = XFile.fromData(
+      bytes,
+      mimeType: 'application/json',
+      name: filename,
+    );
+    if (Platform.isAndroid || Platform.isIOS) {
+      await SharePlus.instance.share(
+        ShareParams(files: [file], fileNameOverrides: [filename]),
+      );
+    } else {
+      final location = await getSaveLocation(suggestedName: filename);
+      if (location != null) await file.saveTo(location.path);
+    }
+  });
+
+  Future<void> _archive() async {
+    final yes = await confirmAction(
+      context,
+      title: '归档预设「${_resource!.name}」？',
+      message: '归档后不再出现在列表中，可在资源库恢复。已有生成任务记录不受影响。本作品改回默认写作配置。',
+      confirmLabel: '归档',
+    );
+    if (!yes) return;
+    await _run(() async {
+      await ref
+          .read(repositoryProvider)
+          .archiveResource(_resource!.id, archived: true);
+      await _bind(null);
+      await _load(select: null);
+    });
+  }
+
+  void _edit(void Function(Map<String, dynamic> target) change) => setState(() {
+    change(_samplerTarget(_draft!));
+    _dirty = true;
+  });
+
+  /// Samplers live at the top level, or in `preset` for a formatting bundle.
+  Map<String, dynamic> _samplerTarget(Map<String, dynamic> draft) =>
+      draft['preset'] is Map<String, dynamic>
+      ? draft['preset'] as Map<String, dynamic>
+      : draft;
+
+  @override
+  Widget build(BuildContext context) {
+    final resources = ref.watch(resourcesProvider).value ?? const [];
+    final parents = {for (final r in resources) r.parentId};
+    // Like ST's dropdown: one row per preset (its latest version).
+    final presets = [
+      for (final r in resources)
+        if (r.kind == ResourceKind.preset &&
+            !r.archived &&
+            (!parents.contains(r.id) || r.id == _resource?.id))
+          r,
+    ];
+    final names = {for (final r in resources) r.id: r.name};
+    final preset = _draft == null ? null : PresetImporter().decode(_draft!);
+    final kind = preset?.kind;
+    final chat = kind == PresetKind.chat;
+    final text = kind == PresetKind.textCompletion || kind == PresetKind.bundle;
+    final assistant = _setting?[assistantUsesPresetKey] != false;
+    final assistantCapable = chat || kind == PresetKind.promptPack;
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop && await _discardOk() && context.mounted) {
+          setState(() => _dirty = false);
+          Navigator.pop(context);
+        }
+      },
+      child: PageScaffold(
+        title: '预设',
+        actions: [
+          HeaderIconAction(
+            tooltip: '导入 ST 预设',
+            onPress: _busy ? null : _import,
+            icon: FLucideIcons.fileInput,
+          ),
+          if (!_busy && _resource != null)
+            MenuAction(
+              header: true,
+              tooltip: '预设操作',
+              entries: [
+                menuEntry('另存为新预设', _saveAs, icon: FLucideIcons.copy),
+                menuEntry('重命名', _rename, icon: FLucideIcons.pencil),
+                menuEntry('导出 JSON', _export, icon: FLucideIcons.download),
+                menuEntry('归档', _archive, icon: FLucideIcons.archive),
+              ],
+            )
+          else
+            const HeaderIconAction(
+              tooltip: '预设操作',
+              onPress: null,
+              icon: FLucideIcons.ellipsisVertical,
+            ),
+        ],
+        body: _setting == null
+            ? const Center(child: FCircularProgress())
+            : Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                    children: [
+                      if (_busy) const FProgress(),
+                      const SizedBox(height: 8),
+                      FSelect<String>.rich(
+                        key: ValueKey(
+                          'preset:${_resource?.id}:${presets.length}',
+                        ),
+                        label: const Text('当前预设'),
+                        description: const Text('本作品的正文生成使用它；切换立即生效'),
+                        enabled: !_busy,
+                        format: (id) => id == _none
+                            ? '不使用预设（SillyDraft 默认）'
+                            : names[id] ?? id,
+                        control: FSelectControl<String>.lifted(
+                          value: _resource?.id ?? _none,
+                          onChange: (id) {
+                            if (id != null) _switch(id == _none ? null : id);
+                          },
+                        ),
+                        children: [
+                          FSelectItem<String>(
+                            title: const Text('不使用预设（SillyDraft 默认）'),
+                            value: _none,
+                          ),
+                          for (final r in presets)
+                            FSelectItem<String>(
+                              title: Text(
+                                r.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              value: r.id,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_resource == null)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Text(
+                            '还没有选择预设。点右上角导入 SillyTavern 的预设文件（聊天补全预设、提示词包或高级格式组合包），或在资源库导入后在这里选择。',
+                          ),
+                        )
+                      else ...[
+                        FTile(
+                          key: const Key('assistant-uses-preset'),
+                          enabled: assistantCapable,
+                          title: _wrapped('助手对话也使用此预设'),
+                          subtitle: _wrapped(
+                            assistantCapable
+                                ? '助手的身份与语气按预设组装；编辑规则与工具权限不变'
+                                : '文本补全模板不能用于助手对话',
+                          ),
+                          suffix: FSwitch(
+                            value: assistant && assistantCapable,
+                            enabled: assistantCapable,
+                            onChange: _setAssistant,
+                          ),
+                          onPress: assistantCapable
+                              ? () => _setAssistant(!assistant)
+                              : null,
+                        ),
+                        if (_dirty) ...[
+                          const SizedBox(height: 12),
+                          FCard(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text('有未保存的修改。保存会生成新版本，本作品随之使用新版本。'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FButton(
+                                    variant: FButtonVariant.ghost,
+                                    mainAxisSize: MainAxisSize.min,
+                                    onPress: _busy
+                                        ? null
+                                        : () => _load(select: _resource!.id),
+                                    child: const Text('还原'),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  FButton(
+                                    key: const Key('preset-save'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    onPress: _busy ? null : _save,
+                                    child: const Text('保存'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (chat || text) ...[
+                          _heading('采样参数'),
+                          for (final s in chat ? _chatSamplers : _textSamplers)
+                            _slider(s),
+                          for (final s in chat ? _chatLimits : _textLimits)
+                            _number(s),
+                        ],
+                        if (PresetPromptEditor.supports(_draft!)) ...[
+                          _heading('提示词管理'),
+                          PresetPromptEditor(
+                            key: ValueKey(
+                              'prompts:${_resource!.id}:$_revision',
+                            ),
+                            value: _draft!,
+                            scrollable: false,
+                            onChanged: (value) => setState(() {
+                              // The editor holds its own copy; take back only
+                              // the prompt fields so sampler edits survive.
+                              if (value['data'] is Map) {
+                                _draft!['data'] = value['data'];
+                              } else {
+                                _draft!['prompts'] = value['prompts'];
+                                _draft!['prompt_order'] = value['prompt_order'];
+                              }
+                              _dirty = true;
+                            }),
+                          ),
+                        ],
+                        if (preset!.diagnostics.isNotEmpty) ...[
+                          _heading('兼容提示'),
+                          FTileGroup(
+                            children: [
+                              for (final d in preset.diagnostics)
+                                FTile(
+                                  prefix: Icon(
+                                    d.severity == DiagnosticSeverity.error
+                                        ? FLucideIcons.circleAlert
+                                        : FLucideIcons.info,
+                                  ),
+                                  title: _wrapped(d.message),
+                                  subtitle: Text(d.code),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
+  void _setAssistant(bool value) => _run(() async {
+    final setting = {...?_setting, assistantUsesPresetKey: value};
+    await ref.read(repositoryProvider).setSetting(_settingKey, setting);
+    if (mounted) setState(() => _setting = setting);
+  });
+
+  Widget _heading(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),
+    child: Text(
+      title,
+      style: context.theme.typography.body.md.copyWith(
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+
+  Widget _slider(_Sampler s) {
+    final (key, label, min, max, integer) = s;
+    final value = _samplerTarget(_draft!)[key];
+    final current = value is num ? value.toDouble().clamp(min, max) : null;
+    // The same resolution the ST sliders use.
+    final divisions = integer ? (max - min).round() : 100;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label)),
+              Text(
+                current == null
+                    ? '未设置'
+                    : integer
+                    ? '${current.round()}'
+                    : current.toStringAsFixed(2),
+                style: context.theme.typography.body.sm.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              IconAction(
+                tooltip: '恢复为未设置',
+                onPress: current == null
+                    ? null
+                    : () => _edit((t) => t.remove(key)),
+                icon: FLucideIcons.rotateCcw,
+              ),
+            ],
+          ),
+          FSlider(
+            key: Key('sampler-$key'),
+            tooltipControls: const FSliderTooltipControls.disabled(),
+            control: FSliderControl.liftedContinuous(
+              value: FSliderValue(
+                max: ((current ?? (min + max) / 2) - min) / (max - min),
+              ),
+              onChange: (fraction) {
+                final step = (fraction.max * divisions).round() / divisions;
+                final v = min + step * (max - min);
+                final next = integer
+                    ? v.round()
+                    : double.parse(v.toStringAsFixed(2));
+                if (_samplerTarget(_draft!)[key] != next) {
+                  _edit((t) => t[key] = next);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _number(_Sampler s) {
+    final (key, label, min, _, _) = s;
+    final value = _samplerTarget(_draft!)[key];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FTextFormField(
+        key: ValueKey('number:$key:$_revision'),
+        control: FTextFieldControl.managed(
+          initial: TextEditingValue(
+            text: value is num ? '${value.round()}' : '',
+          ),
+          // Also called for cursor moves: only a changed number is an edit.
+          onChange: (text) {
+            final target = _samplerTarget(_draft!);
+            final parsed = int.tryParse(text.text.trim());
+            if (text.text.trim().isEmpty) {
+              if (target.containsKey(key)) _edit((t) => t.remove(key));
+            } else if (parsed != null &&
+                parsed >= min &&
+                target[key] != parsed) {
+              _edit((t) => t[key] = parsed);
+            }
+          },
+        ),
+        keyboardType: TextInputType.number,
+        label: Text(label),
+        hint: '未设置',
+      ),
+    );
+  }
+}
+
+/// The "no preset" choice of the preset select.
+const _none = '';
+
+/// A long text in a tile: wraps instead of being cut to one line.
+Text _wrapped(String text) =>
+    Text(text, overflow: TextOverflow.visible, softWrap: true);

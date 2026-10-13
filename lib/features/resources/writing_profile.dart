@@ -1,15 +1,20 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../presets/preset_screen.dart';
 import 'resource_library_screen.dart';
 
 final resourcesProvider = FutureProvider<List<LibraryResource>>((ref) {
   ref.watch(repositoryChangesProvider);
   return ref.watch(repositoryProvider).listResources(includeArchived: true);
 });
+
+/// Per-novel switch in `writing/<branch>`; absent means on.
+const assistantUsesPresetKey = 'assistantUsesPreset';
 
 class WritingContext {
   const WritingContext({
@@ -20,8 +25,13 @@ class WritingContext {
     this.selectedOrderId,
     required this.books,
     required this.regex,
+    this.assistantPreset,
   });
   final ImportedPreset? preset;
+
+  /// The preset the editing assistant assembles its chat with: the bound
+  /// chat preset, unless the author switched that off for this novel.
+  final ImportedPreset? assistantPreset;
   final CharacterCard? card;
   final String userName, persona;
   final int? selectedOrderId;
@@ -79,6 +89,12 @@ class WritingContext {
     }
     return WritingContext(
       preset: preset,
+      assistantPreset:
+          data[assistantUsesPresetKey] != false &&
+              (preset?.kind == PresetKind.chat ||
+                  preset?.kind == PresetKind.promptPack)
+          ? preset
+          : null,
       card: data['cardId'] is String
           ? await services.library.character(data['cardId'] as String)
           : null,
@@ -127,6 +143,36 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
     super.dispose();
   }
 
+  /// The preset panel owns the preset binding; take its result back so saving
+  /// this page cannot restore a stale choice.
+  Future<void> _openPresets() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PresetScreen(branchId: widget.branchId),
+      ),
+    );
+    final latest =
+        await ref
+            .read(repositoryProvider)
+            .getSetting('writing/${widget.branchId}') ??
+        {};
+    if (!mounted) return;
+    setState(() {
+      for (final key in [
+        'presetId',
+        'selectedOrderId',
+        assistantUsesPresetKey,
+      ]) {
+        if (latest.containsKey(key)) {
+          _value![key] = latest[key];
+        } else {
+          _value!.remove(key);
+        }
+      }
+    });
+  }
+
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
@@ -143,27 +189,26 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('角色卡与写作预设'),
-      actions: [
-        IconButton(
-          tooltip: '资源库',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => const ResourceLibraryScreen(),
-            ),
+  Widget build(BuildContext context) => PageScaffold(
+    title: '角色卡与世界书',
+    actions: [
+      HeaderIconAction(
+        tooltip: '资源库',
+        onPress: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => const ResourceLibraryScreen(),
           ),
-          icon: const Icon(Icons.folder_open),
         ),
-      ],
-    ),
+        icon: FLucideIcons.folderOpen,
+      ),
+    ],
     body: _value == null
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: FCircularProgress())
         : AsyncView(
             value: ref.watch(resourcesProvider),
             builder: (resources) {
+              final theme = context.theme;
               Widget select(
                 String key,
                 String label,
@@ -180,37 +225,41 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
                                   presetKind),
                     )
                     .toList();
+                String name(LibraryResource r) =>
+                    '${r.name}${r.archived ? ' · 已归档' : ''}';
+                final names = {for (final r in items) r.id: name(r)};
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: DropdownButtonFormField<String>(
+                  child: FSelect<String>.rich(
                     key: ValueKey('$key:${_value![key]}'),
-                    isExpanded: true,
-                    initialValue: items.any((r) => r.id == _value![key])
-                        ? _value![key] as String?
-                        : null,
-                    decoration: InputDecoration(labelText: label),
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text('不使用 / 默认'),
+                    label: Text(label),
+                    format: (id) => names[id] ?? '不使用 / 默认',
+                    control: FSelectControl<String>.lifted(
+                      value: names.containsKey(_value![key])
+                          ? _value![key] as String
+                          : _none,
+                      onChange: (v) => setState(() {
+                        if (v == null || v == _none) {
+                          _value!.remove(key);
+                        } else {
+                          _value![key] = v;
+                        }
+                        if (key == 'presetId') {
+                          _value!.remove('selectedOrderId');
+                        }
+                      }),
+                    ),
+                    children: [
+                      FSelectItem<String>(
+                        title: const Text('不使用 / 默认'),
+                        value: _none,
                       ),
                       for (final r in items)
-                        DropdownMenuItem(
+                        FSelectItem<String>(
+                          title: Text(name(r), overflow: TextOverflow.ellipsis),
                           value: r.id,
-                          child: Text(
-                            '${r.name}${r.archived ? ' · 已归档' : ''}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
                         ),
                     ],
-                    onChanged: (v) => setState(() {
-                      if (v == null) {
-                        _value!.remove(key);
-                      } else {
-                        _value![key] = v;
-                      }
-                      if (key == 'presetId') _value!.remove('selectedOrderId');
-                    }),
                   ),
                 );
               }
@@ -221,127 +270,162 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
               final preset = selected == null
                   ? null
                   : PresetImporter().decode(selected.data);
+              String orderLabel(int? id) {
+                if (id == null) return '自动选择全局顺序 100001';
+                final group = preset?.orderGroups
+                    .where((g) => g.characterId == id)
+                    .firstOrNull;
+                return '顺序组 $id · ${group?.items.length ?? 0} 项';
+              }
+
+              Widget checks(ResourceKind kind) {
+                final key = kind == ResourceKind.worldBook
+                    ? 'worldBookIds'
+                    : 'regexIds';
+                final ids = _value![key] as List? ?? [];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final r in resources.where(
+                      (r) => r.kind == kind && !r.archived,
+                    ))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: FCheckbox(
+                          label: Text(r.name),
+                          value: ids.contains(r.id),
+                          onChange: (v) => setState(() {
+                            final next = List<String>.from(
+                              _value![key] as List? ?? [],
+                            );
+                            if (v) {
+                              next.add(r.id);
+                            } else {
+                              next.remove(r.id);
+                            }
+                            _value![key] = next;
+                          }),
+                        ),
+                      ),
+                  ],
+                );
+              }
+
               return ListView(
                 padding: const EdgeInsets.all(24),
                 children: [
                   const Text('正文生成使用这里的配置。编辑助手的工具权限独立管理。'),
                   const SizedBox(height: 20),
                   select('cardId', '角色卡', ResourceKind.character),
-                  select('presetId', '写作预设', ResourceKind.preset),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: FTile(
+                      key: const Key('open-preset-panel'),
+                      prefix: const Icon(FLucideIcons.slidersHorizontal),
+                      title: Text('预设：${selected?.name ?? '未选择'}'),
+                      subtitle: const Text('选择、调整采样参数和提示词条目'),
+                      suffix: const Icon(FLucideIcons.chevronRight),
+                      onPress: _openPresets,
+                    ),
+                  ),
                   if (preset != null &&
                       preset.orderGroups.any((g) => g.characterId != null))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _value!['selectedOrderId'] as int?,
-                        decoration: const InputDecoration(labelText: '提示词顺序组'),
-                        items: [
-                          const DropdownMenuItem<int>(
+                      child: FSelect<int?>.rich(
+                        label: const Text('提示词顺序组'),
+                        hint: orderLabel(null),
+                        format: orderLabel,
+                        control: FSelectControl<int?>.lifted(
+                          value: _value!['selectedOrderId'] as int?,
+                          onChange: (v) =>
+                              setState(() => _value!['selectedOrderId'] = v),
+                        ),
+                        children: [
+                          FSelectItem<int?>(
+                            title: Text(orderLabel(null)),
                             value: null,
-                            child: Text('自动选择全局顺序 100001'),
                           ),
                           for (final group in preset.orderGroups)
                             if (group.characterId != null)
-                              DropdownMenuItem(
+                              FSelectItem<int?>(
+                                title: Text(orderLabel(group.characterId)),
                                 value: group.characterId,
-                                child: Text(
-                                  '顺序组 ${group.characterId} · ${group.items.length} 项',
-                                ),
                               ),
                         ],
-                        onChanged: (v) =>
-                            setState(() => _value!['selectedOrderId'] = v),
                       ),
                     ),
-                  TextField(
-                    controller: _user,
-                    decoration: const InputDecoration(
-                      labelText: '{{user}} 对应人物名',
-                    ),
+                  FTextField(
+                    control: FTextFieldControl.managed(controller: _user),
+                    label: const Text('{{user}} 对应人物名'),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _persona,
+                  FTextField(
+                    control: FTextFieldControl.managed(controller: _persona),
                     minLines: 2,
                     maxLines: 5,
-                    decoration: const InputDecoration(
-                      labelText: '主角身份 / Persona',
-                    ),
+                    label: const Text('主角身份 / Persona'),
                   ),
                   const SizedBox(height: 16),
-                  ExpansionTile(
-                    title: const Text('文本补全格式组合'),
-                    subtitle: const Text(
-                      'Context、Instruct、System Prompt、Reasoning',
-                    ),
+                  FAccordion(
                     children: [
-                      select(
-                        'contextId',
-                        'Context 模板',
-                        ResourceKind.preset,
-                        presetKind: PresetKind.context,
+                      FAccordionItem(
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('文本补全格式组合'),
+                            Text(
+                              'Context、Instruct、System Prompt、Reasoning',
+                              style: theme.typography.body.sm.copyWith(
+                                color: theme.colors.mutedForeground,
+                                fontWeight: FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            select(
+                              'contextId',
+                              'Context 模板',
+                              ResourceKind.preset,
+                              presetKind: PresetKind.context,
+                            ),
+                            select(
+                              'instructId',
+                              'Instruct 模板',
+                              ResourceKind.preset,
+                              presetKind: PresetKind.instruct,
+                            ),
+                            select(
+                              'systemPromptId',
+                              'System Prompt',
+                              ResourceKind.preset,
+                              presetKind: PresetKind.systemPrompt,
+                            ),
+                            select(
+                              'reasoningId',
+                              'Reasoning',
+                              ResourceKind.preset,
+                              presetKind: PresetKind.reasoning,
+                            ),
+                          ],
+                        ),
                       ),
-                      select(
-                        'instructId',
-                        'Instruct 模板',
-                        ResourceKind.preset,
-                        presetKind: PresetKind.instruct,
+                      FAccordionItem(
+                        title: const Text('额外世界书'),
+                        child: checks(ResourceKind.worldBook),
                       ),
-                      select(
-                        'systemPromptId',
-                        'System Prompt',
-                        ResourceKind.preset,
-                        presetKind: PresetKind.systemPrompt,
-                      ),
-                      select(
-                        'reasoningId',
-                        'Reasoning',
-                        ResourceKind.preset,
-                        presetKind: PresetKind.reasoning,
+                      FAccordionItem(
+                        title: const Text('全局正则'),
+                        child: checks(ResourceKind.regex),
                       ),
                     ],
                   ),
-                  for (final kind in [
-                    ResourceKind.worldBook,
-                    ResourceKind.regex,
-                  ])
-                    ExpansionTile(
-                      title: Text(
-                        kind == ResourceKind.worldBook ? '额外世界书' : '全局正则',
-                      ),
-                      children: [
-                        for (final r in resources.where(
-                          (r) => r.kind == kind && !r.archived,
-                        ))
-                          CheckboxListTile(
-                            title: Text(r.name),
-                            value:
-                                (_value![kind == ResourceKind.worldBook
-                                                ? 'worldBookIds'
-                                                : 'regexIds']
-                                            as List? ??
-                                        [])
-                                    .contains(r.id),
-                            onChanged: (v) => setState(() {
-                              final key = kind == ResourceKind.worldBook
-                                  ? 'worldBookIds'
-                                  : 'regexIds';
-                              final ids = List<String>.from(
-                                _value![key] as List? ?? [],
-                              );
-                              if (v == true) {
-                                ids.add(r.id);
-                              } else {
-                                ids.remove(r.id);
-                              }
-                              _value![key] = ids;
-                            }),
-                          ),
-                      ],
-                    ),
                   const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: _busy ? null : _save,
+                  FButton(
+                    onPress: _busy ? null : _save,
                     child: const Text('保存配置'),
                   ),
                 ],
@@ -350,3 +434,6 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
           ),
   );
 }
+
+/// The "not used" choice of a resource select.
+const _none = '';
