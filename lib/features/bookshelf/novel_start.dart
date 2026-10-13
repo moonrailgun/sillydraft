@@ -32,62 +32,48 @@ class NovelStartOptions extends StatelessWidget {
       start(host);
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return FTileGroup(
+      description: _canDrop ? const Text('也可以把小说或角色卡文件直接拖进书架。') : null,
       children: [
-        _Option(
+        _option(
+          context,
           key: const Key('start-blank'),
           icon: FLucideIcons.squarePen,
           title: '空白作品',
           subtitle: '填写书名和设定，从第一幕写起',
           onTap: () => choose(startBlankNovel),
         ),
-        _Option(
+        _option(
+          context,
           key: const Key('start-card'),
           icon: FLucideIcons.userRound,
           title: '从角色卡开始',
           subtitle: '用 SillyTavern 角色卡（PNG、JSON、CHARX），选一个开场作为第一幕',
           onTap: () => choose(startFromCard),
         ),
-        _Option(
+        _option(
+          context,
           key: const Key('start-import'),
           icon: FLucideIcons.bookOpenText,
           title: '续写已有小说',
           subtitle: '导入 TXT、Markdown 或 EPUB，自动分章，接着往下写',
           onTap: () => choose(startFromBook),
         ),
-        if (_canDrop)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Text(
-              '也可以把小说或角色卡文件直接拖进书架。',
-              style: context.theme.typography.body.xs.copyWith(
-                color: context.theme.colors.mutedForeground,
-              ),
-            ),
-          ),
       ],
     );
   }
-}
 
-class _Option extends StatelessWidget {
-  const _Option({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String title, subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
+  FTile _option(
+    BuildContext context, {
+    required Key key,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     final colors = context.theme.colors;
-    return FItem(
+    return FTile(
+      key: key,
       prefix: Container(
         width: 40,
         height: 40,
@@ -120,7 +106,7 @@ Future<void> showNovelStart(BuildContext context) => showAppSheet<void>(
   context: context,
   title: '开始一部作品',
   builder: (sheet) => SingleChildScrollView(
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
     child: NovelStartOptions(onChosen: () => Navigator.pop(sheet)),
   ),
 );

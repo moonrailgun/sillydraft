@@ -162,12 +162,7 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                         const SizedBox(height: 24),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 520),
-                          child: const FCard(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: NovelStartOptions(),
-                            ),
-                          ),
+                          child: const NovelStartOptions(),
                         ),
                         const SizedBox(height: 16),
                         FButton(
