@@ -21,16 +21,31 @@ final class ManuscriptPresentation {
     final input = task.input, rules = input['outputRegex'] as List? ?? [];
     if (rules.isEmpty) return ManuscriptPresentation.identity(content);
     final variables = input['variableResult'] as Map? ?? {};
-    final macros = MacroEngine(
-      values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
-      local: (variables['local'] as Map? ?? {}).cast<String, String>(),
-      global: (variables['global'] as Map? ?? {}).cast<String, String>(),
-      clock: DateTime.parse(input['clock'] as String),
-      seed: input['seed'] as int,
+    return ManuscriptPresentation.fromRules(
+      content,
+      rules: rules.cast<Map<String, dynamic>>(),
+      macros: MacroEngine(
+        values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
+        local: (variables['local'] as Map? ?? {}).cast<String, String>(),
+        global: (variables['global'] as Map? ?? {}).cast<String, String>(),
+        clock: DateTime.parse(input['clock'] as String),
+        seed: input['seed'] as int,
+      ),
     );
+  }
+
+  /// Applies display-stage regex [rules] to [content]. With [strict], a rule
+  /// or macro error throws; otherwise the text is shown as written.
+  factory ManuscriptPresentation.fromRules(
+    ManuscriptContent content, {
+    required List<Map<String, dynamic>> rules,
+    required MacroEngine macros,
+    bool strict = true,
+  }) {
+    if (rules.isEmpty) return ManuscriptPresentation.identity(content);
     var operations = content.delta;
     final offsets = List.generate(content.text.length + 1, (i) => i);
-    final pipeline = RegexPipeline(preset: rules.cast<Map<String, dynamic>>());
+    final pipeline = RegexPipeline(preset: rules);
     pipeline.apply(
       content.text,
       placement: 2,
@@ -86,6 +101,7 @@ final class ManuscriptPresentation {
       ...macros.diagnostics,
     ].where((d) => d.severity == DiagnosticSeverity.error);
     if (errors.isNotEmpty) {
+      if (!strict) return ManuscriptPresentation.identity(content);
       throw FormatException(errors.map((e) => e.message).join('\n'));
     }
     final shown = ManuscriptContent.fromDelta(operations);

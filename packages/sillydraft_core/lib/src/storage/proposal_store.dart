@@ -19,7 +19,7 @@ extension ProposalOperations on StoryRepository {
     final revision = await getRevision(id),
         task = await _displayContext(revision);
     return task == null
-        ? ManuscriptPresentation.identity(revision.content)
+        ? await _presentWithBranchRules(revision)
         : ManuscriptPresentation.fromTask(revision.content, task);
   }
 

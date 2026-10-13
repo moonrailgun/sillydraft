@@ -12,6 +12,7 @@ import '../model/bookmark.dart';
 import '../model/resource.dart';
 import '../model/lore.dart';
 import '../model/asset.dart';
+import '../model/display_context.dart';
 import '../st/import_types.dart';
 import '../st/card_importer.dart';
 import '../st/macro_engine.dart';
@@ -33,6 +34,7 @@ part 'variable_store.dart';
 part 'card_start_store.dart';
 part 'asset_store.dart';
 part 'project_store.dart';
+part 'display_store.dart';
 
 /// All writable story state is committed here, independently of widget lifetime.
 final class StoryRepository {
@@ -43,6 +45,7 @@ final class StoryRepository {
 
   final StoryDatabase _db;
   final _changes = StreamController<void>.broadcast();
+  final _displayCache = <String, ({String key, DisplayContext context})>{};
   bool _closed = false;
   Stream<void> get changes => _changes.stream;
 
