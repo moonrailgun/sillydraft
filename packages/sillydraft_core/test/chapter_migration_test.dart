@@ -364,4 +364,49 @@ void main() {
       expect(() => migrateLegacyChapters(old), throwsFormatException);
     },
   );
+
+  test('tied timestamps keep every head and detached history stays usable', () {
+    final old = fixture();
+    for (final row in old['revisions']!) {
+      row['created_at'] = 1;
+    }
+    old['revisions']!.add(
+      revision('detached', 's1', 'Unselected history', 7, parent: 'r1'),
+    );
+    old['proposals']![1]['base_revision_id'] = 'detached';
+    old['generation_tasks']!.add({
+      ...old['generation_tasks']!.first,
+      'id': 'detached-task',
+      'scene_id': 's1',
+      'base_revision_id': 'detached',
+      'input_json': jsonEncode({
+        'originalContent': ManuscriptContent.plainText('Unselected history')
+            .toJson(),
+      }),
+    });
+    final migrated = migrateLegacyChapters(old);
+    final revisions = {for (final r in migrated['revisions']!) r['id']: r};
+    String text(Object? id) =>
+        ManuscriptContent.decode(revisions[id]!['content_json'] as String).text;
+    expect(
+      text(migrated['branch_chapters']!.first['revision_id']),
+      'Edited first\nSecond\n',
+    );
+    expect(text('detached'), 'Unselected history\nSecond\n');
+    final proposal = migrated['proposals']![1];
+    expect(proposal['base_revision_id'], 'detached');
+    expect(
+      ManuscriptContent.decode(proposal['content_json'] as String).text,
+      'Old proposal\nSecond\n',
+    );
+    final task = jsonDecode(
+      migrated['generation_tasks']!.last['input_json'] as String,
+    ) as Map<String, dynamic>;
+    expect(
+      ManuscriptContent.fromJson(
+        task['originalContent'] as Map<String, dynamic>,
+      ).text,
+      'Unselected history\nSecond\n',
+    );
+  });
 }

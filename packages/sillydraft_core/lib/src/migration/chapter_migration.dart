@@ -89,6 +89,11 @@ Map<String, List<Map<String, dynamic>>> migrateLegacyChapters(
         : {...revisions[mapped]!, 'id': entry.key};
     revisions[entry.key]!.remove('scene_id');
     if (mapped == null) {
+      if (context != null) {
+        revisions[entry.key]!['content_json'] = context
+            .mergeAt(entry.key)
+            .encoded;
+      }
       revisions[entry.key]!['parent_revision_id'] = mapRevision(
         old['parent_revision_id'] as String?,
         old['origin_branch_id'] as String?,
@@ -467,17 +472,36 @@ final class _ChapterMigration {
       scenes.any((scene) => scene['revision_id'] == revision);
 
   Map<String, String> stateAt(String? event, {bool current = false}) {
-    if (current || event == null)
+    if (current || event == null) {
       return {
         for (final scene in scenes)
           scene['scene_id'] as String: scene['revision_id'] as String,
       };
+    }
     final state = <String, String>{};
     for (final id in events) {
       state[oldRevisions[id]!['scene_id'] as String] = id;
       if (id == event) return state;
     }
-    throw const FormatException('旧正文基线不在分支历史中');
+    // Kept proposals/tasks can refer to a revision outside the current heads'
+    // ancestry. Preserve its own document with siblings known at that time.
+    final detached = oldRevisions[event];
+    if (detached == null ||
+        !scenes.any((scene) => scene['scene_id'] == detached['scene_id'])) {
+      throw const FormatException('旧正文基线不属于章节');
+    }
+    state.clear();
+    for (final id in events) {
+      final revision = oldRevisions[id]!;
+      final time = (revision['created_at'] as int).compareTo(
+        detached['created_at'] as int,
+      );
+      if (time < 0 || (time == 0 && id.compareTo(event) <= 0)) {
+        state[revision['scene_id'] as String] = id;
+      }
+    }
+    state[detached['scene_id'] as String] = event;
+    return state;
   }
 
   ManuscriptContent sceneContent(String scene) => ManuscriptContent.decode(
