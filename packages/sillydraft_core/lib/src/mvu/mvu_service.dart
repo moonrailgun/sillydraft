@@ -277,13 +277,20 @@ final class MvuService {
       opening: story.chapters.first.content.text,
     );
     if (data == null) return null;
-    await _write(branchId, only ? story.chapters.first : story.chapters.last, data);
+    await _write(
+      branchId,
+      only ? story.chapters.first : story.chapters.last,
+      data,
+    );
     return data;
   }
 
   /// Re-derives one chapter's record from the chapter before it and the
   /// chapter's current text, and stores it.
-  Future<MvuUpdateResult?> processChapter(String branchId, String chapterId) async {
+  Future<MvuUpdateResult?> processChapter(
+    String branchId,
+    String chapterId,
+  ) async {
     final story = await repository.getStory(branchId);
     final chapter = story.chapters.firstWhere(
       (s) => s.id == chapterId,
@@ -354,7 +361,11 @@ final class MvuService {
   }
 
   /// Stores a record edited by hand at [chapterId].
-  Future<void> replaceAt(String branchId, String chapterId, MvuData data) async {
+  Future<void> replaceAt(
+    String branchId,
+    String chapterId,
+    MvuData data,
+  ) async {
     final story = await repository.getStory(branchId);
     final chapter = story.chapters.firstWhere(
       (s) => s.id == chapterId,

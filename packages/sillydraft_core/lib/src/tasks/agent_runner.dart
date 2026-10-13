@@ -402,7 +402,8 @@ extension _AgentExecution on TaskRunner {
       };
     }
     if (call.name == 'read_chapter') {
-      if (args.keys.any((k) => k != 'chapterId') || args['chapterId'] is! String) {
+      if (args.keys.any((k) => k != 'chapterId') ||
+          args['chapterId'] is! String) {
         throw const FormatException('参数无效');
       }
       final chapter = chapters.firstWhere((s) => s['id'] == args['chapterId']);

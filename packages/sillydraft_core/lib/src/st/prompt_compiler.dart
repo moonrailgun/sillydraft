@@ -218,7 +218,8 @@ final class PromptCompiler {
       }
     }
     for (final (i, chapter)
-        in (conversation == null ? filtered : const <ContextChapter>[]).indexed) {
+        in (conversation == null ? filtered : const <ContextChapter>[])
+            .indexed) {
       history.add(
         PromptMessage(
           'assistant',

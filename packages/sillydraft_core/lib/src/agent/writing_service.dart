@@ -149,7 +149,8 @@ final class WritingService {
     final position = story.chapters.indexWhere((s) => s.id == chapterId);
     if (position < 0) throw const FormatException('章节不属于当前分支');
     final chapter = story.chapters[position];
-    if (expectedRevisionId != null && chapter.revisionId != expectedRevisionId) {
+    if (expectedRevisionId != null &&
+        chapter.revisionId != expectedRevisionId) {
       throw RevisionConflict(
         expected: expectedRevisionId,
         actual: chapter.revisionId,
@@ -192,7 +193,10 @@ final class WritingService {
     final localVariables = MvuData.presentIn(variables.local) || mvuBase == null
         ? variables.local
         : {...variables.local, ...mvuBase.toStored()};
-    final lore = await repository.listLore(branchId, throughChapterId: chapterId);
+    final lore = await repository.listLore(
+      branchId,
+      throughChapterId: chapterId,
+    );
     final availableLore = lore
         .where((e) => !e.sourceStale && e.data['worldBookOnly'] != true)
         .toList();

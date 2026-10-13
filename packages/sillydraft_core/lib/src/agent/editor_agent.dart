@@ -46,7 +46,9 @@ final class EditorAgent {
   }) async {
     if (message.trim().isEmpty) throw ArgumentError('请输入创作要求');
     final branchId = await repository.conversationBranch(conversationId);
-    final throughChapterId = await repository.conversationChapter(conversationId);
+    final throughChapterId = await repository.conversationChapter(
+      conversationId,
+    );
     final story = await repository.getStory(branchId);
     final cutoff = throughChapterId == null
         ? story.chapters.length - 1
@@ -196,7 +198,8 @@ final class EditorAgent {
         if (active.isNotEmpty) 'activeSkills': active,
         'editChapterId': chapters.lastOrNull?.id,
         'sourceRevisions': [
-          for (final s in chapters) {'chapterId': s.id, 'revisionId': s.revisionId},
+          for (final s in chapters)
+            {'chapterId': s.id, 'revisionId': s.revisionId},
         ],
         'chapterSnapshot': [
           for (final s in chapters)
