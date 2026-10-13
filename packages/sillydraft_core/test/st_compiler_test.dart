@@ -387,6 +387,25 @@ void main() {
     expect(result.messages.single.content, '{{extensionMagic::x}}');
   });
 
+  test('malformed setvar warns without blocking prompt compilation', () {
+    final result = PromptCompiler().compile(
+      input(
+        chat([
+          p('main', '{{setvar::体型差:}}{{setvar::next::ok}}{{getvar::next}}'),
+        ]),
+        locals: {'体型差': 'unchanged'},
+      ),
+    );
+    expect(result.canRun, isTrue);
+    expect(result.messages.single.content, '{{setvar::体型差:}}ok');
+    expect(result.localVariables, {'体型差': 'unchanged', 'next': 'ok'});
+    final diagnostic = result.diagnostics.singleWhere(
+      (d) => d.code == 'invalid_macro_arguments',
+    );
+    expect(diagnostic.severity, DiagnosticSeverity.warning);
+    expect(diagnostic.message, contains('{{setvar::体型差:}}'));
+  });
+
   test(
     'variable arithmetic follows ST concatenation and JSON-array behavior',
     () {

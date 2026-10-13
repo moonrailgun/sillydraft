@@ -193,6 +193,18 @@ final class MacroEngine {
     if (name == 'isodate') return clock.toIso8601String().split('T').first;
     final scope = name.contains('global') ? global : local;
     final operation = name.replaceFirst('global', '');
+    if ((operation == 'setvar' || operation == 'addvar') && args.length != 2) {
+      // ST 1.19.0 (06bde939fb1e9c4c8d8641d810f0a916b5bce127):
+      // MacroRegistry.executeMacro rejects arity; MacroEngine.#resolveMacro warns and keeps raw text.
+      diagnostics.add(
+        CompatibilityDiagnostic(
+          'invalid_macro_arguments',
+          '$name 需要 2 个参数（变量名和值），实际 ${args.length} 个；保留原文：{{$original}}',
+          severity: DiagnosticSeverity.warning,
+        ),
+      );
+      return '{{$original}}';
+    }
     if (args.isNotEmpty) {
       final key = args.first;
       switch (operation) {
@@ -206,11 +218,9 @@ final class MacroEngine {
           scope.remove(key);
           return '';
         case 'setvar':
-          if (args.length < 2) return _unknown(original, 'setvar 缺少值');
           scope[key] = args[1];
           return '';
         case 'addvar':
-          if (args.length < 2) return _unknown(original, 'addvar 缺少值');
           scope[key] = _add(scope[key] ?? '', args[1]);
           return '';
         case 'incvar':

@@ -101,6 +101,7 @@ SillyDraft 使用独立 Dart 模块实现预设解析、模板求值、宏求值
 **宏与正则是预设行为的一部分。** 宏除了人物名称替换，还有变量读写等带状态操作；预设正则可以存放在 `extensions.regex_scripts` 中。[变量宏源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/macros/definitions/variable-macros.js)、[预设正则读取源码](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/engine.js#L108)
 
 - 基础宏覆盖人物、用户身份、章节、描述、原提示词等常用输入；变量宏覆盖首批样本实际使用的读写、增减和条件行为，未知宏报告为依赖缺口。
+- `setvar`、`addvar` 及其 global 版本要求两个参数；参数缺失或多余时保留宏文本、不执行该次变量写入，记录 warning，继续编译和生成。显式空值 `{{setvar::体型差::}}` 合法；缺少分隔冒号的 `{{setvar::体型差:}}` 会原样保留。这与固定 ST 1.19.0 的参数检查及非阻断错误处理一致。[参数检查](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/macros/engine/MacroRegistry.js#L403-L419)、[错误处理](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/macros/engine/MacroEngine.js#L220-L237)
 - 酒馆助手的助手宏 `{{get_(message|chat|global)_variable::路径}}` 和 `{{format_(message|chat|global)_variable::路径}}`（MVU 状态写入提示词的方式）内置支持：按路径读取变量（JSON 值按对象/数组取路径），`format` 输出 YAML 并按行首缩进。角色/预设变量域为空。
 - ST 的 local/global 变量保留不同命名空间；在 SillyDraft 中附加项目和分支作用域。这是为剧情隔离作出的适配，不能宣传为跨聊天全局状态完全等价。
 - 生成使用变量快照和任务内变更。预览、计算预算与正式发送复用一次编译结果，不重复执行变量副作用；候选的状态变更只有在采纳时才提交，其他候选丢弃或独立保留。

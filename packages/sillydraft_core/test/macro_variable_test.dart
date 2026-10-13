@@ -22,6 +22,34 @@ MacroEngine _engine() => MacroEngine(
 );
 
 void main() {
+  for (final name in ['setvar', 'addvar', 'setglobalvar', 'addglobalvar']) {
+    test('$name preserves invalid calls without changing variables', () {
+      for (final arguments in ['', '::count', '::count::1::extra']) {
+        final engine = MacroEngine(
+          values: {},
+          clock: DateTime.utc(2026),
+          seed: 1,
+          local: {'count': '2'},
+          global: {'count': '3'},
+        );
+        final source = '{{$name$arguments}}';
+        expect(engine.render(source), source);
+        expect(engine.local, {'count': '2'});
+        expect(engine.global, {'count': '3'});
+        expect(engine.diagnostics.single.code, 'invalid_macro_arguments');
+        expect(engine.diagnostics.single.severity, DiagnosticSeverity.warning);
+      }
+    });
+
+    test('$name accepts an explicitly empty value', () {
+      final engine = _engine();
+      expect(engine.render('{{$name::empty::}}'), '');
+      final scope = name.contains('global') ? engine.global : engine.local;
+      expect(scope['empty'], name.startsWith('set') ? '' : '0');
+      expect(engine.diagnostics, isEmpty);
+    });
+  }
+
   test('get_*_variable returns strings as-is and other values as JSON', () {
     final engine = _engine();
     expect(
