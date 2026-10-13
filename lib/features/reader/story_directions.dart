@@ -145,11 +145,14 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    // Writing adds a chapter, which can replace this panel before a later
+    // step fails; the navigator outlives it to show the error.
+    final host = Navigator.of(context).context;
     setState(() => _busy = true);
     try {
       await action();
     } catch (e) {
-      if (mounted) showError(context, e);
+      showError(mounted ? context : host, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

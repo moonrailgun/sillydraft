@@ -108,9 +108,14 @@ final class WritingService {
     final parameters = jsonObject(draft.compiled['parameters'], 'parameters');
     final outputTokens =
         parameters['max_tokens'] as num? ?? connection.maxOutputTokens;
-    if ((draft.compiled['estimatedTokens'] as num) + outputTokens >
-        connection.contextWindow) {
-      throw const FormatException('预计上下文超出连接限制，请缩短写作范围或提高上下文配置');
+    final estimated = draft.compiled['estimatedTokens'] as num;
+    if (estimated + outputTokens > connection.contextWindow) {
+      throw FormatException(
+        '模型连接「${connection.name}」的上下文装不下这次写作：'
+        '前文和设定约 $estimated token，再给回复留 $outputTokens token，'
+        '超过了上限 ${connection.contextWindow}。'
+        '请在设置里调大这个连接的「上下文 token 上限」，或在预设里调小「最大回复长度」。',
+      );
     }
     return runner.start(
       branchId: draft.branchId,

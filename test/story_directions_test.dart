@@ -70,6 +70,7 @@ Future<_Open> _open(
   Future<void>? gate,
   List<int>? failures,
   bool model = true,
+  int contextWindow = 200000,
   String text = '风暴要来了。',
   Map<String, Object>? reader,
 }) async {
@@ -92,6 +93,7 @@ Future<_Open> _open(
         name: '测试模型',
         baseUrl: 'http://localhost:1/v1',
         model: 'test',
+        contextWindow: contextWindow,
       ),
     );
   }
@@ -174,6 +176,22 @@ void main() {
     expect(story.chapters, hasLength(2));
     expect(story.chapters.last.content.text, contains('她守在灯下。'));
     expect(find.byKey(const Key('chapter-draft')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a write that cannot start says why in plain words', (
+    tester,
+  ) async {
+    // Room for the directions, not for a chapter with 2048 tokens of reply.
+    final book = await _open(tester, contextWindow: 2300);
+    final pick = find.byKey(const Key('direction-continue-0'));
+    await tester.ensureVisible(pick);
+    await tester.pumpAndSettle();
+    await tester.tap(pick);
+    await tester.pumpAndSettle();
+    final story = await book.services.repository.getStory(book.branchId);
+    expect(story.chapters, hasLength(2));
+    expect(find.textContaining('的上下文装不下这次写作'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
