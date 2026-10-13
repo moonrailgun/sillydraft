@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/finders.dart';
 
 void main() {
   testWidgets(
@@ -39,9 +42,17 @@ void main() {
         const Offset(0, -600),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('阅读设置'));
+      // Reading hides the bars; a tap in the middle of the page brings them back.
+      expect(findAction('阅读设置').hitTestable(), findsNothing);
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('reader-page'))),
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('书签'));
+      await tester.tap(findAction('阅读设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: find.byType(FItem), matching: find.text('书签')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('添加当前位置'));
       await tester.pumpAndSettle();
@@ -49,7 +60,7 @@ void main() {
         (await repo.listBookmarks(novel.activeBranchId)).single.offset,
         greaterThan(0),
       );
-      await tester.tap(find.byTooltip('返回'));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       final progress = await repo.getReadingProgress(novel.activeBranchId);
       expect(progress?['fraction'], greaterThan(0));

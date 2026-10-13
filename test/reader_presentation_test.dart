@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/agent/proposal_screen.dart';
@@ -11,14 +10,11 @@ import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft/features/reader/reader_document.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/host.dart';
+
 Widget host(AppServices services, Widget page) => ProviderScope(
   overrides: [servicesProvider.overrideWithValue(services)],
-  child: MaterialApp(
-    locale: const Locale('zh', 'CN'),
-    supportedLocales: const [Locale('zh', 'CN')],
-    localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    home: page,
-  ),
+  child: testHost(page),
 );
 
 void main() {
