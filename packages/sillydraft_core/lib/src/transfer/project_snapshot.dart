@@ -153,6 +153,9 @@ Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
   if (['local', 'global', 'variables'].contains(key)) return value;
   if (value is List) return value.map((v) => _remapJson(v, ids, key)).toList();
   if (value is Map) {
+    if (key == 'presetOverrides') {
+      return {for (final e in value.entries) ids[e.key] ?? e.key: e.value};
+    }
     if (key == 'sourceRevisions') {
       return {
         for (final e in value.entries)

@@ -57,6 +57,12 @@ extension ProjectOperations on StoryRepository {
     void visit(Object? value) {
       if (value is String && resourceIds.contains(value)) referenced.add(value);
       if (value is Map) {
+        // Branch preset customizations use resource IDs as keys.
+        if (value['presetOverrides'] is Map) {
+          for (final id in (value['presetOverrides'] as Map).keys) {
+            visit(id);
+          }
+        }
         for (final v in value.values) {
           visit(v);
         }
@@ -608,6 +614,16 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       if (value['selectedOrderId'] != null &&
           value['selectedOrderId'] is! int) {
         invalid();
+      }
+      final overrides = value['presetOverrides'];
+      if (overrides != null && overrides is! Map) invalid();
+      for (final entry in (overrides as Map? ?? {}).entries) {
+        ref(entry.key, resources, nullable: false);
+        if (resources[entry.key]?['kind'] != 'preset' ||
+            entry.value is! Map<String, dynamic>) {
+          invalid();
+        }
+        PresetImporter().decode(entry.value as Map<String, dynamic>);
       }
       for (final key in [
         'presetId',

@@ -31,7 +31,10 @@ extension DisplayOperations on StoryRepository {
       );
     }
     if (profile['presetId'] case final String presetId) {
-      final preset = await _resourceData(presetId);
+      final preset =
+          (profile['presetOverrides'] as Map?)?[presetId]
+              as Map<String, dynamic>? ??
+          await _resourceData(presetId);
       rules.addAll(DisplayContext.regexRulesOf(preset?['extensions']));
     }
     final userName = profile['userName'] is String
