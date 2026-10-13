@@ -25,7 +25,7 @@ final class BackupContents {
 }
 
 /// Exact ST originals may contain passwords. The whole portable backup is
-/// authenticated encrypted; OS keystore keys and model keys never leave device.
+/// authenticated encrypted; the local secrets file (resource key, model and sync keys) never leaves the device.
 final class ProjectBackup {
   ProjectBackup({
     required this.repository,

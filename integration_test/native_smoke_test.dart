@@ -15,7 +15,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  testWidgets('native secure storage, SQLite, editor, reader and reopen', (
+  testWidgets('native secrets file, SQLite, editor, reader and reopen', (
     tester,
   ) async {
     Future<void> waitFor(Finder finder) async {
@@ -30,12 +30,16 @@ void main() {
     final directory = await Directory.systemTemp.createTemp(
       'sillydraft-native-',
     );
-    final secrets = PlatformSecrets();
-    final key = 'native-verification/${DateTime.now().microsecondsSinceEpoch}';
+    final secretsFile = File('${directory.path}/secrets.json');
+    final secrets = FileSecrets(secretsFile);
+    const key = 'native-verification/key';
     await secrets.write(key, 'local-fixture-no-credentials');
-    expect(await PlatformSecrets().read(key), 'local-fixture-no-credentials');
+    expect(
+      await FileSecrets(secretsFile).read(key),
+      'local-fixture-no-credentials',
+    );
     await secrets.delete(key);
-    expect(await secrets.read(key), isNull);
+    expect(await FileSecrets(secretsFile).read(key), isNull);
 
     if (Platform.isMacOS) {
       final target = File('${directory.path}/atomic-export.txt');

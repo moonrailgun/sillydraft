@@ -15,7 +15,7 @@ extension PreferenceOperations on StoryRepository {
   Future<void> setSetting(String key, Map<String, dynamic> value) =>
       _write(() async {
         if (jsonEncode(value) != jsonEncode(redactCredentials(value))) {
-          throw ArgumentError('凭据必须存入平台安全存储');
+          throw ArgumentError('凭据只能存入本机密钥文件，不能写进设置');
         }
         await _execute(
           'INSERT INTO app_settings (key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json',

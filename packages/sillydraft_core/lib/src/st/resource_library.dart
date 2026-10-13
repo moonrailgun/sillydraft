@@ -156,7 +156,7 @@ final class ResourceLibrary {
         ),
       );
     } on SecretBoxAuthenticationError {
-      throw const FormatException('无法解密资源原文件，请检查本机安全存储或重新导入。');
+      throw const FormatException('无法解密资源原文件，请检查本机密钥文件或重新导入。');
     }
   }
 
