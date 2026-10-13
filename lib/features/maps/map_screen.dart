@@ -1,6 +1,7 @@
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -105,21 +106,23 @@ class _MapState extends ConsumerState<StoryMapScreen> {
       Navigator.pop(context);
       return;
     }
-    final choice = await showDialog<String>(
+    final choice = await showAppDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
         title: const Text('保存地图修改？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'cancel'),
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, 'cancel'),
             child: const Text('继续编辑'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'discard'),
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context, 'discard'),
             child: const Text('放弃修改'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, 'save'),
+          FButton(
+            onPress: () => Navigator.pop(context, 'save'),
             child: const Text('保存并返回'),
           ),
         ],
@@ -145,7 +148,7 @@ class _MapState extends ConsumerState<StoryMapScreen> {
           kind: LoreKind.location,
         ));
     if (!mounted) return;
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showAppDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => _PointDialog(old: old, locations: locations),
     );
@@ -179,50 +182,52 @@ class _MapState extends ConsumerState<StoryMapScreen> {
     final name = await askText(context, title: '新建路线', label: '路线名称');
     if (name == null || !mounted) return;
     final selected = <String>[];
-    final path = await showModalBottomSheet<List<String>>(
+    final path = await showAppSheet<List<String>>(
       context: context,
-      isScrollControlled: true,
+      title: '按行进顺序选择地点',
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheet) => SafeArea(
-          child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .65,
-            child: Column(
-              children: [
-                const ListTile(title: Text('按行进顺序选择地点')),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      for (final point in _points)
-                        CheckboxListTile(
-                          title: Text(point['label'] as String),
-                          subtitle: selected.contains(point['id'])
+        builder: (context, setSheet) => SizedBox(
+          height: MediaQuery.sizeOf(context).height * .65,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    for (final point in _points)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: FCheckbox(
+                          label: Text(point['label'] as String),
+                          description: selected.contains(point['id'])
                               ? Text(
                                   '第 ${selected.indexOf(point['id'] as String) + 1} 站',
                                 )
                               : null,
                           value: selected.contains(point['id']),
-                          onChanged: (v) => setSheet(() {
-                            if (v == true) {
+                          onChange: (v) => setSheet(() {
+                            if (v) {
                               selected.add(point['id'] as String);
                             } else {
                               selected.remove(point['id']);
                             }
                           }),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: FilledButton(
-                    onPressed: selected.length < 2
-                        ? null
-                        : () => Navigator.pop(context, selected),
-                    child: const Text('添加路线'),
-                  ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: FButton(
+                  onPress: selected.length < 2
+                      ? null
+                      : () => Navigator.pop(context, selected),
+                  child: const Text('添加路线'),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -236,16 +241,25 @@ class _MapState extends ConsumerState<StoryMapScreen> {
   }
 
   Future<void> _routeList() async {
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(title: Text('地图路线')),
-            if (_routes.isEmpty) const ListTile(title: Text('尚未添加路线')),
-            for (final r in _routes)
-              ListTile(
+      title: '地图路线',
+      builder: (context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        children: [
+          if (_routes.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                '尚未添加路线',
+                style: TextStyle(color: context.theme.colors.mutedForeground),
+              ),
+            ),
+          for (final r in _routes)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FTile(
                 title: Text(r['name'] as String? ?? '路线'),
                 subtitle: Text(
                   (r['pointIds'] as List)
@@ -258,20 +272,20 @@ class _MapState extends ConsumerState<StoryMapScreen> {
                       )
                       .join(' → '),
                 ),
-                trailing: IconButton(
+                suffix: IconAction(
+                  icon: FLucideIcons.trash2,
                   tooltip: '删除路线',
-                  onPressed: () {
+                  onPress: () {
                     setState(() {
                       _routes.remove(r);
                       _dirty = true;
                     });
                     Navigator.pop(context);
                   },
-                  icon: const Icon(Icons.delete_outline),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -279,46 +293,48 @@ class _MapState extends ConsumerState<StoryMapScreen> {
   @override
   Widget build(BuildContext context) {
     final selected = _points.where((p) => p['id'] == _selected).firstOrNull;
+    final colors = context.theme.colors;
     return PopScope(
       canPop: _allowPop || !_dirty,
       onPopInvokedWithResult: (popped, _) {
         if (!popped) _leave();
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(_entry.name),
-          actions: [
-            IconButton(
-              tooltip: '选择地图底图',
-              onPressed: _busy ? null : _chooseBackground,
-              icon: const Icon(Icons.image_outlined),
+      child: PageScaffold(
+        title: _entry.name,
+        actions: [
+          HeaderIconAction(
+            icon: FLucideIcons.image,
+            tooltip: '选择地图底图',
+            onPress: _busy ? null : _chooseBackground,
+          ),
+          if (_background != null)
+            HeaderIconAction(
+              icon: FLucideIcons.imageOff,
+              tooltip: '移除地图底图',
+              onPress: () => setState(() {
+                _background = null;
+                _backgroundAspect = null;
+                _dirty = true;
+              }),
             ),
-            if (_background != null)
-              IconButton(
-                tooltip: '移除地图底图',
-                onPressed: () => setState(() {
-                  _background = null;
-                  _backgroundAspect = null;
-                  _dirty = true;
-                }),
-                icon: const Icon(Icons.hide_image_outlined),
-              ),
-            IconButton(
-              tooltip: '保存地图',
-              onPressed: _busy ? null : _save,
-              icon: Icon(_dirty ? Icons.save_outlined : Icons.check),
-            ),
-          ],
-        ),
+          HeaderIconAction(
+            icon: _dirty ? FLucideIcons.save : FLucideIcons.check,
+            tooltip: '保存地图',
+            onPress: _busy ? null : _save,
+          ),
+        ],
         body: SafeArea(
           top: false,
           child: Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.all(12),
+              Padding(
+                padding: const EdgeInsets.all(12),
                 child: Text(
                   '长按画布添加地点；拖动标记调整位置；双指缩放。',
                   textAlign: TextAlign.center,
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: colors.mutedForeground,
+                  ),
                 ),
               ),
               Expanded(
@@ -352,7 +368,7 @@ class _MapState extends ConsumerState<StoryMapScreen> {
                                   painter: _MapPainter(
                                     _points,
                                     _routes,
-                                    Theme.of(context).colorScheme,
+                                    colors,
                                     background: _background == null,
                                   ),
                                 ),
@@ -389,20 +405,23 @@ class _MapState extends ConsumerState<StoryMapScreen> {
                                         height: 44,
                                         decoration: BoxDecoration(
                                           color: p['id'] == _selected
-                                              ? Theme.of(context)
-                                                    .colorScheme
-                                                    .primary
-                                              : Theme.of(context)
-                                                    .colorScheme
-                                                    .secondary,
+                                              ? colors.primary
+                                              : colors.secondary,
+                                          border: Border.all(
+                                            color: p['id'] == _selected
+                                                ? colors.primary
+                                                : colors.border,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             22,
                                           ),
                                         ),
-                                        child: const Icon(
-                                          Icons.place,
-                                          color: Colors.white,
-                                          size: 25,
+                                        child: Icon(
+                                          FLucideIcons.mapPin,
+                                          color: p['id'] == _selected
+                                              ? colors.primaryForeground
+                                              : colors.secondaryForeground,
+                                          size: 22,
                                         ),
                                       ),
                                     ),
@@ -417,41 +436,51 @@ class _MapState extends ConsumerState<StoryMapScreen> {
                 ),
               ),
               if (selected != null)
-                ListTile(
-                  title: Text(selected['label'] as String),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: '编辑地点标记',
-                        onPressed: () => _point(old: selected),
-                        icon: const Icon(Icons.edit_outlined),
-                      ),
-                      IconButton(
-                        tooltip: '删除地点标记',
-                        onPressed: () => _removePoint(selected),
-                        icon: const Icon(Icons.delete_outline),
-                      ),
-                    ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  child: FTile(
+                    title: Text(selected['label'] as String),
+                    suffix: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconAction(
+                          icon: FLucideIcons.pencil,
+                          tooltip: '编辑地点标记',
+                          onPress: () => _point(old: selected),
+                        ),
+                        IconAction(
+                          icon: FLucideIcons.trash2,
+                          tooltip: '删除地点标记',
+                          onPress: () => _removePoint(selected),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Wrap(
                   spacing: 10,
+                  runSpacing: 6,
                   children: [
-                    TextButton.icon(
-                      onPressed: () => _point(),
-                      icon: const Icon(Icons.add_location_alt_outlined),
-                      label: const Text('添加地点'),
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => _point(),
+                      prefix: const Icon(FLucideIcons.mapPinPlus),
+                      child: const Text('添加地点'),
                     ),
-                    TextButton.icon(
-                      onPressed: _route,
-                      icon: const Icon(Icons.route_outlined),
-                      label: const Text('连接路线'),
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _route,
+                      prefix: const Icon(FLucideIcons.route),
+                      child: const Text('连接路线'),
                     ),
-                    TextButton(
-                      onPressed: _routeList,
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _routeList,
                       child: Text('${_routes.length} 条路线'),
                     ),
                   ],
@@ -485,39 +514,44 @@ class _PointState extends State<_PointDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppDialog(
     title: const Text('地点标记'),
-    content: Column(
+    body: Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _name,
+        FTextField(
+          control: FTextFieldControl.managed(controller: _name),
           autofocus: true,
-          decoration: const InputDecoration(labelText: '地点名称'),
+          label: const Text('地点名称'),
         ),
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          initialValue: widget.locations.any((l) => l.id == _entity)
-              ? _entity
-              : null,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: '关联地点资料（可选）'),
-          items: [
-            const DropdownMenuItem<String>(value: null, child: Text('不关联')),
+        FSelect<String>.rich(
+          label: const Text('关联地点资料（可选）'),
+          control: FSelectControl<String>.lifted(
+            value: widget.locations.any((l) => l.id == _entity) ? _entity : '',
+            onChange: (v) =>
+                setState(() => _entity = v == null || v.isEmpty ? null : v),
+          ),
+          format: (id) =>
+              widget.locations.where((l) => l.id == id).firstOrNull?.name ??
+              '不关联',
+          children: [
+            FSelectItem<String>(title: const Text('不关联'), value: ''),
             for (final l in widget.locations)
-              DropdownMenuItem(value: l.id, child: Text(l.name)),
+              FSelectItem<String>(title: Text(l.name), value: l.id),
           ],
-          onChanged: (v) => setState(() => _entity = v),
         ),
       ],
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
+      FButton(
+        variant: FButtonVariant.outline,
+        onPress: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(
-        onPressed: () {
+      FButton(
+        onPress: () {
           if (_name.text.trim().isNotEmpty) {
             Navigator.pop(context, {
               'label': _name.text.trim(),
@@ -535,17 +569,14 @@ class _MapPainter extends CustomPainter {
   _MapPainter(this.points, this.routes, this.colors, {this.background = true});
   final bool background;
   final List<Map<String, dynamic>> points, routes;
-  final ColorScheme colors;
+  final FColors colors;
   @override
   void paint(Canvas canvas, Size size) {
     if (background) {
-      canvas.drawRect(
-        Offset.zero & size,
-        Paint()..color = colors.surfaceContainerLow,
-      );
+      canvas.drawRect(Offset.zero & size, Paint()..color = colors.muted);
     }
     final grid = Paint()
-      ..color = colors.outlineVariant.withValues(alpha: .4)
+      ..color = colors.border.withValues(alpha: .6)
       ..strokeWidth = .5;
     for (var x = 0.0; background && x < size.width; x += 32) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
@@ -569,7 +600,7 @@ class _MapPainter extends CustomPainter {
             a,
             b,
             Paint()
-              ..color = colors.tertiary
+              ..color = colors.primary.withValues(alpha: .7)
               ..strokeWidth = 3,
           );
         }
@@ -582,8 +613,8 @@ class _MapPainter extends CustomPainter {
           text: p['label'] as String,
           style: TextStyle(
             fontSize: 12,
-            color: colors.onSurface,
-            backgroundColor: colors.surface,
+            color: colors.foreground,
+            backgroundColor: colors.background,
           ),
         ),
         textDirection: TextDirection.ltr,

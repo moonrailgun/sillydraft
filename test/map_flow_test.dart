@@ -2,8 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/theme.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/maps/map_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'support/finders.dart';
+
+/// The app's forui theme and toaster around a test page, as `SillyDraftApp`
+/// provides them.
+Widget _app(Widget home) => MaterialApp(
+  builder: (context, child) => FTheme(
+    data: appTheme(Brightness.light),
+    child: FToaster(child: child!),
+  ),
+  home: home,
+);
 
 void main() {
   testWidgets('leaving a dirty map can discard edits and return once', (
@@ -24,17 +38,20 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
-        child: MaterialApp(
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => StoryMapScreen(entry: entry),
+        child: _app(
+          Builder(
+            builder: (context) => FScaffold(
+              child: Center(
+                child: FButton(
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => StoryMapScreen(entry: entry),
+                    ),
                   ),
+                  child: const Text('打开地图'),
                 ),
-                child: const Text('打开地图'),
               ),
             ),
           ),
@@ -45,10 +62,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('添加地点'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '新港口');
+    await tester.enterText(find.widgetWithText(FTextField, '地点名称'), '新港口');
     await tester.tap(find.text('保存标记'));
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await tester.tap(find.byType(AppBackButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text('放弃修改'));
     await tester.pumpAndSettle();
@@ -93,13 +110,13 @@ void main() {
       );
       Widget screen(LoreEntry current) => ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
-        child: MaterialApp(home: StoryMapScreen(entry: current)),
+        child: _app(StoryMapScreen(entry: current)),
       );
       await tester.pumpWidget(screen(entry));
       await tester.pumpAndSettle();
       await tester.tap(find.text('连接路线'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), '沿海小径');
+      await tester.enterText(find.byType(EditableText), '沿海小径');
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('港口'));
@@ -107,7 +124,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('添加路线'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('保存地图'));
+      await tester.tap(findAction('保存地图'));
       await tester.pumpAndSettle();
       var saved = await db.getLoreEntry(branchId: entry.branchId, id: entry.id);
       expect((saved.data['routes'] as List).single['pointIds'], ['a', 'b']);
@@ -117,8 +134,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('地点 港口'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('删除地点标记'));
-      await tester.tap(find.byTooltip('保存地图'));
+      await tester.tap(findAction('删除地点标记'));
+      await tester.tap(findAction('保存地图'));
       await tester.pumpAndSettle();
       saved = await db.getLoreEntry(branchId: entry.branchId, id: entry.id);
       expect(saved.data['routes'], isEmpty);
