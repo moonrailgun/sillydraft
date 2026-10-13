@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -164,6 +165,44 @@ void main() {
     expect(find.text('原始 JSON'), findsOneWidget);
     await tester.tap(find.byKey(const Key('preset-prompt-main')));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a preset\'s continue_prefill is marked as not in effect', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final resource = await services.library.import(
+      Uint8List.fromList(
+        utf8.encode(jsonEncode({..._preset, 'continue_prefill': true})),
+      ),
+      filename: 'fog.json',
+      kind: ResourceKind.preset,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(ResourceDetailScreen(resourceId: resource.id)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final mark = find.byKey(const Key('preset-ignored-continue_prefill'));
+    expect(mark, findsOneWidget);
+    expect(find.textContaining('不生效'), findsNothing);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(mark));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.textContaining('不生效'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

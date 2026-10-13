@@ -678,21 +678,26 @@ class _PresetPreviewState extends State<_PresetPreview> {
             runSpacing: 6,
             children: [
               for (final MapEntry(:key, :value) in samplers.entries)
-                FBadge(
-                  variant: FBadgeVariant.outline,
-                  child: Text.rich(
-                    TextSpan(
-                      text: '$key  ',
-                      style: TextStyle(color: theme.colors.mutedForeground),
-                      children: [
-                        TextSpan(
-                          text: _shortValue(value),
-                          style: TextStyle(color: theme.colors.foreground),
-                        ),
-                      ],
+                if (key == continuePrefillIgnored.path && value == true)
+                  FTooltip(
+                    tipBuilder: (_, _) => ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      child: Text(continuePrefillIgnored.message),
                     ),
-                  ),
-                ),
+                    child: _samplerBadge(
+                      theme,
+                      key,
+                      value,
+                      warning: const Icon(
+                        FLucideIcons.triangleAlert,
+                        key: Key('preset-ignored-continue_prefill'),
+                        size: 14,
+                        color: Color(0xFFEAB308),
+                      ),
+                    ),
+                  )
+                else
+                  _samplerBadge(theme, key, value),
             ],
           ),
           const SizedBox(height: 24),
@@ -751,6 +756,33 @@ class _PresetPreviewState extends State<_PresetPreview> {
     );
   }
 }
+
+Widget _samplerBadge(
+  FThemeData theme,
+  String key,
+  Object? value, {
+  Widget? warning,
+}) => FBadge(
+  variant: FBadgeVariant.outline,
+  child: Text.rich(
+    TextSpan(
+      children: [
+        if (warning != null) ...[
+          WidgetSpan(alignment: PlaceholderAlignment.middle, child: warning),
+          const TextSpan(text: ' '),
+        ],
+        TextSpan(
+          text: '$key  ',
+          style: TextStyle(color: theme.colors.mutedForeground),
+        ),
+        TextSpan(
+          text: _shortValue(value),
+          style: TextStyle(color: theme.colors.foreground),
+        ),
+      ],
+    ),
+  ),
+);
 
 String _shortValue(Object? value) {
   final text = value is String ? value : jsonEncode(value);
