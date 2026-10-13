@@ -197,8 +197,9 @@ Map<String, List<Map<String, dynamic>>> migrateLegacyChapters(
       row['id']: row['branch_id'] as String,
   };
   for (final entry in result.entries) {
-    if (['revisions', 'branch_chapters', 'branch_scenes'].contains(entry.key))
+    if (['revisions', 'branch_chapters', 'branch_scenes'].contains(entry.key)) {
       continue;
+    }
     for (final row in entry.value) {
       final branchId =
           row['branch_id'] as String? ??
@@ -317,11 +318,13 @@ Map<String, List<Map<String, dynamic>>> migrateLegacyChapters(
       if (chapter == null) continue;
       final group =
           '${row['branch_id']}/$chapter/${entity == null ? '' : row[entity]}';
-      (groups[group] ??= []).add({'old': row, 'new': migrated[i]});
+      (groups[group] ??= []).add({'old': row, 'new': migrated[i], 'index': i});
     }
     for (final group in groups.values) {
+      final hasOrder = (group.first['old'] as _Row).containsKey(order);
       final slots = [
-        for (final pair in group) (pair['old'] as _Row)[order] as int,
+        for (final pair in group)
+          hasOrder ? (pair['old'] as _Row)[order] as int : pair['index'] as int,
       ]..sort();
       group.sort((a, b) {
         final left = a['old'] as _Row, right = b['old'] as _Row;
@@ -331,10 +334,17 @@ Map<String, List<Map<String, dynamic>>> migrateLegacyChapters(
             .compareTo(scenes?[right[key]]?['position'] as int? ?? -1);
         return position != 0
             ? position
-            : (left[order] as int).compareTo(right[order] as int);
+            : ((left[order] ?? a['index']) as int).compareTo(
+                (right[order] ?? b['index']) as int,
+              );
       });
       for (var i = 0; i < group.length; i++) {
-        (group[i]['new'] as _Row)[order] = slots[i];
+        if (hasOrder) {
+          (group[i]['new'] as _Row)[order] = slots[i];
+        } else {
+          // Portable backups omit lore's SQLite sequence and retain row order.
+          migrated[slots[i]] = group[i]['new'] as _Row;
+        }
       }
     }
   }
@@ -542,22 +552,31 @@ final class _ChapterMigration {
     for (final item in scenes) {
       if (item['scene_id'] == scene) break;
       final revision = state[item['scene_id']];
-      if (revision != null)
+      if (revision != null) {
         offset += ManuscriptContent.decode(
           oldRevisions[revision]!['content_json'] as String,
         ).text.length;
+      }
     }
     return offset;
   }
 
   String pin(List<_Row> sources) {
+    if (sources.any(
+      (source) =>
+          !scenes.any((scene) => scene['scene_id'] == source['sceneId']) ||
+          oldRevisions[source['revisionId']]?['scene_id'] != source['sceneId'],
+    )) {
+      throw const FormatException('旧任务的正文快照不完整');
+    }
     final state = {
       for (final source in sources)
         source['sceneId'] as String: source['revisionId'] as String,
     };
     if (scenes.length == state.length &&
-        scenes.every((s) => state[s['scene_id']] == s['revision_id']))
+        scenes.every((s) => state[s['scene_id']] == s['revision_id'])) {
       return head;
+    }
     final key = id('snapshot', [
       for (final scene in scenes)
         if (state[scene['scene_id']] != null)

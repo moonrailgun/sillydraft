@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:sillydraft_core/src/migration/chapter_migration.dart';
-import 'package:sillydraft_core/src/model/manuscript.dart';
+import 'package:sillydraft_core/src/migration/legacy_schema.dart';
 import 'package:test/test.dart';
 
 Map<String, dynamic> revision(
@@ -409,4 +410,141 @@ void main() {
       'Unselected history\nSecond\n',
     );
   });
+
+  test(
+    'complex legacy backup restores references and preserves scope',
+    () async {
+      final old = _portableFixture();
+      old['generation_tasks']!.add({
+        ...old['generation_tasks']!.single,
+        'id': 'partial-task',
+        'scene_id': 's1',
+        'base_revision_id': 'r1b',
+        'input_json': jsonEncode({
+          'sourceRevisions': [
+            {'sceneId': 's1', 'revisionId': 'r1b'},
+          ],
+          'sceneSnapshot': [
+            {
+              'id': 's1',
+              'revisionId': 'r1b',
+              'title': 'One',
+              'text': 'Edited first\n',
+            },
+          ],
+        }),
+      });
+      final snapshot = ProjectSnapshot.fromJson({
+        'format': 'sillydraft-project',
+        'version': 1,
+        'schema': 6,
+        'tables': old,
+      });
+      expect(
+        snapshot.tables['lore_versions']!.map((row) => row['revision_id']),
+        ['l1', 'l2'],
+      );
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      await repo.restoreProject(snapshot, encryptedSources: {});
+      final story = await repo.getStory('main');
+      expect(story.chapters.first.content.text, 'Edited first\nSecond\n');
+      expect(
+        (await repo.getStory('fork')).chapters.first.content.text,
+        'First\nFork second\n',
+      );
+      expect(
+        (await repo.getBranchVariables('main', throughChapterId: 'c1')).local,
+        {'sceneId': 'leave alone'},
+      );
+      final lore = (await repo.listLore('main')).single;
+      expect(lore.revisionId, 'l2');
+      expect(lore.sourceStale, isFalse);
+      final partial = await repo.getTask('partial-task');
+      final pinned = (partial.input['sourceRevisions'] as List).single as Map;
+      expect(pinned['chapterId'], 'c1');
+      expect(pinned['revisionId'], isNot(story.chapters.first.revisionId));
+      expect(
+        (await repo.getRevision(pinned['revisionId'] as String)).content.text,
+        'Edited first\n',
+      );
+      await expectLater(
+        repo.acceptProposal('stale'),
+        throwsA(isA<RevisionConflict>()),
+      );
+      expect(
+        (await repo.acceptProposal('p')).content.text,
+        'Edited first\nProposed second\n',
+      );
+      final exported = await repo.exportProject('novel');
+      final copied = StoryRepository.memory();
+      addTearDown(copied.close);
+      await copied.restoreProject(exported, encryptedSources: {});
+      expect(
+        (await copied.getStory('main')).text,
+        (await repo.getStory('main')).text,
+      );
+    },
+  );
+}
+
+Map<String, List<Map<String, dynamic>>> _portableFixture() {
+  final old = fixture();
+  old['library_resources'] = [];
+  old['revisions']!.first['content_json'] = ManuscriptContent.plainText('First')
+      .encoded;
+  final defaults = <String, Map<String, dynamic>>{
+    'novels': {
+      'title': 'Legacy',
+      'synopsis': '',
+      'genre': '',
+      'language': '',
+      'style': '',
+      'point_of_view': '',
+      'active_branch_id': 'main',
+      'cover_asset_id': null,
+      'archived': 0,
+      'created_at': 0,
+      'updated_at': 0,
+    },
+    'branches': {'name': 'Branch', 'parent_branch_id': null},
+    'proposals': {'summary': '', 'task_id': null, 'created_at': 0},
+    'reading_bookmarks': {'label': 'Bookmark', 'created_at': 0},
+    'generation_tasks': {
+      'kind': 'rewrite',
+      'status': 'completed',
+      'partial_text': '',
+      'reasoning': '',
+      'error': '',
+      'result_json': '{}',
+      'retry_of': null,
+      'created_at': 0,
+      'updated_at': 0,
+    },
+    'agent_conversations': {'title': 'Conversation', 'created_at': 0},
+    'agent_messages': {
+      'role': 'tool',
+      'content': 'Historical output',
+      'position': 0,
+      'created_at': 0,
+    },
+    'variable_revisions': {'global_json': '{}', 'created_at': 0},
+    'lore_versions': {
+      'previous_revision_id': null,
+      'kind': 'character',
+      'name': 'Character',
+      'content': 'State',
+      'certainty': 'fact',
+      'data_json': '{}',
+      'deleted': 0,
+      'created_at': 0,
+    },
+  };
+  return {
+    for (final table in legacyProjectTables)
+      table: [
+        for (final row in old[table] ?? <Map<String, dynamic>>[])
+          {...?defaults[table], ...row}..remove('sequence'),
+      ],
+  };
 }
