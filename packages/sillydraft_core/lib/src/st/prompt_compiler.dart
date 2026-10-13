@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'card_importer.dart';
 import 'import_types.dart';
+import '../mvu/mvu_data.dart';
 import 'macro_engine.dart';
 import 'preset_importer.dart';
 import 'regex_pipeline.dart';
@@ -121,6 +122,8 @@ final class PromptCompiler {
     final trace = <String>[
       'branch:${input.branchId}:through:${input.throughPosition}',
     ];
+    // MVU's status-bar placeholder is display only: it never reaches the
+    // model, neither through history nor through {{lastMessage}}.
     final filtered =
         input.history
             .where(
@@ -128,6 +131,18 @@ final class PromptCompiler {
                   s.accepted &&
                   s.branchId == input.branchId &&
                   s.position <= input.throughPosition,
+            )
+            .map(
+              (s) => hasMvuMarkup(s.content)
+                  ? ContextScene(
+                      branchId: s.branchId,
+                      position: s.position,
+                      sceneId: s.sceneId,
+                      revisionId: s.revisionId,
+                      content: stripMvuMarkup(s.content),
+                      accepted: s.accepted,
+                    )
+                  : s,
             )
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));

@@ -17,6 +17,7 @@ import '../st/import_types.dart';
 import '../st/card_importer.dart';
 import '../st/macro_engine.dart';
 import '../st/world_book.dart';
+import '../mvu/mvu_service.dart';
 import 'database.dart';
 import '../transfer/project_snapshot.dart';
 

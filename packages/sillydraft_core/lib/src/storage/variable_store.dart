@@ -62,6 +62,26 @@ extension VariableOperations on StoryRepository {
     return getBranchVariables(branchId, throughSceneId: sceneId);
   });
 
+  /// Writes a scene's variables, keeping whatever table ([local] or
+  /// [global]) is not given as it stands at that scene. Conflicts with a
+  /// concurrent writer surface as [VariableConflict].
+  Future<BranchVariables> patchBranchVariables({
+    required String branchId,
+    required String sceneId,
+    Map<String, String>? local,
+    Map<String, String>? global,
+  }) async {
+    final current = await getBranchVariables(branchId, throughSceneId: sceneId);
+    final head = await getBranchVariables(branchId);
+    return setBranchVariables(
+      branchId: branchId,
+      sceneId: sceneId,
+      expectedVersion: head.version,
+      local: local ?? current.local,
+      global: global ?? current.global,
+    );
+  }
+
   Future<void> _setBranchVariables({
     required String branchId,
     required Scene scene,

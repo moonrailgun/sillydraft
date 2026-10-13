@@ -1,7 +1,42 @@
 part of 'story_repository.dart';
 
 extension CardStartOperations on StoryRepository {
+  /// Creates a novel from a card, then seeds MVU variables from the card's
+  /// `[InitVar]` entries and the opening's own update commands, as MVU
+  /// initialises a new chat. A broken InitVar entry never blocks creation.
   Future<Novel> createNovelFromCard({
+    required String resourceId,
+    required String title,
+    String userName = '主角',
+    String persona = '',
+    String pointOfView = '第三人称',
+    int greetingIndex = 0,
+    String? openingOverride,
+    DateTime? openingClock,
+  }) async {
+    final novel = await _createNovelFromCard(
+      resourceId: resourceId,
+      title: title,
+      userName: userName,
+      persona: persona,
+      pointOfView: pointOfView,
+      greetingIndex: greetingIndex,
+      openingOverride: openingOverride,
+      openingClock: openingClock,
+    );
+    try {
+      await MvuService(
+        this,
+        clock: () => openingClock ?? DateTime.now().toUtc(),
+      ).ensureInitialized(novel.activeBranchId);
+    } catch (_) {
+      // The novel exists already; the variable manager reports the state
+      // and lets the author reload InitVar or reprocess.
+    }
+    return novel;
+  }
+
+  Future<Novel> _createNovelFromCard({
     required String resourceId,
     required String title,
     String userName = '主角',

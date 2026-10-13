@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 
 import '../model/task.dart';
+import '../mvu/mvu_data.dart';
+import '../mvu/mvu_init.dart';
+import '../mvu/mvu_service.dart';
 import '../model/story.dart';
 import '../providers/provider.dart';
 import '../st/card_importer.dart';
@@ -148,6 +151,7 @@ final class WritingService {
     if ((rangeStart == null) != (rangeEnd == null)) {
       throw ArgumentError('请提供完整选区');
     }
+
     if (rangeStart != null) {
       scene.content.validateRange(rangeStart, rangeEnd!);
       if (rangeStart == rangeEnd || append) {
@@ -160,6 +164,27 @@ final class WritingService {
       branchId,
       throughSceneId: sceneId,
     );
+    // MVU: the scene's record derives from the previous scene's, so the
+    // prompt sees that one and the reply's commands apply on top of it.
+    final mvu = MvuService(repository);
+    final initEntries = <MvuInitEntry>[
+      if (card != null) ...MvuService.entriesOfCard(card.raw),
+      for (final scoped in worldBooks) ...MvuService.entriesOf(scoped.book),
+    ];
+    final mvuErrors = <String>[];
+    final profile = await repository.getSetting('writing/$branchId') ?? {};
+    final mvuBase = await mvu.baseFor(
+      branchId,
+      sceneId,
+      entries: initEntries,
+      schemaChecks: MvuService.schemaChecksFor(profile, card?.raw),
+      errors: mvuErrors,
+    );
+    // The prompt shows the latest stored record (the state after this
+    // scene's earlier replies); the base only seeds a scene without one.
+    final localVariables = MvuData.presentIn(variables.local) || mvuBase == null
+        ? variables.local
+        : {...variables.local, ...mvuBase.toStored()};
     final lore = await repository.listLore(branchId, throughSceneId: sceneId);
     final availableLore = lore
         .where((e) => !e.sourceStale && e.data['worldBookOnly'] != true)
@@ -201,7 +226,7 @@ final class WritingService {
         worldBooks: worldBooks,
         globalRegex: globalRegex,
         selectedOrderId: selectedOrderId,
-        localVariables: variables.local,
+        localVariables: localVariables,
         globalVariables: variables.global,
         history: [
           for (final (i, s) in story.scenes.indexed)
@@ -220,9 +245,16 @@ final class WritingService {
       completionText: result.completionText,
       parameters: result.parameters,
       stopStrings: result.stopStrings,
-      trace: [...result.trace, '资料按当前分支和目标场景过滤：${availableLore.length} 项'],
+      trace: [
+        ...result.trace,
+        '资料按当前分支和目标场景过滤：${availableLore.length} 项',
+        if (mvuBase != null)
+          'mvu:base:${position == 0 ? 'initvar' : 'scene:${position - 1}'}',
+      ],
       diagnostics: [
         ...result.diagnostics,
+        for (final error in mvuErrors)
+          CompatibilityDiagnostic('mvu_init', 'MVU 初始变量：$error'),
         if (lore.any((e) => e.sourceStale))
           const CompatibilityDiagnostic(
             'stale_lore',
@@ -276,6 +308,7 @@ final class WritingService {
             {'sceneId': s.id, 'revisionId': s.revisionId},
         ],
         'variableBaseVersion': variables.version,
+        if (mvuBase != null) 'mvu': {'base': mvuBase.toJson()},
         'variableResult': {
           'local': compiled.localVariables,
           'global': compiled.globalVariables,

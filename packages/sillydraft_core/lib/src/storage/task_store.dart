@@ -141,6 +141,7 @@ extension TaskOperations on StoryRepository {
     String reasoning = '',
     String summary = '',
     Map<String, dynamic>? variableResult,
+    Map<String, dynamic>? mvuResult,
   }) => _write(() async {
     final task = await getTask(id);
     if (task.status != TaskStatus.running) return task;
@@ -182,6 +183,7 @@ extension TaskOperations on StoryRepository {
           ...task.result,
           'proposalId': proposalId,
           'variableResult': ?variableResult,
+          'mvu': ?mvuResult,
         }),
         _now(),
         id,

@@ -9,6 +9,7 @@ import '../providers/image_provider.dart';
 
 import '../model/manuscript.dart';
 import '../model/task.dart';
+import '../mvu/mvu_data.dart';
 import '../providers/provider.dart';
 import '../providers/remote_provider.dart';
 import '../st/import_types.dart';
@@ -255,31 +256,55 @@ final class TaskRunner {
       if ([TaskKind.writing, TaskKind.rewrite].contains(task.kind)) {
         final processed = _processOutput(task, text.toString());
         reasoning.write(processed.reasoning);
+        final mvuEnabled = input['mvu'] is Map;
         final original = input['originalContent'] == null
             ? ManuscriptContent.plainText('')
             : ManuscriptContent.fromJson(
                 jsonObject(input['originalContent'], 'originalContent'),
               );
+        final outputText = mvuEnabled
+            ? stripMvuMarkup(processed.text).trimRight()
+            : processed.text;
         final range = input['replacementRange'] as Map<String, dynamic>?;
-        final content = range != null
+        var content = range != null
             ? original.replaceRange(
                 range['start'] as int,
                 range['end'] as int,
-                processed.text,
+                outputText,
               )
             : input['append'] == true && original.text.trim().isNotEmpty
             ? ManuscriptContent.fromDelta([
                 ...original.delta,
-                {'insert': '\n${processed.text}\n'},
+                {'insert': '\n$outputText\n'},
               ])
-            : ManuscriptContent.plainText(processed.text);
+            : ManuscriptContent.plainText(outputText);
+        var variables = processed.variables;
+        Map<String, dynamic>? mvuResult;
+        if (mvuEnabled) {
+          // One status bar per scene: the placeholder MVU appends moves to
+          // the end of the scene, and the model's own copy of the state
+          // listing is dropped, as MVU strips it from the saved message.
+          content = _withoutMvuMarkup(content);
+          final applied = _applyMvu(task, content.text, variables);
+          content = ManuscriptContent.fromDelta([
+            ...content.delta,
+            {
+              'insert': content.text.endsWith('\n')
+                  ? '\n$mvuStatusPlaceholder\n'
+                  : '\n\n$mvuStatusPlaceholder\n',
+            },
+          ]);
+          variables = applied.variables;
+          mvuResult = applied.result;
+        }
         await repository.completeWritingTask(
           task.id,
           content: content,
           rawText: text.toString(),
           reasoning: reasoning.toString(),
           summary: input['brief'] as String? ?? '',
-          variableResult: processed.variables,
+          variableResult: variables,
+          mvuResult: mvuResult,
         );
       } else {
         final result = _structuredResult(task.kind, text.toString());
@@ -347,6 +372,47 @@ final class TaskRunner {
       provider?.close();
     }
   }
+}
+
+ManuscriptContent _withoutMvuMarkup(ManuscriptContent content) {
+  if (!hasMvuMarkup(content.text)) return content;
+  return ManuscriptContent.fromDelta([
+    for (final op in content.delta)
+      if (op['insert'] is String)
+        {...op, 'insert': stripMvuMarkup(op['insert'] as String)}
+      else
+        op,
+  ]);
+}
+
+/// Derives the scene's MVU record from the task's base record and the
+/// final scene text, as MVU re-reads a message once the reply has landed.
+({Map<String, dynamic> variables, Map<String, dynamic> result}) _applyMvu(
+  GenerationTask task,
+  String sceneText,
+  Map<String, dynamic> variables,
+) {
+  final input = task.input;
+  final base = jsonObject(jsonObject(input['mvu'], 'mvu')['base'], 'mvu.base');
+  final data = MvuData.fromJson(base);
+  final macro = MacroEngine(
+    values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
+    clock: DateTime.parse(input['clock'] as String),
+    seed: input['seed'] as int,
+  );
+  final result = MvuUpdater.apply(sceneText, data, substitute: macro.render);
+  final local = (variables['local'] as Map? ?? {}).cast<String, String>();
+  return (
+    variables: {
+      ...variables,
+      'local': {...local, ...data.toStored()},
+    },
+    result: {
+      'modified': result.modified,
+      'commands': result.commands.map((c) => c.toJson()).toList(),
+      'errors': result.errors,
+    },
+  );
 }
 
 ({String text, String reasoning, Map<String, dynamic> variables})
