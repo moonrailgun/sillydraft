@@ -1,13 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/features/resources/preset_prompt_editor.dart';
 import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/host.dart';
 
 void main() {
+  testWidgets('prompt order skips missing entries and appends unplaced ones', (
+    tester,
+  ) async {
+    Map<String, dynamic>? changed;
+    await tester.pumpWidget(
+      testHost(
+        Scaffold(
+          body: PresetPromptEditor(
+            value: {
+              'prompts': [
+                for (final id in ['main', 'style', 'unplaced'])
+                  {'identifier': id, 'name': id, 'role': 'system'},
+              ],
+              'prompt_order': [
+                {
+                  'character_id': 100001,
+                  'order': [
+                    {'identifier': 'style', 'enabled': true},
+                    {'identifier': 'missing', 'enabled': false},
+                    {'identifier': 'main', 'enabled': true},
+                  ],
+                },
+              ],
+            },
+            onChanged: (value) => changed = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final style = find.byKey(const Key('prompt-enabled-style'));
+    final main = find.byKey(const Key('prompt-enabled-main'));
+    final unplaced = find.byKey(const Key('prompt-enabled-unplaced'));
+    expect(tester.getTopLeft(style).dy, lessThan(tester.getTopLeft(main).dy));
+    expect(
+      tester.getTopLeft(main).dy,
+      lessThan(tester.getTopLeft(unplaced).dy),
+    );
+    expect(
+      tester
+          .widget<FSwitch>(
+            find.descendant(of: unplaced, matching: find.byType(FSwitch)),
+          )
+          .value,
+      isFalse,
+    );
+    await tester.tap(unplaced);
+    await tester.pumpAndSettle();
+    expect((changed!['prompt_order'] as List).single['order'], [
+      {'identifier': 'style', 'enabled': true},
+      {'identifier': 'missing', 'enabled': false},
+      {'identifier': 'main', 'enabled': true},
+      {'identifier': 'unplaced', 'enabled': true},
+    ]);
+    final handle = find.descendant(
+      of: find.byKey(const ValueKey('prompt-style')),
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(0, 10));
+    await tester.pump();
+    await gesture.moveTo(
+      tester.getBottomLeft(find.byKey(const ValueKey('prompt-unplaced'))) +
+          const Offset(30, 4),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect((changed!['prompt_order'] as List).single['order'], [
+      {'identifier': 'main', 'enabled': true},
+      {'identifier': 'style', 'enabled': true},
+      {'identifier': 'unplaced', 'enabled': true},
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final pack in [false, true]) {
     testWidgets(
       'phone edits ${pack ? "prompt pack" : "chat preset"} order, switches and depth without losing extensions',

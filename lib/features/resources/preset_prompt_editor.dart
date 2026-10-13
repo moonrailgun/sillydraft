@@ -14,13 +14,9 @@ class PresetPromptEditor extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    this.scrollable = true,
   });
   final Map<String, dynamic> value;
   final ValueChanged<Map<String, dynamic>> onChanged;
-
-  /// False when placed inside another scroll view, such as the preset panel.
-  final bool scrollable;
 
   static bool supports(Map<String, dynamic> value) =>
       value['prompts'] is List ||
@@ -135,15 +131,19 @@ class _PresetPromptState extends State<PresetPromptEditor> {
   }
 
   /// Entries in the current order, then any not yet placed in it.
-  List<Map<String, dynamic>> _ordered(List<dynamic> order) => [
-    for (final item in order)
+  List<Map<String, dynamic>> _ordered(List<dynamic> order) {
+    final byId = <dynamic, List<Map<String, dynamic>>>{};
+    for (final prompt in _prompts.cast<Map<String, dynamic>>()) {
+      (byId[prompt['identifier']] ??= []).add(prompt);
+    }
+    final placed = {for (final item in order) item['identifier']};
+    return [
+      for (final item in order) ...?byId[item['identifier']],
       for (final prompt in _prompts)
-        if (prompt['identifier'] == item['identifier'])
+        if (!placed.contains(prompt['identifier']))
           prompt as Map<String, dynamic>,
-    for (final prompt in _prompts)
-      if (!order.any((item) => item['identifier'] == prompt['identifier']))
-        prompt as Map<String, dynamic>,
-  ];
+    ];
+  }
 
   /// Moves the entry at [from] so it ends up at index [to].
   void _move(List<dynamic> order, int from, int to) => _change(() {
@@ -162,9 +162,13 @@ class _PresetPromptState extends State<PresetPromptEditor> {
       ]);
   });
 
-  Widget _tile(Map<String, dynamic> prompt, List<dynamic> order, int row) {
+  Widget _tile(
+    Map<String, dynamic> prompt,
+    List<dynamic> order,
+    int row,
+    int index,
+  ) {
     final id = prompt['identifier'] as String;
-    final index = order.indexWhere((item) => item['identifier'] == id);
     final marker = prompt['marker'] == true;
     final enabled = index >= 0 && order[index]['enabled'] == true;
     void toggle(bool enabled) => _change(() {
@@ -298,6 +302,10 @@ class _PresetPromptState extends State<PresetPromptEditor> {
   Widget build(BuildContext context) {
     final order = _order;
     final ordered = _ordered(order);
+    final orderIndices = <dynamic, int>{};
+    for (var i = 0; i < order.length; i++) {
+      orderIndices.putIfAbsent(order[i]['identifier'], () => i);
+    }
     String groupLabel(int i) =>
         '${_groups[i]['character_id']}${_groups[i]['character_id'] == 100001 ? ' · 默认全局' : ''}';
     final header = [
@@ -321,13 +329,10 @@ class _PresetPromptState extends State<PresetPromptEditor> {
         child: Text('拖动或用箭头调整顺序；开关与顺序作用于当前顺序组，条目内容由各组共享。动态标记在生成时填入正文、人物或世界书。'),
       ),
     ];
-    final list = ReorderableListView(
-      shrinkWrap: !widget.scrollable,
-      physics: widget.scrollable ? null : const NeverScrollableScrollPhysics(),
+    return ReorderableListView.builder(
+      key: const PageStorageKey('preset-prompt-list'),
       buildDefaultDragHandles: false,
-      padding: widget.scrollable
-          ? const EdgeInsets.fromLTRB(16, 0, 16, 32)
-          : EdgeInsets.zero,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       // The lifted entry casts a soft shadow instead of Material elevation.
       proxyDecorator: (child, _, _) => DecoratedBox(
         decoration: BoxDecoration(
@@ -361,11 +366,14 @@ class _PresetPromptState extends State<PresetPromptEditor> {
         ),
       ),
       onReorderItem: (from, to) => _move(order, from, to),
-      children: [
-        for (final (row, prompt) in ordered.indexed) _tile(prompt, order, row),
-      ],
+      itemCount: ordered.length,
+      itemBuilder: (context, row) => _tile(
+        ordered[row],
+        order,
+        row,
+        orderIndices[ordered[row]['identifier']] ?? -1,
+      ),
     );
-    return list;
   }
 }
 

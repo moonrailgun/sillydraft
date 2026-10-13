@@ -5,8 +5,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/presets/preset_screen.dart';
+import 'package:sillydraft/features/resources/preset_prompt_editor.dart';
 import 'package:sillydraft/features/resources/resource_library_screen.dart';
 import 'package:sillydraft/features/resources/writing_profile.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -38,6 +40,124 @@ const _preset = {
 };
 
 void main() {
+  testWidgets('preset tabs keep long prompt lists lazy and edits saved', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '长预设');
+    final data = {
+      ..._preset,
+      'prompts': [
+        for (var i = 0; i < 400; i++)
+          {
+            'identifier': 'entry-$i',
+            'name': '条目 $i',
+            'role': 'system',
+            'content': '提示词内容 $i',
+          },
+      ],
+      'prompt_order': [
+        {
+          'character_id': 100001,
+          'order': [
+            for (var i = 0; i < 400; i++)
+              {'identifier': 'entry-$i', 'enabled': true},
+          ],
+        },
+      ],
+    };
+    final original = await services.library.import(
+      Uint8List.fromList(utf8.encode(jsonEncode(data))),
+      filename: 'long.json',
+      kind: ResourceKind.preset,
+    );
+    await repo.setSetting('writing/${novel.activeBranchId}', {
+      'presetId': original.id,
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(PresetScreen(branchId: novel.activeBranchId)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FTabs), findsOneWidget);
+    expect(find.byType(PresetPromptEditor), findsNothing);
+    await tester.tap(find.text('提示词管理'));
+    await tester.pumpAndSettle();
+    final editor = find.byType(PresetPromptEditor);
+    void expectLazy() => expect(
+      find
+          .descendant(of: editor, matching: find.byType(FSwitch))
+          .evaluate()
+          .length,
+      inExclusiveRange(0, 20),
+      reason: 'only viewport and cache rows should be built',
+    );
+    expectLazy();
+    expect(find.byKey(const Key('prompt-enabled-entry-399')), findsNothing);
+    final row = find.byKey(const Key('prompt-enabled-entry-35'));
+    await tester.scrollUntilVisible(
+      row,
+      600,
+      scrollable: find.descendant(
+        of: editor,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    final up = find.byKey(const Key('prompt-up-entry-35'));
+    await tester.ensureVisible(up);
+    await tester.tap(up);
+    await tester.pumpAndSettle();
+    expectLazy();
+    final setting = (await repo.getSetting('writing/${novel.activeBranchId}'))!;
+    final saved = (setting['presetOverrides'] as Map)[original.id] as Map;
+    final order = (saved['prompt_order'] as List).single['order'] as List;
+    expect(order[34], {'identifier': 'entry-35', 'enabled': false});
+    expect(order[35]['identifier'], 'entry-34');
+    expect(order, hasLength(400));
+    await tester.tap(find.text('采样参数'));
+    await tester.pumpAndSettle();
+    expect(find.text('1.00'), findsOneWidget);
+    await tester.tap(find.text('提示词管理'));
+    await tester.pumpAndSettle();
+    tester
+        .state<ScrollableState>(
+          find.descendant(of: editor, matching: find.byType(Scrollable)),
+        )
+        .position
+        .jumpTo(0);
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      row,
+      600,
+      scrollable: find.descendant(
+        of: editor,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(
+      tester
+          .widget<FSwitch>(
+            find.descendant(of: row, matching: find.byType(FSwitch)),
+          )
+          .value,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('preset edits autosave only to this branch and can be reset', (
     tester,
   ) async {
