@@ -1,16 +1,26 @@
 import 'dart:convert';
+import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show ReorderableListView;
+import 'package:flutter/widgets.dart';
 
-/// Edits the original ST objects; identifiers and unrecognized fields survive.
+import '../../app/widgets.dart';
+
+/// ST's Prompt Manager: toggle, drag to reorder, edit, add and delete prompt
+/// entries. Edits the original ST objects; identifiers and unrecognized fields
+/// survive.
 class PresetPromptEditor extends StatefulWidget {
   const PresetPromptEditor({
     super.key,
     required this.value,
     required this.onChanged,
+    this.scrollable = true,
   });
   final Map<String, dynamic> value;
   final ValueChanged<Map<String, dynamic>> onChanged;
+
+  /// False when placed inside another scroll view, such as the preset panel.
+  final bool scrollable;
 
   static bool supports(Map<String, dynamic> value) =>
       value['prompts'] is List ||
@@ -19,6 +29,22 @@ class PresetPromptEditor extends StatefulWidget {
   @override
   State<PresetPromptEditor> createState() => _PresetPromptState();
 }
+
+/// Entries ST itself defines; they can be switched off but not deleted.
+const _builtIn = {
+  'main',
+  'nsfw',
+  'jailbreak',
+  'enhanceDefinitions',
+  'worldInfoBefore',
+  'worldInfoAfter',
+  'charDescription',
+  'charPersonality',
+  'scenario',
+  'personaDescription',
+  'dialogueExamples',
+  'chatHistory',
+};
 
 class _PresetPromptState extends State<PresetPromptEditor> {
   late final Map<String, dynamic> _root =
@@ -53,129 +79,283 @@ class _PresetPromptState extends State<PresetPromptEditor> {
   }
 
   Future<void> _edit(Map<String, dynamic> prompt) async {
-    final updated = await showDialog<Map<String, dynamic>>(
+    final updated = await showAppDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => _PromptDialog(prompt: prompt),
     );
     if (updated != null && mounted) _change(() => prompt.addAll(updated));
   }
 
+  Future<void> _add() async {
+    final random = Random.secure();
+    final id = List.generate(
+      8,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
+    final prompt = <String, dynamic>{
+      'identifier': id,
+      'name': '新条目',
+      'role': 'system',
+      'content': '',
+      'system_prompt': false,
+      'marker': false,
+      'injection_position': 0,
+      'injection_depth': 4,
+      'injection_order': 100,
+      'forbid_overrides': false,
+    };
+    final updated = await showAppDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _PromptDialog(prompt: prompt, creating: true),
+    );
+    if (updated == null || !mounted) return;
+    _change(() {
+      _prompts.add(prompt..addAll(updated));
+      _order.add({'identifier': id, 'enabled': true});
+    });
+  }
+
+  Future<void> _delete(Map<String, dynamic> prompt) async {
+    final yes = await confirmAction(
+      context,
+      title: '删除条目「${prompt['name'] ?? prompt['identifier']}」？',
+      message: '条目会从所有顺序组中移除。保存前可以还原。',
+      confirmLabel: '删除',
+      destructive: true,
+    );
+    if (!yes || !mounted) return;
+    final id = prompt['identifier'];
+    _change(() {
+      _prompts.remove(prompt);
+      for (final group in _pack ? [_body] : _groups) {
+        ((group as Map)[_pack ? 'prompt_order' : 'order'] as List?)
+            ?.removeWhere((item) => (item as Map)['identifier'] == id);
+      }
+    });
+  }
+
+  /// Entries in the current order, then any not yet placed in it.
+  List<Map<String, dynamic>> _ordered(List<dynamic> order) => [
+    for (final item in order)
+      for (final prompt in _prompts)
+        if (prompt['identifier'] == item['identifier'])
+          prompt as Map<String, dynamic>,
+    for (final prompt in _prompts)
+      if (!order.any((item) => item['identifier'] == prompt['identifier']))
+        prompt as Map<String, dynamic>,
+  ];
+
+  /// Moves the entry at [from] so it ends up at index [to].
+  void _move(List<dynamic> order, int from, int to) => _change(() {
+    final sequence = _ordered(order).map((p) => p['identifier']).toList();
+    final moved = sequence.removeAt(from);
+    sequence.insert(to, moved);
+    final items = {for (final item in order) item['identifier']: item};
+    order
+      ..clear()
+      ..addAll([
+        for (final id in sequence)
+          if (items[id] != null)
+            items[id]
+          else if (id == moved)
+            {'identifier': id, 'enabled': false},
+      ]);
+  });
+
+  Widget _tile(Map<String, dynamic> prompt, List<dynamic> order, int row) {
+    final id = prompt['identifier'] as String;
+    final index = order.indexWhere((item) => item['identifier'] == id);
+    final marker = prompt['marker'] == true;
+    final enabled = index >= 0 && order[index]['enabled'] == true;
+    void toggle(bool enabled) => _change(() {
+      if (index < 0) {
+        order.add({'identifier': id, 'enabled': enabled});
+      } else {
+        order[index]['enabled'] = enabled;
+      }
+    });
+    final theme = context.theme;
+    return Padding(
+      key: ValueKey('prompt-$id'),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: FCard(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 12, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ReorderableDragStartListener(
+                    index: row,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        FLucideIcons.gripVertical,
+                        size: 18,
+                        color: theme.colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    // The whole row toggles, not only the switch and texts.
+                    child: GestureDetector(
+                      key: Key('prompt-enabled-$id'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => toggle(!enabled),
+                      child: FSwitch(
+                        leadingLabel: true,
+                        label: Text(prompt['name'] as String? ?? id),
+                        description: Text(
+                          '$id · ${prompt['role'] ?? 'system'}${marker ? ' · 动态标记' : ''}'
+                          '${prompt['injection_position'] == 1 ? ' · 深度 ${prompt['injection_depth'] ?? 4}' : ''}',
+                        ),
+                        value: enabled,
+                        onChange: toggle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (!marker && (prompt['content'] as String? ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 6, 8, 4),
+                  child: Text(
+                    prompt['content'] as String,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.typography.body.sm.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(left: 32, top: 4),
+                child: Wrap(
+                  spacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FButton(
+                      key: Key('prompt-edit-$id'),
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => _edit(prompt),
+                      prefix: const Icon(FLucideIcons.pencil),
+                      child: const Text('编辑条目'),
+                    ),
+                    IconAction(
+                      key: Key('prompt-up-$id'),
+                      tooltip: '上移',
+                      onPress: row > 0
+                          ? () => _move(order, row, row - 1)
+                          : null,
+                      icon: FLucideIcons.arrowUp,
+                    ),
+                    IconAction(
+                      key: Key('prompt-down-$id'),
+                      tooltip: '下移',
+                      onPress: row < _prompts.length - 1
+                          ? () => _move(order, row, row + 1)
+                          : null,
+                      icon: FLucideIcons.arrowDown,
+                    ),
+                    if (!_builtIn.contains(id) && !marker)
+                      IconAction(
+                        key: Key('prompt-delete-$id'),
+                        tooltip: '删除条目',
+                        onPress: () => _delete(prompt),
+                        icon: FLucideIcons.trash2,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final order = _order;
-    final ordered = [
-      for (final item in order)
-        for (final prompt in _prompts)
-          if (prompt['identifier'] == item['identifier'])
-            prompt as Map<String, dynamic>,
-      for (final prompt in _prompts)
-        if (!order.any((item) => item['identifier'] == prompt['identifier']))
-          prompt as Map<String, dynamic>,
-    ];
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      children: [
-        if (!_pack && _groups.length > 1)
-          DropdownButtonFormField<int>(
-            initialValue: _group,
-            decoration: const InputDecoration(labelText: '编辑顺序组'),
-            isExpanded: true,
-            items: [
-              for (var i = 0; i < _groups.length; i++)
-                DropdownMenuItem(
-                  value: i,
-                  child: Text(
-                    '${_groups[i]['character_id']}${_groups[i]['character_id'] == 100001 ? ' · 默认全局' : ''}',
-                  ),
-                ),
-            ],
-            onChanged: (value) => setState(() => _group = value!),
-          ),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('开关与移动修改当前顺序组；条目内容由各组共享。动态标记在生成时填入正文、人物或世界书。'),
-        ),
-        for (final prompt in ordered)
-          Builder(
-            builder: (context) {
-              final id = prompt['identifier'] as String;
-              final index = order.indexWhere(
-                (item) => item['identifier'] == id,
-              );
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SwitchListTile(
-                        key: Key('prompt-enabled-$id'),
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(prompt['name'] as String? ?? id),
-                        subtitle: Text(
-                          '$id · ${prompt['role'] ?? 'system'}${prompt['marker'] == true ? ' · 动态标记' : ''}',
-                        ),
-                        value: index >= 0 && order[index]['enabled'] == true,
-                        onChanged: (enabled) => _change(() {
-                          if (index < 0) {
-                            order.add({'identifier': id, 'enabled': enabled});
-                          } else {
-                            order[index]['enabled'] = enabled;
-                          }
-                        }),
-                      ),
-                      if (prompt['injection_position'] == 1)
-                        Text(
-                          '深度 ${prompt['injection_depth'] ?? 4} · 注入优先级 ${prompt['injection_order'] ?? 100}',
-                        ),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          TextButton.icon(
-                            key: Key('prompt-edit-$id'),
-                            onPressed: () => _edit(prompt),
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('编辑条目'),
-                          ),
-                          IconButton(
-                            key: Key('prompt-up-$id'),
-                            tooltip: '上移',
-                            onPressed: index > 0
-                                ? () => _change(() {
-                                    final item = order.removeAt(index);
-                                    order.insert(index - 1, item);
-                                  })
-                                : null,
-                            icon: const Icon(Icons.arrow_upward),
-                          ),
-                          IconButton(
-                            key: Key('prompt-down-$id'),
-                            tooltip: '下移',
-                            onPressed: index >= 0 && index < order.length - 1
-                                ? () => _change(() {
-                                    final item = order.removeAt(index);
-                                    order.insert(index + 1, item);
-                                  })
-                                : null,
-                            icon: const Icon(Icons.arrow_downward),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
+    final ordered = _ordered(order);
+    String groupLabel(int i) =>
+        '${_groups[i]['character_id']}${_groups[i]['character_id'] == 100001 ? ' · 默认全局' : ''}';
+    final header = [
+      if (!_pack && _groups.length > 1)
+        FSelect<int>.rich(
+          label: const Text('编辑顺序组'),
+          format: groupLabel,
+          control: FSelectControl<int>.lifted(
+            value: _group,
+            onChange: (value) {
+              if (value != null) setState(() => _group = value);
             },
           ),
-        const Text('添加、删除条目或调整扩展配置时可切换到 JSON。保存为新版本后，再在作品写作配置中绑定。'),
+          children: [
+            for (var i = 0; i < _groups.length; i++)
+              FSelectItem<int>(title: Text(groupLabel(i)), value: i),
+          ],
+        ),
+      const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('拖动或用箭头调整顺序；开关与顺序作用于当前顺序组，条目内容由各组共享。动态标记在生成时填入正文、人物或世界书。'),
+      ),
+    ];
+    final list = ReorderableListView(
+      shrinkWrap: !widget.scrollable,
+      physics: widget.scrollable ? null : const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      padding: widget.scrollable
+          ? const EdgeInsets.fromLTRB(16, 0, 16, 32)
+          : EdgeInsets.zero,
+      // The lifted entry casts a soft shadow instead of Material elevation.
+      proxyDecorator: (child, _, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: context.theme.style.borderRadius.lg,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 16,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: child,
+      ),
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: header,
+      ),
+      footer: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: FButton(
+            key: const Key('prompt-add'),
+            variant: FButtonVariant.outline,
+            mainAxisSize: MainAxisSize.min,
+            onPress: _add,
+            prefix: const Icon(FLucideIcons.plus),
+            child: const Text('新增条目'),
+          ),
+        ),
+      ),
+      onReorderItem: (from, to) => _move(order, from, to),
+      children: [
+        for (final (row, prompt) in ordered.indexed) _tile(prompt, order, row),
       ],
     );
+    return list;
   }
 }
 
 class _PromptDialog extends StatefulWidget {
-  const _PromptDialog({required this.prompt});
+  const _PromptDialog({required this.prompt, this.creating = false});
   final Map<String, dynamic> prompt;
+  final bool creating;
   @override
   State<_PromptDialog> createState() => _PromptDialogState();
 }
@@ -208,91 +388,96 @@ class _PromptDialogState extends State<_PromptDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('编辑提示词条目'),
-    content: SizedBox(
-      width: 600,
-      child: SingleChildScrollView(
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => AppDialog(
+    maxWidth: 600,
+    title: Text(widget.creating ? '新增提示词条目' : '编辑提示词条目'),
+    body: Form(
+      key: _form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FTextFormField(
+            control: FTextFieldControl.managed(controller: _name),
+            label: const Text('名称'),
+            validator: (value) =>
+                value?.trim().isNotEmpty == true ? null : '请填写名称',
+          ),
+          const SizedBox(height: 12),
+          FSelect<String>(
+            label: const Text('消息角色'),
+            items: {
+              for (final role in {'system', 'user', 'assistant', _role})
+                role: role,
+            },
+            control: FSelectControl<String>.lifted(
+              value: _role,
+              onChange: (value) {
+                if (value != null) setState(() => _role = value);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (widget.prompt['marker'] != true) ...[
+            FTextFormField(
+              key: const Key('prompt-content'),
+              control: FTextFieldControl.managed(controller: _content),
+              minLines: 3,
+              maxLines: 12,
+              label: const Text('提示词内容'),
+              description: const Text('支持 {{char}}、{{user}} 等宏'),
+            ),
+            const SizedBox(height: 12),
+          ],
+          FSelect<int>.rich(
+            label: const Text('注入位置'),
+            format: _positionLabel,
+            control: FSelectControl<int>.lifted(
+              value: _position,
+              onChange: (value) {
+                if (value != null) setState(() => _position = value);
+              },
+            ),
             children: [
-              TextFormField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: '名称'),
-                validator: (value) =>
-                    value?.trim().isNotEmpty == true ? null : '请填写名称',
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _role,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '消息角色'),
-                items: [
-                  for (final role in {'system', 'user', 'assistant', _role})
-                    DropdownMenuItem(value: role, child: Text(role)),
-                ],
-                onChanged: (value) => setState(() => _role = value!),
-              ),
-              const SizedBox(height: 12),
-              if (widget.prompt['marker'] != true)
-                TextFormField(
-                  key: const Key('prompt-content'),
-                  controller: _content,
-                  minLines: 3,
-                  maxLines: 8,
-                  decoration: const InputDecoration(labelText: '提示词内容'),
+              for (final position in {0, 1, _position})
+                FSelectItem<int>(
+                  title: Text(_positionLabel(position)),
+                  value: position,
                 ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _position,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '注入位置'),
-                items: [
-                  const DropdownMenuItem(value: 0, child: Text('按列表顺序')),
-                  const DropdownMenuItem(value: 1, child: Text('故事历史中的深度')),
-                  if (_position != 0 && _position != 1)
-                    DropdownMenuItem(
-                      value: _position,
-                      child: Text('保留值 $_position'),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _position = value!),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: const Key('prompt-depth'),
-                controller: _depth,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '注入深度'),
-                validator: _number,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _order,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '同深度注入优先级'),
-                validator: _number,
-              ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('禁止角色卡覆盖'),
-                value: _forbid,
-                onChanged: (value) => setState(() => _forbid = value!),
-              ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          FTextFormField(
+            key: const Key('prompt-depth'),
+            control: FTextFieldControl.managed(controller: _depth),
+            keyboardType: TextInputType.number,
+            label: const Text('注入深度'),
+            validator: _number,
+          ),
+          const SizedBox(height: 12),
+          FTextFormField(
+            control: FTextFieldControl.managed(controller: _order),
+            keyboardType: TextInputType.number,
+            label: const Text('同深度注入优先级'),
+            validator: _number,
+          ),
+          const SizedBox(height: 16),
+          FCheckbox(
+            label: const Text('禁止角色卡覆盖'),
+            value: _forbid,
+            onChange: (value) => setState(() => _forbid = value),
+          ),
+        ],
       ),
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
+      FButton(
+        variant: FButtonVariant.outline,
+        onPress: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(
-        onPressed: () {
+      FButton(
+        onPress: () {
           if (!_form.currentState!.validate()) return;
           Navigator.pop(context, {
             'name': _name.text.trim(),
@@ -304,10 +489,17 @@ class _PromptDialogState extends State<_PromptDialog> {
             'forbid_overrides': _forbid,
           });
         },
-        child: const Text('应用条目修改'),
+        child: Text(widget.creating ? '添加条目' : '应用条目修改'),
       ),
     ],
   );
+
+  static String _positionLabel(int position) => switch (position) {
+    0 => '按列表顺序',
+    1 => '故事历史中的深度',
+    _ => '保留值 $position',
+  };
+
   String? _number(String? value) =>
       (int.tryParse(value ?? '') ?? -1) >= 0 ? null : '请输入非负整数';
 }
