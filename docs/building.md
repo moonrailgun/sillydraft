@@ -97,3 +97,16 @@ python3 tool/verify_macos_atomic_export.py
 作品库位于系统 Application Support 目录：SQLite 保存结构和版本，图片以内容哈希管理，ST 原文件使用本地密钥加密。数据库 schema 有迁移版本。改动 schema 前添加旧版迁移测试，不删除迁移代码来规避已有作品。
 
 跨设备迁移使用加密作品备份，不能只复制数据库而遗漏图片或系统安全存储。不要在有用户作品的目录运行测试夹具脚本。
+
+## 本地订阅（Claude Code / Codex）
+
+桌面版可以把已登录的 Claude Code 或 Codex 命令行工具当作模型连接，使用作者自己的订阅额度，不需要 API Key。应用直接启动可执行文件（不经过 shell），提示词通过标准输入传递：
+
+- Claude Code：`claude -p --output-format stream-json --include-partial-messages --tools "" --no-session-persistence …`，关闭全部内置工具，不保存会话。
+- Codex：`codex exec --json --sandbox read-only --ephemeral --skip-git-repo-check -`，只读沙箱，不保存会话。
+
+两者都在每次生成新建的空临时目录中运行，结束后删除。Codex 另加 `--ignore-user-config --ignore-rules`，不加载个人配置中的 MCP 服务、自定义服务商和执行规则，模型请在连接里指定。两者仍会读取各自的全局个人说明（`~/.codex/AGENTS.md`、`~/.claude/CLAUDE.md`）；这无法在不影响登录的情况下关闭，提示词会要求模型忽略其中面向编程的内容。桌面应用不继承终端的 PATH，因此会询问登录 shell 的 PATH 并检查 `~/.local/bin`、`/opt/homebrew/bin` 等常见位置；仍找不到时在连接里填写完整路径。
+
+这些工具没有函数调用接口：编辑 Agent 的工具在提示词中描述，模型以 ```` ```sillydraft-tool-calls ```` 代码块返回调用，格式无效时任务失败而不会把 JSON 当作回复。采样参数、停止序列不能传给这些工具，会在任务诊断中列出；文本补全模板和插画不支持。
+
+macOS 因此不启用 App Sandbox（沙箱中的子进程无法读取工具的登录状态）。上架 Mac App Store 的版本需要恢复 `com.apple.security.app-sandbox` 并移除这类连接。手机端不提供本地订阅。
