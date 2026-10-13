@@ -192,7 +192,7 @@ final class AppServices {
     this.dataDirectory,
     ProviderFactory? modelProviderFactory,
     ImageProviderFactory? imageProviderFactory,
-  }) {
+  }) : _modelProviderFactory = modelProviderFactory {
     assets = dataDirectory == null
         ? null
         : AssetLibrary(
@@ -285,12 +285,41 @@ final class AppServices {
     return services;
   }
 
+  final ProviderFactory? _modelProviderFactory;
+
+  /// A provider for a connection that may not be saved yet, such as the one
+  /// being edited: [secret] is the key typed into the form, if any.
+  Future<ModelProvider> draftProvider(
+    ModelConnection connection, {
+    String? secret,
+  }) async {
+    if (!connection.supportsText) {
+      throw const FormatException('此连接仅支持生图，请选择文本模型');
+    }
+    final factory = _modelProviderFactory;
+    if (factory != null) return factory(connection);
+    if (connection.protocol.isLocalCli) {
+      return LocalCliProvider(config: connection);
+    }
+    final key = secret ?? await secrets.read('model/${connection.id}') ?? '';
+    return connection.protocol == ModelProtocol.sillyDraftRunner
+        ? RemoteModelProvider(config: connection, accessToken: key)
+        : OpenAICompatibleProvider(config: connection, apiKey: key);
+  }
+
   Future<ModelProvider> provider(ModelConnection connection) async {
+    if (connection.protocol.isLocalCli) {
+      return LocalCliProvider(config: connection);
+    }
     if (connection.protocol == ModelProtocol.sillyDraftRunner) {
+      // Image tasks also use this adapter to confirm remote cancellation.
       return RemoteModelProvider(
         config: connection,
         accessToken: await secrets.read('model/${connection.id}') ?? '',
       );
+    }
+    if (!connection.supportsText) {
+      throw const FormatException('此连接仅支持生图，请选择文本模型');
     }
     if (connection.protocol != ModelProtocol.openAICompatible) {
       throw const FormatException('当前版本支持 OpenAI 兼容接口，请使用兼容端点');
@@ -302,7 +331,13 @@ final class AppServices {
   }
 
   Future<ImageProvider> imageProvider(ModelConnection connection) async {
+    if (!connection.supportsImages) {
+      throw const FormatException('此连接仅支持文本，请选择生图模型');
+    }
     final key = await secrets.read('model/${connection.id}') ?? '';
+    if (connection.protocol == ModelProtocol.comfyUI) {
+      return ComfyUIProvider(config: connection, apiKey: key);
+    }
     if (connection.protocol == ModelProtocol.sillyDraftRunner) {
       return RemoteImageProvider(config: connection, accessToken: key);
     }
@@ -340,14 +375,16 @@ final class AppServices {
 
   Future<ModelConnection?> connectionFor(String role) async {
     final all = (await connections())
-        .where(
-          (c) =>
-              role != 'editor' || c.protocol == ModelProtocol.openAICompatible,
-        )
+        .where((c) => connectionServes(c, role))
         .toList();
     if (all.isEmpty) return null;
     final roles = await repository.getSetting('modelRoles');
-    return all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;
+    final connection =
+        all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;
+    final model = roles?['${role}Model'];
+    return connection.id == roles?[role] && connection.models.contains(model)
+        ? connection.withModel(model as String)
+        : connection;
   }
 
   void registerDraft(Object owner, Future<void> Function() flush) =>
@@ -396,3 +433,18 @@ final settingProvider = FutureProvider.family<Map<String, dynamic>?, String>((
   ref.watch(repositoryChangesProvider);
   return ref.watch(repositoryProvider).getSetting(key);
 });
+
+/// The editor also needs tool calls: OpenAI-compatible or a local CLI.
+bool connectionServes(ModelConnection connection, String role) =>
+    switch (role) {
+      'editor' =>
+        connection.supportsText &&
+            (connection.protocol == ModelProtocol.openAICompatible ||
+                connection.protocol.isLocalCli),
+      'image' => connection.supportsImages,
+      _ => connection.supportsText,
+    };
+
+/// Local subscriptions run an installed command-line tool: desktop only.
+bool get localCliAvailable =>
+    Platform.isMacOS || Platform.isWindows || Platform.isLinux;
