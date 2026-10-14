@@ -42,6 +42,28 @@ const tavernRuntimeJs = r'''
     return promise.catch(function (e) { try { console.error(e); } catch (_) {} });
   }
 
+  // Native WebViews do not chain wheel scrolling into the Flutter reader.
+  window.addEventListener('wheel', function (event) {
+    if (!window.SillyDraftScroll || event.ctrlKey || !event.deltaY) return;
+    var path = event.composedPath();
+    for (var i = 0; i < path.length; i++) {
+      var element = path[i];
+      if (element.nodeType !== 1) continue;
+      var style = getComputedStyle(element);
+      if (!/^(auto|scroll|overlay)$/.test(style.overflowY)) continue;
+      var remaining = element.scrollHeight - element.clientHeight - element.scrollTop;
+      if (event.deltaY > 0 ? remaining > 0.5 : element.scrollTop > 0.5) return;
+      if (/^(contain|none)$/.test(style.overscrollBehaviorY)) return;
+    }
+    var delta = event.deltaY;
+    if (event.deltaMode === 1) delta *= parseFloat(getComputedStyle(event.target).lineHeight) || 16;
+    if (event.deltaMode === 2) delta *= window.innerHeight;
+    // Let every page handler run before checking whether it consumed the event.
+    setTimeout(function () {
+      if (!event.defaultPrevented) window.SillyDraftScroll.postMessage(String(delta));
+    }, 0);
+  }, { capture: true, passive: true });
+
   // ---------------------------------------------------------------- height
   // Follow `body.scrollHeight` in both directions, like 酒馆助手's
   // src/iframe/adjust_iframe_height.js. For `body { height: 100% }`, the

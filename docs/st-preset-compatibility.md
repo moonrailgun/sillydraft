@@ -125,6 +125,10 @@ SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则
 
 HTML 高度沿用酒馆助手 `src/iframe/adjust_iframe_height.js` 的 `body.scrollHeight` 测量：普通内容展开和收起都同步调整，`details` 的隐藏子元素不再撑住空白；收缩动画持续跟随实际内容高度。只有 `body { height: 100% }` 等受框架高度约束的布局保留每次 DOM 变化后一次的可见底边收缩，避免视口比例面板反复缩小。
 
+HTML 网页视图的默认背景透明，未指定背景的区域透出阅读器底色；HTML 自身声明的背景色和图片保留。`webview_flutter_wkwebview 3.27.0` 的背景设置在 macOS 会调用未实现的 `opaque` 接口，因此 macOS 通过原生通道关闭 WKWebView 的默认背景绘制。此处暂用 WebKit 的 `drawsBackground` KVC 属性（[上游缺口](https://bugs.webkit.org/show_bug.cgi?id=221663)），调用前检查 setter 是否存在；不支持时输出诊断并继续显示内容。原生修改须重新构建、重启，热重载无效。
+
+HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读主题只更新默认色，不重载页面；页面自带颜色优先。原生网页视图额外把未消费的纵向滚轮／触控板 `wheel` 事件转给外层滚动容器：内部区域还能沿该方向滚动、页面调用 `preventDefault()` 或设置 `overscroll-behavior: contain/none` 时保留网页行为，到边界后才继续滚动正文。此为原生宿主的适配；手机触摸拖动仍由原有平台手势仲裁处理。
+
 **酒馆输入框按小说续写适配。** ST 1.19.0 的 `#send_textarea` 与 `#send_but` 分别是聊天输入框和发送入口，`/setinput` 填入文本并返回管道值（依据固定提交的 `public/script.js`、`public/scripts/slash-commands.js`）。按产品要求，SillyDraft 将前端对该输入框的赋值、`input`/`change`、发送按钮和 `SillyTavern.getContext().generate()` 适配为直接续写下一章；同一轮赋值和发送合并，已有写作任务时拒绝重复启动。`/setinput` 同样直接续写，含 `/cut` 的管道仍确认改写。这是小说产品的语义适配，不等同于 ST 仅填入草稿。普通 HTML 片段无此权限；角色卡创建前的预览只保存要求。
 
 **MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一章记录执行本章正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。

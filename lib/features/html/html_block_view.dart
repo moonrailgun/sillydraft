@@ -4,10 +4,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show SelectableText;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../../app/widgets.dart';
 
@@ -102,6 +104,7 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
   WebViewController? get controller => _controller;
   double _height = 160;
   double? _viewport;
+  String? _textColor;
   String? _error;
   bool _loading = true;
   int _generation = 0;
@@ -111,12 +114,23 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
   void initState() {
     super.initState();
     debugLog.add('init ${widget.key} ${widget.block.source.hashCode}');
-    unawaited(_start());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final firstLoad = _viewport == null;
+    final color =
+        DefaultTextStyle.of(context).style.color ??
+        context.theme.colors.foreground;
+    final argb = color.toARGB32();
+    final cssColor =
+        '#${(argb & 0xffffff).toRadixString(16).padLeft(6, '0')}'
+        '${(argb >>> 24).toRadixString(16).padLeft(2, '0')}';
+    if (cssColor != _textColor) {
+      _textColor = cssColor;
+      _updateTextColor();
+    }
     final viewport = widget.viewportHeight ?? MediaQuery.sizeOf(context).height;
     if (viewport != _viewport) {
       _viewport = viewport;
@@ -124,6 +138,7 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
         'window.__sdSetViewport && window.__sdSetViewport(${viewport.round()});',
       );
     }
+    if (firstLoad) unawaited(_start());
   }
 
   @override
@@ -151,6 +166,10 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
     unawaited(controller.runJavaScript(script).catchError((Object _) {}));
   }
 
+  void _updateTextColor() => _run(
+    'document.documentElement.style.setProperty("--sd-text-color", ${jsonEncode(_textColor)});',
+  );
+
   Future<void> _start() async {
     if (!htmlBlocksSupported || ref.read(htmlBlockBuilderProvider) != null) {
       return;
@@ -175,6 +194,10 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
       state: state,
       nonce: HtmlBlocks.nonce(),
       viewportHeight: _viewport ?? 800,
+      // A root fallback inherits naturally; authored HTML colors still win.
+      baseStyle:
+          'html{--sd-text-color:$_textColor;}'
+          ':where(html){color:var(--sd-text-color);}',
     );
     try {
       final controller = _controller ?? await _createController();
@@ -209,11 +232,19 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
       onPermissionRequest: (request) => request.deny(),
     );
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-    await _quietly(
-      () => controller.setBackgroundColor(const Color(0x00000000)),
-    );
+    await _quietly(() async {
+      if (Platform.isMacOS) {
+        // The plugin's setBackgroundColor calls iOS-only APIs on macOS.
+        final webKit = controller.platform as WebKitWebViewController;
+        await const MethodChannel('app.sillydraft/html')
+            .invokeMethod<void>('setTransparent', webKit.webViewIdentifier);
+      } else {
+        await controller.setBackgroundColor(const Color(0x00000000));
+      }
+    });
     await controller.setNavigationDelegate(
       NavigationDelegate(
+        onPageFinished: (_) => _updateTextColor(),
         onNavigationRequest: (request) {
           final url = request.url;
           if (url.startsWith(htmlBlockOrigin) || url == 'about:blank') {
@@ -242,6 +273,18 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
         if (height == null || !mounted) return;
         final next = height.clamp(24, 20000).toDouble();
         if ((next - _height).abs() >= 1) setState(() => _height = next);
+      },
+    );
+    await controller.addJavaScriptChannel(
+      'SillyDraftScroll',
+      onMessageReceived: (message) {
+        final delta = double.tryParse(message.message);
+        if (!mounted || delta == null || !delta.isFinite) return;
+        final position = Scrollable.maybeOf(context)?.position;
+        if (position == null || position.axis != Axis.vertical) return;
+        position.pointerScroll(
+          position.axisDirection == AxisDirection.up ? -delta : delta,
+        );
       },
     );
     await controller.addJavaScriptChannel(
