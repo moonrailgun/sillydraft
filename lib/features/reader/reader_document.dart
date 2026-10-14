@@ -15,7 +15,8 @@ import 'reader_markup.dart';
 ///
 /// With an [html] builder, HTML blocks in the text (fenced pages, raw
 /// fragments) become one inline widget each on a line of their own; the
-/// widget stands for the whole block in the offset map.
+/// widget stands for the whole block in the offset map. [pureMode] omits
+/// these blocks and image embeds, preserving the prose's source offsets.
 ///
 /// Text is marked up the way SillyTavern shows a chat message (see
 /// [ProseMarkup]): Markdown emphasis shows as emphasis with its markers left
@@ -28,12 +29,13 @@ final class ReaderDocument {
     required double fontSize,
     required Widget Function(String? uri) image,
     Widget Function(HtmlBlock block, int index)? html,
+    bool pureMode = false,
     double paragraphSpacing = 0,
     bool indent = false,
     Color? quoteColor,
     Color? italicColor,
   }) {
-    final blocks = html == null
+    final blocks = !pureMode && html == null
         ? const <HtmlBlock>[]
         : HtmlBlocks.find(presentation.content.text);
     // The source's own indents are dropped: [indent] alone indents.
@@ -44,6 +46,7 @@ final class ReaderDocument {
     );
     final paragraphs = <InlineSpan>[], line = <InlineSpan>[];
     final offsets = <int>[];
+    final hiddenImages = <int>{};
     var position = 0, lineStart = 0, ordered = 0;
     var blockIndex = 0, skipUntil = 0, opStart = 0;
     TextStyle inline(Map attributes, int flags) {
@@ -110,7 +113,9 @@ final class ReaderDocument {
         List.filled(marker.length, presentation.sourceOffset(lineStart)),
       );
       for (var i = lineStart; i < position; i++) {
-        if (markup[i] & ProseMarkup.hidden != 0) continue;
+        if (markup[i] & ProseMarkup.hidden != 0 || hiddenImages.contains(i)) {
+          continue;
+        }
         offsets.add(presentation.sourceOffset(i));
       }
       final spaced = paragraphSpacing > 0;
@@ -154,23 +159,25 @@ final class ReaderDocument {
     // interactive children would conflict with their siblings.
     void emitBlock(HtmlBlock block) {
       if (line.isNotEmpty) finish(const {});
-      paragraphs.add(
-        TextSpan(
-          children: [
-            WidgetSpan(
-              alignment: PlaceholderAlignment.top,
-              child: Semantics(
-                container: true,
-                explicitChildNodes: true,
-                child: html!(block, blockIndex),
+      if (!pureMode) {
+        paragraphs.add(
+          TextSpan(
+            children: [
+              WidgetSpan(
+                alignment: PlaceholderAlignment.top,
+                child: Semantics(
+                  container: true,
+                  explicitChildNodes: true,
+                  child: html!(block, blockIndex),
+                ),
               ),
-            ),
-            const TextSpan(text: '\n'),
-          ],
-        ),
-      );
-      offsets.add(presentation.sourceOffset(block.start));
-      offsets.add(presentation.sourceOffset(block.end - 1));
+              const TextSpan(text: '\n'),
+            ],
+          ),
+        );
+        offsets.add(presentation.sourceOffset(block.start));
+        offsets.add(presentation.sourceOffset(block.end - 1));
+      }
       blockIndex++;
       skipUntil = block.end;
       position = block.end;
@@ -181,7 +188,11 @@ final class ReaderDocument {
       final value = op['insert'], attributes = op['attributes'] as Map? ?? {};
       if (value is Map) {
         if (opStart >= skipUntil) {
-          line.add(WidgetSpan(child: image(value['image'] as String?)));
+          if (pureMode) {
+            hiddenImages.add(opStart);
+          } else {
+            line.add(WidgetSpan(child: image(value['image'] as String?)));
+          }
           position = opStart + 1;
         }
         opStart++;
@@ -218,7 +229,11 @@ final class ReaderDocument {
     }
     if (line.isNotEmpty) finish({}, ended: false);
     offsets.add(presentation.sourceOffset(position));
-    return ReaderDocument._(TextSpan(children: paragraphs), offsets, blocks);
+    return ReaderDocument._(
+      TextSpan(children: paragraphs),
+      offsets,
+      pureMode ? const [] : blocks,
+    );
   }
   final TextSpan span;
   final List<int> _offsets;

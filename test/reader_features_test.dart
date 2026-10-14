@@ -89,7 +89,11 @@ void main() {
     expect(style.theme, ReaderTheme.sepia);
     expect(style.font, ReaderFont.kai);
     expect(style.indent, isTrue);
+    expect(style.pureMode, isFalse);
     expect(ReaderStyle.fromJson(style.toJson()), style);
+    final pure = style.copyWith(pureMode: true);
+    expect(ReaderStyle.fromJson(pure.toJson()), pure);
+    expect(ReaderStyle.fromJson(pure.toJson()).pureMode, isTrue);
   });
 
   test('indent and paragraph spacing keep bookmark offsets exact', () {

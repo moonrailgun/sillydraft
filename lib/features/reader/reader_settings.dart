@@ -223,6 +223,12 @@ class _ReaderSettingsState extends State<_ReaderSettings> {
             ),
           ],
         ),
+        _switch(
+          '纯净模式',
+          s.pureMode,
+          (v) => _set(_style.copyWith(pureMode: v)),
+          subtitle: '只显示正文，隐藏 HTML 界面和插图',
+        ),
         _section(
           '字号',
           Row(

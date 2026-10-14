@@ -74,6 +74,7 @@ final class ReaderStyle {
     this.highlightQuotes = true,
     this.dimItalics = true,
     this.autoDirections = true,
+    this.pureMode = false,
   });
 
   static const fontRange = (min: 12.0, max: 36.0);
@@ -105,6 +106,9 @@ final class ReaderStyle {
   /// is set up for it.
   final bool autoDirections;
 
+  /// Show prose without HTML blocks or illustrations.
+  final bool pureMode;
+
   /// The theme to paint with: night when the system is dark and the author
   /// reads on a light page with [autoNight] on.
   ReaderTheme effectiveTheme(Brightness platform) =>
@@ -129,6 +133,7 @@ final class ReaderStyle {
     bool? highlightQuotes,
     bool? dimItalics,
     bool? autoDirections,
+    bool? pureMode,
   }) => ReaderStyle(
     fontSize: fontSize ?? this.fontSize,
     lineHeight: lineHeight ?? this.lineHeight,
@@ -146,6 +151,7 @@ final class ReaderStyle {
     highlightQuotes: highlightQuotes ?? this.highlightQuotes,
     dimItalics: dimItalics ?? this.dimItalics,
     autoDirections: autoDirections ?? this.autoDirections,
+    pureMode: pureMode ?? this.pureMode,
   );
 
   Map<String, Object> toJson() => {
@@ -165,6 +171,7 @@ final class ReaderStyle {
     'highlightQuotes': highlightQuotes,
     'dimItalics': dimItalics,
     'autoDirections': autoDirections,
+    'pureMode': pureMode,
   };
 
   /// Reads a stored setting, keeping defaults for anything missing and
@@ -198,6 +205,7 @@ final class ReaderStyle {
       highlightQuotes: json['highlightQuotes'] as bool? ?? d.highlightQuotes,
       dimItalics: json['dimItalics'] as bool? ?? d.dimItalics,
       autoDirections: json['autoDirections'] as bool? ?? d.autoDirections,
+      pureMode: json['pureMode'] as bool? ?? d.pureMode,
     );
   }
 

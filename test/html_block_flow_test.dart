@@ -11,6 +11,7 @@ import 'package:sillydraft/features/resources/card_start_screen.dart';
 import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'support/finders.dart';
 import 'support/host.dart';
 
 const _opening =
@@ -134,6 +135,89 @@ void _phone(WidgetTester tester) {
 
 void main() {
   _workspaceTests();
+  testWidgets('pure mode hides HTML and images, persists, and restores them', (
+    tester,
+  ) async {
+    _phone(tester);
+    final services = await _services();
+    addTearDown(services.close);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '纯净阅读');
+    final asset = await repo.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '插图',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 100,
+        height: 100,
+        byteLength: 200,
+      ),
+    );
+    final content = ManuscriptContent.fromDelta([
+      {'insert': '前言。\n$_opening\n<div>状态面板</div>\n'},
+      {
+        'insert': {'image': 'asset:${asset.id}'},
+      },
+      {'insert': '\n正文继续。\n'},
+    ]);
+    await repo.createChapter(branchId: novel.activeBranchId, content: content);
+    await tester.pumpWidget(
+      _host(
+        services,
+        ReaderScreen(branchId: novel.activeBranchId),
+        fake: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(HtmlBlockView), findsNWidgets(2));
+    expect(find.text('图片暂不可用'), findsOneWidget);
+
+    await tester.tap(findAction('排版与主题').first);
+    await tester.pumpAndSettle();
+    expect(find.text('纯净模式'), findsOneWidget);
+    await tester.tap(find.text('纯净模式'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(HtmlBlockView), findsNothing);
+    expect(find.text('图片暂不可用'), findsNothing);
+    expect(find.textContaining('正文继续', findRichText: true), findsWidgets);
+    expect(find.textContaining('开启仙途', findRichText: true), findsNothing);
+    expect(find.textContaining('状态面板', findRichText: true), findsNothing);
+    expect((await repo.getSetting('reader'))?['pureMode'], isTrue);
+    expect(
+      (await repo.getStory(novel.activeBranchId)).chapters.single.content,
+      content,
+    );
+
+    await tester.tapAt(const Offset(10, 100));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _host(
+        services,
+        ReaderScreen(branchId: novel.activeBranchId),
+        fake: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(HtmlBlockView), findsNothing);
+    expect(find.text('图片暂不可用'), findsNothing);
+
+    await tester.tap(findAction('排版与主题').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('纯净模式'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(HtmlBlockView), findsNWidgets(2));
+    expect(find.text('图片暂不可用'), findsOneWidget);
+    expect((await repo.getSetting('reader'))?['pureMode'], isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   test('reader document keeps offsets exact around an HTML block', () {
     const text = '前言\n$_opening\n正文继续\n';
     final doc = ReaderDocument.build(
@@ -155,6 +239,85 @@ void main() {
     );
     expect(none.blocks, isEmpty);
     expect(none.span.toPlainText(), text);
+  });
+
+  testWidgets('saved pure mode never creates an HTML view while opening', (
+    tester,
+  ) async {
+    final services = await _services();
+    addTearDown(services.close);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+    final novel = await services.repository.createNovelFromCard(
+      resourceId: 'card',
+      title: '道渊',
+    );
+    await services.repository.setSetting('reader', {'pureMode': true});
+    var htmlBuilds = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          servicesProvider.overrideWithValue(services),
+          htmlBlockBuilderProvider.overrideWithValue((request) {
+            htmlBuilds++;
+            return fakeBlock(request);
+          }),
+        ],
+        child: testHost(ReaderScreen(branchId: novel.activeBranchId)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('开场后的旁白'), findsOneWidget);
+    expect(htmlBuilds, 0);
+  });
+
+  test('pure mode skips split HTML blocks and images with exact offsets', () {
+    final content = ManuscriptContent.fromDelta([
+      {'insert': '前言。\n```html\n<html><body>'},
+      {
+        'insert': '面板</body></html>\n```正文继续。\n<div>状态</div>\n',
+        'attributes': {'bold': true},
+      },
+      {'insert': '插图前'},
+      {
+        'insert': {'image': 'asset:fixture'},
+      },
+      {'insert': '插图后。\n'},
+    ]);
+    final doc = ReaderDocument.build(
+      ManuscriptPresentation.identity(content),
+      fontSize: 18,
+      pureMode: true,
+      image: (_) => throw StateError('pure mode must not build images'),
+      html: (_, _) => throw StateError('pure mode must not build HTML'),
+    );
+    final shown = doc.span.toPlainText();
+    expect(doc.blocks, isEmpty);
+    expect(shown, '前言。\n正文继续。\n插图前插图后。\n');
+    for (final word in ['前言', '正文', '插图前', '插图后']) {
+      expect(doc.sourceOffset(shown.indexOf(word)), content.text.indexOf(word));
+      expect(
+        doc.displayOffset(content.text.indexOf(word)),
+        shown.indexOf(word),
+      );
+    }
+    expect(doc.sourceOffset(shown.length), content.text.length);
+    expect(doc.displayOffset(content.text.length), shown.length);
+  });
+
+  test('pure mode hides HTML even when HTML rendering is disabled', () {
+    final content = ManuscriptContent.plainText(_opening);
+    final doc = ReaderDocument.build(
+      ManuscriptPresentation.identity(content),
+      fontSize: 18,
+      pureMode: true,
+      image: (_) => const SizedBox(),
+    );
+    expect(doc.span.toPlainText(), isEmpty);
+    expect(doc.blocks, isEmpty);
+    expect(doc.sourceOffset(0), content.text.length);
   });
 
   testWidgets('reader shows the source when no web view exists', (
