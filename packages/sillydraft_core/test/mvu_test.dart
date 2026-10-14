@@ -402,10 +402,11 @@ _.add('主角.姓名', 1);
         encryptedSource: [],
         data: _card(opening: opening, zod: zod),
       );
+      await repo.savePersona(const Persona(id: 'jiushen', name: '玖神'));
       return repo.createNovelFromCard(
         resourceId: 'card',
         title: '道渊',
-        userName: '玖神',
+        personaId: 'jiushen',
       );
     }
 

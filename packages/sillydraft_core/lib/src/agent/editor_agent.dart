@@ -27,7 +27,7 @@ final class EditorAgent {
     ModelConnection? writingConnection,
     ImportedPreset? writingPreset,
     CharacterCard? card,
-    String userName = '主角',
+    String userName = '我',
     String persona = '',
     int? selectedOrderId,
     List<ScopedWorldBook> worldBooks = const [],

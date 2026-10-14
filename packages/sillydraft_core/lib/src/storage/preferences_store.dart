@@ -2,14 +2,16 @@ part of 'story_repository.dart';
 
 extension PreferenceOperations on StoryRepository {
   Future<Map<String, dynamic>?> getSetting(String key) async {
+    final json = await _settingJson(key);
+    return json == null ? null : jsonDecode(json) as Map<String, dynamic>;
+  }
+
+  Future<String?> _settingJson(String key) async {
     final rows = await _rows(
       'SELECT value_json FROM app_settings WHERE key = ?',
       [key],
     );
-    return rows.isEmpty
-        ? null
-        : jsonDecode(rows.single['value_json'] as String)
-              as Map<String, dynamic>;
+    return rows.isEmpty ? null : rows.single['value_json'] as String;
   }
 
   Future<void> setSetting(String key, Map<String, dynamic> value) =>

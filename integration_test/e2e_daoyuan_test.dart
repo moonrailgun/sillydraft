@@ -76,10 +76,11 @@ void main() {
     final cards = await repo.listResources(kind: ResourceKind.character);
     final card = cards.firstWhere((r) => r.name.contains('道渊'));
     final now = DateTime.now();
+    await repo.savePersona(const Persona(id: 'jiushen', name: '玖神'));
     final novel = await repo.createNovelFromCard(
       resourceId: card.id,
       title: 'E2E 测试 · 道渊 ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
-      userName: '玖神',
+      personaId: 'jiushen',
     );
     final branch = novel.activeBranchId;
     note('novel ${novel.id} branch $branch');

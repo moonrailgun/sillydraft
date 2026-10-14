@@ -43,10 +43,11 @@ void main() {
       filename: 'card.json',
       kind: ResourceKind.character,
     );
+    await repo.savePersona(const Persona(id: 'linzhou', name: '林舟'));
     final novel = await repo.createNovelFromCard(
       resourceId: resource.id,
       title: '雾港',
-      userName: '林舟',
+      personaId: 'linzhou',
       greetingIndex: 1,
     );
     final story = await repo.getStory(novel.activeBranchId);
@@ -62,8 +63,8 @@ void main() {
     );
     expect(lore.any((e) => e.data['worldBookOnly'] == true), isTrue);
     expect(
-      (await repo.getSetting('writing/${novel.activeBranchId}'))?['userName'],
-      '林舟',
+      (await repo.getSetting('writing/${novel.activeBranchId}'))?['personaId'],
+      'linzhou',
     );
     final edited = await repo.createNovelFromCard(
       resourceId: resource.id,
@@ -78,6 +79,14 @@ void main() {
     expect(
       (await repo.getStory(edited.activeBranchId)).text.trim(),
       '自行修改后的开场',
+    );
+    await expectLater(
+      repo.createNovelFromCard(
+        resourceId: resource.id,
+        title: '雾港',
+        personaId: 'gone',
+      ),
+      throwsFormatException,
     );
   });
   test('resource versions preserve unknown fields and protect original credentials across restart', () async {

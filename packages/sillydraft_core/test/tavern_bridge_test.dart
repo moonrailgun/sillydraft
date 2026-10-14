@@ -65,16 +65,52 @@ Future<({StoryRepository repo, Novel novel})> _cardNovel() async {
       },
     },
   );
+  await repo.savePersona(const Persona(id: 'jiushen', name: '玖神'));
   final novel = await repo.createNovelFromCard(
     resourceId: 'card',
     title: '道渊的故事',
-    userName: '玖神',
+    personaId: 'jiushen',
   );
   return (repo: repo, novel: novel);
 }
 
 void main() {
   group('display context', () {
+    test(
+      'reuses cached rules until the writing profile changes or is removed',
+      () async {
+        final (:repo, :novel) = await _cardNovel();
+        addTearDown(repo.close);
+        final branch = novel.activeBranchId;
+        final original = await repo.displayContext(branch);
+        await repo.setSetting('progress/$branch', {'fraction': .5});
+        expect(identical(await repo.displayContext(branch), original), isTrue);
+
+        final profile = (await repo.getSetting('writing/$branch'))!;
+        final xin = await repo.savePersona(const Persona(id: '', name: '新主角'));
+        await repo.setSetting('writing/$branch', {
+          ...profile,
+          'personaId': xin.id,
+        });
+        final updated = await repo.displayContext(branch);
+        expect(updated.macroValues['user'], '新主角');
+        expect(updated.cardId, 'card');
+        expect(original.macroValues['user'], '玖神');
+
+        // Editing the bound persona leaves the profile as it was.
+        await repo.savePersona(xin.copyWith(name: '改名', outfit: '道袍'));
+        final renamed = await repo.displayContext(branch);
+        expect(renamed.macroValues['user'], '改名');
+        expect(renamed.macroValues['persona'], '服饰：道袍');
+
+        await repo.removeSetting('writing/$branch');
+        final cleared = await repo.displayContext(branch);
+        expect(cleared.rules, isEmpty);
+        expect(cleared.cardId, isNull);
+        expect(cleared.macroValues['user'], '我');
+      },
+    );
+
     test(
       'collects card rules, macro values, greetings and helper scripts',
       () async {

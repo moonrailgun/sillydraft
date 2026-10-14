@@ -6,6 +6,12 @@ extension AssetOperations on StoryRepository {
     for (final row in await _rows(
       'SELECT content_hash,thumbnail_hash FROM story_assets',
     )) ...['${row['content_hash']}.png', '${row['thumbnail_hash']}.jpg'],
+    // Persona images are referenced only from the persona list.
+    for (final persona in await listPersonas())
+      for (final image in persona.images) ...[
+        '${image.hash}.png',
+        '${image.thumbnailHash}.jpg',
+      ],
   };
 
   Future<StoryAsset> getAsset(String id) async => _asset(

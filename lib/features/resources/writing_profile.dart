@@ -5,6 +5,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../personas/persona_picker.dart';
 import '../presets/preset_screen.dart';
 import 'resource_library_screen.dart';
 
@@ -90,6 +91,7 @@ class WritingContext {
             : [raw],
       );
     }
+    final persona = await services.repository.personaFor(data);
     return WritingContext(
       preset: preset,
       assistantPreset:
@@ -101,8 +103,8 @@ class WritingContext {
       card: data['cardId'] is String
           ? await services.library.character(data['cardId'] as String)
           : null,
-      userName: data['userName'] as String? ?? '主角',
-      persona: data['persona'] as String? ?? '',
+      userName: persona.name,
+      persona: persona.prompt,
       selectedOrderId: data['selectedOrderId'] as int?,
       books: books,
       regex: regex,
@@ -118,7 +120,6 @@ class WritingProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileState extends ConsumerState<WritingProfileScreen> {
-  final _user = TextEditingController(), _persona = TextEditingController();
   Map<String, dynamic>? _value;
   bool _busy = false;
   @override
@@ -134,16 +135,7 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
             .getSetting('writing/${widget.branchId}') ??
         {};
     if (!mounted) return;
-    _user.text = value['userName'] as String? ?? '主角';
-    _persona.text = value['persona'] as String? ?? '';
     setState(() => _value = value);
-  }
-
-  @override
-  void dispose() {
-    _user.dispose();
-    _persona.dispose();
-    super.dispose();
   }
 
   /// The preset panel owns the preset binding; take its result back so saving
@@ -180,10 +172,9 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).setSetting(
-        'writing/${widget.branchId}',
-        {..._value!, 'userName': _user.text.trim(), 'persona': _persona.text},
-      );
+      await ref
+          .read(repositoryProvider)
+          .setSetting('writing/${widget.branchId}', _value!);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -370,16 +361,10 @@ class _ProfileState extends ConsumerState<WritingProfileScreen> {
                         ],
                       ),
                     ),
-                  FTextField(
-                    control: FTextFieldControl.managed(controller: _user),
-                    label: const Text('{{user}} 对应人物名'),
-                  ),
-                  const SizedBox(height: 16),
-                  FTextField(
-                    control: FTextFieldControl.managed(controller: _persona),
-                    minLines: 2,
-                    maxLines: 5,
-                    label: const Text('主角身份 / Persona'),
+                  PersonaPicker(
+                    value: _value!['personaId'] as String?,
+                    onChange: (p) =>
+                        setState(() => _value!['personaId'] = p.id),
                   ),
                   const SizedBox(height: 16),
                   FAccordion(

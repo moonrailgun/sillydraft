@@ -601,7 +601,7 @@ extension _AgentExecution on TaskRunner {
         ),
         brief: args['instructions'] as String,
         append: args['append'] as bool,
-        userName: context['userName'] as String? ?? '主角',
+        userName: context['userName'] as String? ?? '我',
         persona: context['persona'] as String? ?? '',
         selectedOrderId: context['selectedOrderId'] as int?,
         worldBooks: [

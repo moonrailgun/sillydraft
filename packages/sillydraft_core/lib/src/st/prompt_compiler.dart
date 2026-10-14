@@ -45,7 +45,7 @@ final class PresetInput {
     required this.clock,
     required this.randomSeed,
     this.card,
-    this.userName = '主角',
+    this.userName = '我',
     this.persona = '',
     this.generationType = 'normal',
     this.selectedOrderId,

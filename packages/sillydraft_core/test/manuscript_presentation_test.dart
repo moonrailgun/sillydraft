@@ -150,7 +150,7 @@ void main() {
         manual.revisionId,
         branchId: fork.id,
       )).content.text,
-      '主角的来信\n',
+      '我的来信\n',
       reason:
           'manual revisions also use the viewing branch, not originBranchId',
     );

@@ -88,7 +88,7 @@ ST 导出的预设通常不含 `name`，ST 以文件名作为预设名；SillyDr
 | --- | --- |
 | `charDescription`、`charPersonality` | 当前绑定的主要角色及其档案；其他人物作为相关资料提供 |
 | `scenario` | 当前章节和开局设定 |
-| `personaDescription`、`{{user}}` | 导入时指定的故事人物身份，不自动指向现实用户 |
+| `personaDescription`、`{{user}}` | 作品绑定的人设：`{{user}}` 是人设名字，`{{persona}}` 是人设描述后接“外貌：”“服饰：”两行（空的省略）；未绑定时为内置人设“我”。修改人设立即影响之后的生成与显示。ST 的人设描述插入位置（作者注释、指定深度）不支持，只经 `personaDescription` 标记进入提示词 |
 | `worldInfoBefore`、`worldInfoAfter` | 本次触发、并符合当前分支和故事位置的世界书条目 |
 | `dialogueExamples` | 卡中的示例，用于声音和文风参考，不视为已经发生的剧情 |
 | `chatHistory` | 当前分支中已采纳章节构造的有序消息视图 |

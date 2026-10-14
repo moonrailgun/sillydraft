@@ -200,6 +200,18 @@ final class AssetLibrary {
     }
   }
 
+  /// A stored file by content hash, as persona images refer to theirs.
+  File hashFile(String hash, {bool thumbnail = false}) =>
+      _path(hash, thumbnail ? 'jpg' : 'png');
+
+  Future<Uint8List> readHash(String hash, {bool thumbnail = false}) async {
+    final bytes = await hashFile(hash, thumbnail: thumbnail).readAsBytes();
+    if (sha256.convert(bytes).toString() != hash) {
+      throw const FormatException('图片文件已损坏');
+    }
+    return bytes;
+  }
+
   Future<File> file(String assetId, {bool thumbnail = false}) async {
     final asset = await repository.getAsset(assetId);
     final target = _path(

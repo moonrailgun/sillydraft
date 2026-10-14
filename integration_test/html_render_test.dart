@@ -112,10 +112,11 @@ void main() {
         },
       },
     );
+    await repository.savePersona(const Persona(id: 'jiushen', name: '玖神'));
     final novel = await repository.createNovelFromCard(
       resourceId: 'card',
       title: 'HTML 验证',
-      userName: '玖神',
+      personaId: 'jiushen',
     );
     await tester.pumpWidget(
       ProviderScope(
@@ -273,10 +274,11 @@ void main() {
       encryptedSource: [],
       data: jsonDecode(daoyuanFixtureJson) as Map<String, dynamic>,
     );
+    await repository.savePersona(const Persona(id: 'jiushen', name: '玖神'));
     final novel = await repository.createNovelFromCard(
       resourceId: 'daoyuan',
       title: '道渊',
-      userName: '玖神',
+      personaId: 'jiushen',
     );
     await tester.pumpWidget(
       ProviderScope(

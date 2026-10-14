@@ -1,6 +1,30 @@
 part of 'story_repository.dart';
 
 extension ProjectOperations on StoryRepository {
+  /// Persona ids are local to one installation: a bound persona travels as
+  /// its text fields, which restoring maps back to a local persona. “我”
+  /// keeps its fixed id, so every device uses its own “我” and editing it
+  /// changes no novel's fingerprint.
+  Map<String, Object?> _portableSetting(
+    Map<String, Object?> row,
+    List<Persona> personas,
+  ) {
+    if (!(row['key'] as String).startsWith('writing/')) return row;
+    final value =
+        jsonDecode(row['value_json'] as String) as Map<String, dynamic>;
+    final id = value['personaId'];
+    if (id == null || id == Persona.meId) return row;
+    final persona =
+        personas.where((p) => p.id == id).firstOrNull ?? personas.first;
+    value.remove('personaId');
+    if (persona.id == Persona.meId) {
+      value['personaId'] = Persona.meId;
+    } else {
+      value['personaSnapshot'] = persona.snapshot;
+    }
+    return {...row, 'value_json': jsonEncode(value)};
+  }
+
   Future<ProjectSnapshot> exportProject(
     String novelId,
   ) => _db.transaction(() async {
@@ -46,9 +70,11 @@ extension ProjectOperations on StoryRepository {
         'progress/${row['id']}',
       ],
     };
-    result['app_settings'] = (await _rows(
-      'SELECT * FROM app_settings ORDER BY key',
-    )).where((r) => settingKeys.contains(r['key'])).toList();
+    final personas = await listPersonas();
+    result['app_settings'] = [
+      for (final row in await _rows('SELECT * FROM app_settings ORDER BY key'))
+        if (settingKeys.contains(row['key'])) _portableSetting(row, personas),
+    ];
     final candidates = await _rows(
       'SELECT id,kind,name,filename,source_hash,data_json,parent_id,archived,created_at FROM library_resources ORDER BY id',
     );
@@ -186,6 +212,9 @@ extension ProjectOperations on StoryRepository {
         );
       }
     }
+    // Snapshots, and exports from before personas, become local bindings
+    // before the fingerprint below is taken.
+    await migrateLegacyPersonas();
     if (syncState != null) {
       await setSetting('syncState/$novelId', {
         ...syncState,
@@ -613,6 +642,16 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
     final value = jsonDecode(row['value_json'] as String) as Map;
     if ((row['key'] as String).startsWith('writing/')) {
       stringFields(value, ['userName', 'persona']);
+      // Only “我” has an id that means the same on every installation.
+      if (value.containsKey('personaId') &&
+          value['personaId'] != Persona.meId) {
+        invalid();
+      }
+      final persona = value['personaSnapshot'];
+      if (persona != null) {
+        if (persona is! Map) invalid();
+        stringFields(persona, ['name', 'description', 'appearance', 'outfit']);
+      }
       if (value['selectedOrderId'] != null &&
           value['selectedOrderId'] is! int) {
         invalid();

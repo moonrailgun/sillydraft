@@ -7,8 +7,7 @@ extension CardStartOperations on StoryRepository {
   Future<Novel> createNovelFromCard({
     required String resourceId,
     required String title,
-    String userName = '主角',
-    String persona = '',
+    String personaId = Persona.meId,
     String pointOfView = '第三人称',
     int greetingIndex = 0,
     String? openingOverride,
@@ -17,8 +16,7 @@ extension CardStartOperations on StoryRepository {
     final novel = await _createNovelFromCard(
       resourceId: resourceId,
       title: title,
-      userName: userName,
-      persona: persona,
+      personaId: personaId,
       pointOfView: pointOfView,
       greetingIndex: greetingIndex,
       openingOverride: openingOverride,
@@ -39,8 +37,7 @@ extension CardStartOperations on StoryRepository {
   Future<Novel> _createNovelFromCard({
     required String resourceId,
     required String title,
-    String userName = '主角',
-    String persona = '',
+    String personaId = Persona.meId,
     String pointOfView = '第三人称',
     int greetingIndex = 0,
     String? openingOverride,
@@ -54,17 +51,19 @@ extension CardStartOperations on StoryRepository {
       Uint8List.fromList(utf8.encode(jsonEncode(resource.data))),
       'card.json',
     );
+    final persona = await personaFor({'personaId': personaId});
+    if (persona.id != personaId) throw const FormatException('所选人设不存在');
     if (greetingIndex < 0 || greetingIndex >= card.greetings.length) {
       throw const FormatException('备用开场不存在');
     }
     final macros = MacroEngine(
       values: {
         'char': card.name,
-        'user': userName,
+        'user': persona.name,
         'description': card.description,
         'personality': card.personality,
         'scenario': card.scenario,
-        'persona': persona,
+        'persona': persona.prompt,
       },
       clock: openingClock ?? DateTime.now().toUtc(),
       seed: 0,
@@ -88,8 +87,7 @@ extension CardStartOperations on StoryRepository {
     );
     await setSetting('writing/${novel.activeBranchId}', {
       'cardId': resourceId,
-      'userName': userName,
-      'persona': persona,
+      'personaId': personaId,
       'greetingIndex': greetingIndex,
     });
     await saveLoreEntry(

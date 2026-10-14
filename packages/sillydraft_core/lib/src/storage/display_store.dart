@@ -4,11 +4,14 @@ extension DisplayOperations on StoryRepository {
   /// Display rules and card data for a branch, from its writing profile.
   /// Cached until the profile changes; resources are immutable versions.
   Future<DisplayContext> displayContext(String branchId) async {
-    final profile = await getSetting('writing/$branchId') ?? {};
-    final key = jsonEncode(profile);
+    final profile = await _settingJson('writing/$branchId') ?? '{}';
+    // Editing a persona changes {{user}} without touching the profile.
+    final key = '$profile\n${await _settingJson('personas') ?? ''}';
     final cached = _displayCache[branchId];
     if (cached != null && cached.key == key) return cached.context;
-    final context = await _buildDisplayContext(profile);
+    final context = await _buildDisplayContext(
+      jsonDecode(profile) as Map<String, dynamic>,
+    );
     _displayCache[branchId] = (key: key, context: context);
     return context;
   }
@@ -37,29 +40,21 @@ extension DisplayOperations on StoryRepository {
           await _resourceData(presetId);
       rules.addAll(DisplayContext.regexRulesOf(preset?['extensions']));
     }
-    final userName = profile['userName'] is String
-        ? profile['userName'] as String
-        : '主角';
-    final persona = profile['persona'] is String
-        ? profile['persona'] as String
-        : '';
+    final persona = await personaFor(profile);
     final cardId = profile['cardId'];
     final raw = cardId is String ? await _resourceData(cardId) : null;
     if (raw == null) {
       return DisplayContext(
         rules: rules,
-        macroValues: {
-          'user': userName.isEmpty ? '主角' : userName,
-          'persona': persona,
-        },
+        macroValues: {'user': persona.name, 'persona': persona.prompt},
       );
     }
     final index = profile['greetingIndex'];
     return DisplayContext.fromCard(
       raw,
       rules: rules,
-      userName: userName,
-      persona: persona,
+      userName: persona.name,
+      persona: persona.prompt,
       greetingIndex: index is int ? index : 0,
       cardId: cardId as String,
     );

@@ -190,10 +190,11 @@ void main() {
       final services = await _services();
       addTearDown(services.close);
       final repo = services.repository;
+      await repo.savePersona(const Persona(id: 'jiushen', name: '玖神'));
       final novel = await repo.createNovelFromCard(
         resourceId: 'card',
         title: '道渊',
-        userName: '玖神',
+        personaId: 'jiushen',
       );
       await tester.pumpWidget(
         _host(services, ReaderScreen(branchId: novel.activeBranchId)),

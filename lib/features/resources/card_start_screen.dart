@@ -12,6 +12,7 @@ import '../agent/writing_request_screen.dart';
 import '../editor/workspace_screen.dart';
 import '../html/html_block_view.dart';
 import '../html/tavern_host.dart';
+import '../personas/persona_picker.dart';
 
 class CardStartScreen extends ConsumerStatefulWidget {
   const CardStartScreen({super.key, required this.resourceId});
@@ -21,10 +22,9 @@ class CardStartScreen extends ConsumerStatefulWidget {
 }
 
 class _CardStartState extends ConsumerState<CardStartScreen> {
-  final _title = TextEditingController(),
-      _user = TextEditingController(text: '主角'),
-      _persona = TextEditingController(),
-      _opening = TextEditingController();
+  final _title = TextEditingController(), _opening = TextEditingController();
+  String _personaId = Persona.meId;
+  Persona _persona = Persona.me;
   CharacterCard? _card;
   int _greeting = 0;
   String _pov = '第三人称';
@@ -72,7 +72,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_title, _user, _persona, _opening]) {
+    for (final c in [_title, _opening]) {
       _seen[c] = c.text;
     }
     _load();
@@ -85,6 +85,8 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
           .library
           .character(widget.resourceId);
       if (!mounted) return;
+      _persona = await ref.read(repositoryProvider).personaFor({});
+      if (!mounted) return;
       _title.text = '${card.name}的故事';
       _display = DisplayContext.fromCard(card.raw, cardId: widget.resourceId);
       setState(() => _card = card);
@@ -96,11 +98,11 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
 
   Map<String, String> _macroValues(CharacterCard card) => {
     'char': card.name,
-    'user': _user.text.trim(),
+    'user': _persona.name,
     'description': card.description,
     'personality': card.personality,
     'scenario': card.scenario,
-    'persona': _persona.text,
+    'persona': _persona.prompt,
   };
 
   MacroEngine _macros(CharacterCard card) =>
@@ -130,8 +132,8 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
     _display = DisplayContext.fromCard(
       card.raw,
       cardId: widget.resourceId,
-      userName: _user.text.trim(),
-      persona: _persona.text,
+      userName: _persona.name,
+      persona: _persona.prompt,
       greetingIndex: _greeting,
     );
     final shown = ManuscriptPresentation.fromRules(
@@ -179,7 +181,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   @override
   void dispose() {
     _previewTimer?.cancel();
-    for (final c in [_title, _user, _persona, _opening]) {
+    for (final c in [_title, _opening]) {
       c.dispose();
     }
     super.dispose();
@@ -192,8 +194,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
       final novel = await repo.createNovelFromCard(
         resourceId: widget.resourceId,
         title: _title.text,
-        userName: _user.text.trim(),
-        persona: _persona.text,
+        personaId: _personaId,
         pointOfView: _pov,
         greetingIndex: _greeting,
         openingOverride: _edited ? _opening.text : null,
@@ -373,6 +374,13 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = context.theme;
+    // Editing the chosen persona via 管理人设 updates the opening and preview.
+    ref.listen(personasProvider, (_, next) {
+      final fresh = next.value?.where((p) => p.id == _personaId).firstOrNull;
+      if (fresh == null) return;
+      _persona = fresh;
+      _edited ? _updatePreview() : _refreshOpening();
+    });
     final htmlEnabled =
         ref.watch(settingProvider('html')).value?['render'] != false;
     final showPreview = htmlEnabled && _blocks.isNotEmpty && _preview != null;
@@ -427,22 +435,15 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
                     label: const Text('作品名称'),
                   ),
                   const SizedBox(height: 16),
-                  FTextField(
-                    control: FTextFieldControl.managed(
-                      controller: _user,
-                      onChange: _onEdit(_user, _refreshOpening),
-                    ),
-                    label: const Text('{{user}} 对应的主角名字'),
-                  ),
-                  const SizedBox(height: 16),
-                  FTextField(
-                    control: FTextFieldControl.managed(
-                      controller: _persona,
-                      onChange: _onEdit(_persona, _refreshOpening),
-                    ),
-                    minLines: 2,
-                    maxLines: 4,
-                    label: const Text('主角身份 / Persona'),
+                  PersonaPicker(
+                    value: _personaId,
+                    onChange: (persona) {
+                      setState(() {
+                        _personaId = persona.id;
+                        _persona = persona;
+                      });
+                      _refreshOpening();
+                    },
                   ),
                   const SizedBox(height: 16),
                   FSelect<String>(

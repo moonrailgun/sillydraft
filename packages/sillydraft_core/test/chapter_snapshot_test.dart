@@ -74,10 +74,11 @@ void main() {
       encryptedSource: [],
       data: _card(),
     );
+    await repo.savePersona(const Persona(id: 'jiushen', name: '玖神'));
     final novel = await repo.createNovelFromCard(
       resourceId: 'card',
       title: '道渊',
-      userName: '玖神',
+      personaId: 'jiushen',
     );
     final branchId = novel.activeBranchId;
     final card = const CardImporter().decode(

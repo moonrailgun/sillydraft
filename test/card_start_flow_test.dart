@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
+import 'package:sillydraft/features/personas/persona_picker.dart';
 import 'package:sillydraft/features/resources/card_start_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -40,6 +41,7 @@ void main() {
           },
         },
       );
+      await repo.savePersona(const Persona(id: 'linzhou', name: '林舟'));
       await tester.pumpWidget(
         ProviderScope(
           overrides: [servicesProvider.overrideWithValue(services)],
@@ -47,7 +49,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(EditableText).at(1), '林舟');
+      final picker = find.descendant(
+        of: find.byType(PersonaPicker),
+        matching: find.byWidgetPredicate((w) => w is FSelect<String>),
+      );
+      await tester.ensureVisible(picker);
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('林舟').last);
+      await tester.pumpAndSettle();
       final greeting = find.byWidgetPredicate((w) => w is FSelect<int>);
       await tester.ensureVisible(greeting);
       await tester.tap(greeting);
@@ -66,6 +76,12 @@ void main() {
       final novel = (await repo.listNovels()).single;
       expect((await repo.getStory(novel.activeBranchId)).text.trim(), opening);
       expect(
+        (await repo.getSetting(
+          'writing/${novel.activeBranchId}',
+        ))!['personaId'],
+        'linzhou',
+      );
+      expect(
         (await repo.listLore(novel.activeBranchId)).map((e) => e.kind),
         containsAll([LoreKind.character, LoreKind.world]),
       );
@@ -73,4 +89,48 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('editing the chosen persona updates the opening', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    await repo.storeResource(
+      id: 'card',
+      kind: ResourceKind.character,
+      name: '苏雾',
+      filename: 'card.json',
+      sourceHash: 'fixture',
+      encryptedSource: [],
+      data: {
+        'spec': 'chara_card_v2',
+        'data': {'name': '苏雾', 'first_mes': '{{user}}听见钟声'},
+      },
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(const CardStartScreen(resourceId: 'card')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    String opening() => tester
+        .widgetList<EditableText>(find.byType(EditableText))
+        .last
+        .controller
+        .text;
+    expect(opening(), '我听见钟声');
+    await tester.runAsync(
+      () => repo.savePersona(Persona.me.copyWith(name: '阿我')),
+    );
+    await tester.pumpAndSettle();
+    expect(opening(), '阿我听见钟声');
+    await tester.pumpWidget(const SizedBox());
+  });
 }

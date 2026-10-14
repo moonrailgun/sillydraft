@@ -208,6 +208,7 @@ final class AppServices {
     writing = WritingService(repository: repository, runner: runner);
     editor = EditorAgent(repository: repository, runner: runner);
     illustrations = IllustrationService(repository: repository, runner: runner);
+    personas = PersonaService(repository: repository, runner: runner);
     library = ResourceLibrary(
       repository: repository,
       keyProvider: _resourceKey,
@@ -222,6 +223,7 @@ final class AppServices {
   late final ResourceLibrary library;
   late final AssetLibrary? assets;
   late final IllustrationService illustrations;
+  late final PersonaService personas;
   SkillLibrary get skills => SkillLibrary(repository);
   ProjectBackup get backups => ProjectBackup(
     repository: repository,
@@ -276,11 +278,17 @@ final class AppServices {
     );
     await services.runner.recoverInterrupted();
     try {
+      await services.repository.migrateLegacyPersonas();
+    } catch (e) {
+      // Unmigrated profiles read as “我” until the next launch retries.
+      stderr.writeln('SillyDraft: persona migration postponed: $e');
+    }
+    try {
       await services.assets?.pruneOrphans();
-    } on FileSystemException {
+    } catch (e) {
       // Maintenance failure must not prevent access to saved manuscripts.
       stderr.writeln(
-        'SillyDraft: unused asset cleanup failed; will retry on next launch.',
+        'SillyDraft: unused asset cleanup failed; will retry on next launch: $e',
       );
     }
     return services;

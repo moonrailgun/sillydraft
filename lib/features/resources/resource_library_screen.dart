@@ -11,6 +11,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../personas/persona_list_screen.dart';
 import 'writing_profile.dart';
 import 'card_start_screen.dart';
 import 'preset_prompt_editor.dart';
@@ -197,6 +198,18 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
       body: AsyncView(
         value: ref.watch(resourcesProvider),
         builder: (all) {
+          final personaTile = FTile(
+            prefix: const Icon(FLucideIcons.users),
+            title: const Text('人设'),
+            subtitle: const Text('{{user}} 的名字、外貌和参考图'),
+            suffix: const Icon(FLucideIcons.chevronRight),
+            onPress: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const PersonaListScreen(),
+              ),
+            ),
+          );
           final resources = all
               .where(
                 (r) =>
@@ -206,23 +219,28 @@ class _LibraryState extends ConsumerState<ResourceLibraryScreen> {
               )
               .toList();
           if (resources.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Text(
-                  '导入 ST 角色卡和预设，作为故事的起点。\n支持 JSON、PNG 和 CHARX 角色卡。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: theme.colors.mutedForeground),
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 110),
+              children: [
+                personaTile,
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Text(
+                    '导入 ST 角色卡和预设，作为故事的起点。\n支持 JSON、PNG 和 CHARX 角色卡。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: theme.colors.mutedForeground),
+                  ),
                 ),
-              ),
+              ],
             );
           }
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 110),
-            itemCount: resources.length,
+            itemCount: resources.length + 1,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, i) {
-              final r = resources[i];
+              if (i == 0) return personaTile;
+              final r = resources[i - 1];
               return FTile(
                 prefix: Icon(
                   r.kind == ResourceKind.character

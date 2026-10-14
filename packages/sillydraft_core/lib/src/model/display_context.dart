@@ -20,7 +20,7 @@ final class DisplayContext {
   factory DisplayContext.fromCard(
     Map<String, dynamic> raw, {
     List<Map<String, dynamic>> rules = const [],
-    String userName = '主角',
+    String userName = '我',
     String persona = '',
     int greetingIndex = 0,
     String? cardId,
@@ -68,7 +68,7 @@ final class DisplayContext {
     return DisplayContext(
       rules: [...rules, ...regexRulesOf(extensions)],
       macroValues: {
-        'user': userName.isEmpty ? '主角' : userName,
+        'user': userName.isEmpty ? '我' : userName,
         'persona': persona,
         'char': text('name'),
         'description': text('description'),
@@ -133,6 +133,6 @@ final class DisplayContext {
   final List<({String name, bool enabled, String info})> helperScripts;
 
   bool get hasCard => cardId != null;
-  String get userName => macroValues['user'] ?? '主角';
+  String get userName => macroValues['user'] ?? '我';
   String get charName => macroValues['char'] ?? '';
 }
