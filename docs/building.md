@@ -28,7 +28,7 @@ ST 对照数据可在核心包目录使用 Node 22 重新生成：`node tool/cap
 
 HTML 界面渲染依赖 `webview_flutter`（Android 需要 SDK 24+，iOS 13+，macOS 10.15+），Windows/Linux 没有对应平台实现，应用在这两个平台显示源码。真实网页视图只能在原生运行时验证：`flutter test integration_test/html_render_test.dart -d macos`。
 
-`.github/workflows/verify.yml` 提供核心/界面/服务端测试、三个桌面系统构建、iOS 模拟器及 Android 构建。Actions 固定提交，Flutter 固定版本；工作流不包含上传商店步骤，不读取模型密钥。推送到用户自己的 GitHub 仓库后才会运行；工作流文件不代表 CI 已通过。
+`.github/workflows/verify.yml` 提供核心/界面/服务端测试、三个桌面系统构建、iOS 模拟器及 Android 构建，在分支推送和 PR 上运行。Actions 固定提交，Flutter 固定版本；工作流不包含上传商店步骤，不读取模型密钥。推送到用户自己的 GitHub 仓库后才会运行；工作流文件不代表 CI 已通过。发布版本见下文“发布”。
 
 ## Android
 
@@ -95,6 +95,39 @@ python3 tool/verify_macos_atomic_export.py
 后者在临时目录中验证仅授予单个文件写权限时的创建和替换，不读取或改动现有作品。
 
 原生测试与 Flutter 共用 `build/macos` 构建目录，避免切换构建方式时，生成的 `macos/Flutter/ephemeral/FlutterOutputs.xcfilelist` 在默认 `DerivedData` 和项目目录之间切换，引发 `Stale file ... outside of the allowed root paths` 警告。已有旧路径时，下一次 Flutter 构建可能仍提示一次；构建更新输出清单后再检查，无需为此修改应用权限。
+
+## 发布
+
+版本号只维护根目录 `pubspec.yaml` 的 `version: 主.次.修订+构建号`，Flutter 注入各平台。1.0 前功能或数据 schema 变化升次版本，修复升修订号；构建号每次发布 +1（Android 覆盖安装要求 versionCode 不降低）。`packages/sillydraft_core` 与 `server` 的版本号不参与发布，执行器按同一 tag 的源码运行。
+
+在仓库根目录执行：
+
+```sh
+./release.sh patch   # 0.1.0 → 0.1.1；minor → 0.2.0；major → 1.0.0
+./release.sh         # 不带参数时列出三项和结果版本供选择
+```
+
+脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在；确认后只提交 `pubspec.yaml`（`chore(release): vX.Y.Z`），打附注 tag，再用 `git push --atomic` 同时推送分支和 tag。
+
+tag 触发 `.github/workflows/release.yml`：
+
+1. 调用 `verify.yml` 跑完整测试与构建；与下面的打包同时进行。发布提交推送到分支时 `verify.yml` 跳过，测试只在这里跑一遍。
+2. 校验 tag 与 pubspec 版本一致，创建草稿 Release，说明为上个 tag 以来的提交标题与安装提示。
+3. 并行构建并上传 `sillydraft-<版本>-android.apk`、`-macos.zip`、`-windows-x64.zip`（含 VC++ 运行库）、`-linux-x64.tar.gz`。iOS 需要证书，不出包。
+4. 测试通过且所有平台打包成功后转为正式发布。任一失败时 Release 停在草稿，应用的更新检查看不到它；修复后在 Actions 里重跑失败的任务即可（上传会覆盖同名文件）。
+
+Android 签名需在仓库 Settings → Secrets and variables → Actions 中配置：
+
+| Secret | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 上传密钥库的 base64：`base64 -i upload.jks \| pbcopy`（Linux 用 `base64 -w0 upload.jks`） |
+| `SILLYDRAFT_STORE_PASSWORD` | 密钥库密码 |
+| `SILLYDRAFT_KEY_ALIAS` | 密钥别名 |
+| `SILLYDRAFT_KEY_PASSWORD` | 密钥密码 |
+
+缺少时 Android 任务失败，Release 保持草稿。macOS 包未经 Developer ID 签名与公证，Release 说明中写有首次打开的方法。
+
+应用在设置中显示版本号，并通过 GitHub 的 latest release 接口检查更新（每天最多一次，可关闭）；有新版时提示下载本平台安装包，不在应用内安装。
 
 ## 数据与升级
 

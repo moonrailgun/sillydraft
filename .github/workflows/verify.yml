@@ -1,9 +1,12 @@
 name: Verify
 
 on:
+  # Tags run this through release.yml instead.
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,6 +17,8 @@ concurrency:
 
 jobs:
   test:
+    # A release commit is verified by release.yml on its tag; skip the branch push.
+    if: github.event_name != 'push' || github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -39,6 +44,8 @@ jobs:
         working-directory: server
 
   desktop:
+    # A release commit is verified by release.yml on its tag; skip the branch push.
+    if: github.event_name != 'push' || github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'chore(release):')
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +77,8 @@ jobs:
         run: python3 tool/verify_macos_atomic_export.py
 
   mobile:
+    # A release commit is verified by release.yml on its tag; skip the branch push.
+    if: github.event_name != 'push' || github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: macos-15
     timeout-minutes: 40
     steps:

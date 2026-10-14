@@ -29,6 +29,8 @@ dart test
 dart test test/html_blocks_test.dart -N '用例名的一部分'  # 单个用例
 
 cd server && dart analyze && dart test         # 可选远程执行器
+
+./release.sh [patch|minor|major]               # 发布：升版本、提交、打 tag、推送，CI 出包（见 docs/building.md“发布”）
 ```
 
 格式检查（仓库根目录）：
