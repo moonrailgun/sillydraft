@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show AppExitResponse;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -13,6 +14,7 @@ import '../features/bookshelf/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/resources/resource_library_screen.dart';
 import 'desktop_commands.dart';
+import 'devtool_trim.dart';
 import 'home_screen.dart';
 import 'services.dart';
 import 'theme.dart';
@@ -23,6 +25,7 @@ class SillyDraftApp extends StatelessWidget {
   final AppServices services;
   @override
   Widget build(BuildContext context) => ProviderScope(
+    observers: [if (kDebugMode) DevtoolHistoryTrim()],
     overrides: [servicesProvider.overrideWithValue(services)],
     child: const _App(),
   );
