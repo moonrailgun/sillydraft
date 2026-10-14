@@ -419,22 +419,30 @@ final repositoryChangesProvider = StreamProvider<int>((ref) {
   var revision = 0;
   return ref.watch(repositoryProvider).changes.map((_) => ++revision);
 });
+
+/// [repositoryChangesProvider] minus writes that touch only generation tasks,
+/// which a streamed chapter makes a few times a second, for views that never
+/// read tasks.
+final repositoryContentChangesProvider = StreamProvider<int>((ref) {
+  var revision = 0;
+  return ref.watch(repositoryProvider).contentChanges.map((_) => ++revision);
+});
 final novelsProvider = FutureProvider<List<Novel>>((ref) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).listNovels(includeArchived: true);
 });
 final storyProvider = FutureProvider.family<StorySnapshot, String>((
   ref,
   branchId,
 ) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).getStory(branchId);
 });
 final settingProvider = FutureProvider.family<Map<String, dynamic>?, String>((
   ref,
   key,
 ) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).getSetting(key);
 });
 

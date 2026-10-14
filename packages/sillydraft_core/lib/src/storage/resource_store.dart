@@ -1,5 +1,9 @@
 part of 'story_repository.dart';
 
+// Original attachments are fetched separately by encryptedResourceSource.
+const _resourceColumns =
+    'id, kind, name, filename, source_hash, data_json, parent_id, archived, created_at';
+
 extension ResourceOperations on StoryRepository {
   Future<LibraryResource> storeResource({
     required String id,
@@ -34,13 +38,15 @@ extension ResourceOperations on StoryRepository {
   });
 
   Future<LibraryResource> getResource(String id) async => _resource(
-    await _one('SELECT * FROM library_resources WHERE id = ?', [id], '创作资源'),
+    await _one('SELECT $_resourceColumns FROM library_resources WHERE id = ?', [
+      id,
+    ], '创作资源'),
   );
   Future<List<LibraryResource>> listResources({
     ResourceKind? kind,
     bool includeArchived = false,
   }) async => (await _rows(
-    '''SELECT * FROM library_resources WHERE (? = 1 OR archived = 0)
+    '''SELECT $_resourceColumns FROM library_resources WHERE (? = 1 OR archived = 0)
       AND (? IS NULL OR kind = ?) ORDER BY created_at DESC, id''',
     [includeArchived ? 1 : 0, kind?.name, kind?.name],
   )).map(_resource).toList();
@@ -63,17 +69,18 @@ extension ResourceOperations on StoryRepository {
       });
 }
 
-LibraryResource _resource(Map<String, Object?> r) => LibraryResource(
-  id: r['id'] as String,
-  kind: ResourceKind.values.byName(r['kind'] as String),
-  name: r['name'] as String,
-  filename: r['filename'] as String,
-  sourceHash: r['source_hash'] as String,
-  data: jsonDecode(r['data_json'] as String) as Map<String, dynamic>,
-  parentId: r['parent_id'] as String?,
-  archived: r['archived'] == 1,
-  createdAt: DateTime.fromMillisecondsSinceEpoch(
-    r['created_at'] as int,
-    isUtc: true,
-  ),
-);
+LibraryResource _resource(Map<String, Object?> r) =>
+    LibraryResource.fromStoredJson(
+      id: r['id'] as String,
+      kind: ResourceKind.values.byName(r['kind'] as String),
+      name: r['name'] as String,
+      filename: r['filename'] as String,
+      sourceHash: r['source_hash'] as String,
+      dataJson: r['data_json'] as String,
+      parentId: r['parent_id'] as String?,
+      archived: r['archived'] == 1,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        r['created_at'] as int,
+        isUtc: true,
+      ),
+    );

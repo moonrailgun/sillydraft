@@ -22,6 +22,25 @@ final class GenerationTask extends JsonSource {
     this.retryOf,
     this.result = const {},
   }) : super(input);
+
+  /// Loads an immutable database snapshot; input is decoded only on access.
+  GenerationTask.fromStoredJson({
+    required this.id,
+    required this.branchId,
+    required this.kind,
+    required this.status,
+    required String inputJson,
+    required this.partialText,
+    required this.reasoning,
+    required this.error,
+    required this.createdAt,
+    required this.updatedAt,
+    this.chapterId,
+    this.baseRevisionId,
+    this.retryOf,
+    this.result = const {},
+  }) : super.encoded(inputJson);
+
   final String id, branchId, partialText, reasoning, error;
   final String? chapterId, baseRevisionId, retryOf;
   final TaskKind kind;

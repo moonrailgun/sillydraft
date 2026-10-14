@@ -12,26 +12,26 @@ final tasksProvider = FutureProvider.family<List<GenerationTask>, String>((
 });
 final proposalsProvider =
     FutureProvider.family<List<ManuscriptProposal>, String>((ref, branch) {
-      ref.watch(repositoryChangesProvider);
+      ref.watch(repositoryContentChangesProvider);
       return ref.watch(repositoryProvider).listProposals(branch);
     });
 final conversationsProvider =
     FutureProvider.family<List<Map<String, Object?>>, String>((ref, branch) {
-      ref.watch(repositoryChangesProvider);
+      ref.watch(repositoryContentChangesProvider);
       return ref.watch(repositoryProvider).listConversations(branch);
     });
 final messagesProvider = FutureProvider.family<List<AgentMessage>, String>((
   ref,
   id,
 ) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).getAgentMessages(id);
 });
 final proposalProvider = FutureProvider.family<ManuscriptProposal, String>((
   ref,
   id,
 ) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).getProposal(id);
 });
 
@@ -40,7 +40,7 @@ final pendingReviewCountProvider = FutureProvider.family<int, String>((
   ref,
   branchId,
 ) async {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   final pending = await ref
       .watch(repositoryProvider)
       .listProposals(branchId, status: ProposalStatus.pending);

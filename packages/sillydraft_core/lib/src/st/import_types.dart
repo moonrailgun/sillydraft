@@ -34,6 +34,9 @@ const continuePrefillIgnored = CompatibilityDiagnostic(
 /// Keeps a deep, immutable snapshot while permitting callers to edit a copy.
 class JsonSource {
   JsonSource(Map<String, dynamic> value) : _json = jsonEncode(value);
+
+  /// Retains repository-owned JSON without decoding and re-encoding it.
+  JsonSource.encoded(this._json);
   final String _json;
   Map<String, dynamic> get raw => jsonDecode(_json) as Map<String, dynamic>;
   Map<String, dynamic> exportJson() => redactCredentials(raw);

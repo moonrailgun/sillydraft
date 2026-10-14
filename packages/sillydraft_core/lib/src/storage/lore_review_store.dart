@@ -9,8 +9,10 @@ extension LoreReviewOperations on StoryRepository {
       row['candidate_index'] as int: row['branch_id'] as String,
   };
 
+  /// Views re-check this on every repository change, so it reads the task
+  /// without its request snapshots.
   Future<bool> taskSourcesCurrent(String taskId) async {
-    final task = await getTask(taskId);
+    final task = await getTask(taskId, snapshots: false);
     final story = await getStory(task.branchId);
     final throughChapterId = task.input['throughChapterId'] as String?;
     final cutoff = throughChapterId == null

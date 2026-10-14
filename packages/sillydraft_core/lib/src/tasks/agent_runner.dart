@@ -158,6 +158,15 @@ extension _AgentExecution on TaskRunner {
       final text = StringBuffer();
       final calls = <ToolCallReady>[];
       GenerationFinished? finished;
+      final progress = _progress[task.id] = _ProgressSaver(
+        () => repository.updateTask(
+          task.id,
+          status: TaskStatus.running,
+          partialText: output.toString(),
+          reasoning: reasoning.toString(),
+          result: {'round': round + 1},
+        ),
+      );
       await for (final event in provider.generate(
         ProviderRequest(
           messages: messages,
@@ -178,14 +187,10 @@ extension _AgentExecution on TaskRunner {
           case GenerationFinished():
             finished = event;
         }
-        await repository.updateTask(
-          task.id,
-          status: TaskStatus.running,
-          partialText: output.toString(),
-          reasoning: reasoning.toString(),
-          result: {'round': round + 1},
-        );
+        await progress.save();
       }
+      // Tool calls that follow keep the saved text, so it must be complete.
+      await progress.flush();
       if (finished == null) {
         throw const ProviderException('interrupted', '编辑会话流中断');
       }

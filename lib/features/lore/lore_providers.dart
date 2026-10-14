@@ -8,7 +8,7 @@ final loreProvider = FutureProvider.family<List<LoreEntry>, LoreScope>((
   ref,
   scope,
 ) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref
       .watch(repositoryProvider)
       .listLore(

@@ -13,10 +13,20 @@ import '../branches/candidate_screen.dart';
 import '../illustrations/illustration_detail.dart';
 import '../illustrations/asset_image.dart';
 
+/// A task as it runs, without its request snapshots ([_inputSnapshotProvider]).
 final taskProvider = FutureProvider.family<GenerationTask, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
-  return ref.watch(repositoryProvider).getTask(id);
+  return ref.watch(repositoryProvider).getTask(id, snapshots: false);
 });
+
+/// A task's whole input, formatted once: it never changes after the task is
+/// created, while the task itself is re-read on every streamed save.
+final _inputSnapshotProvider = FutureProvider.autoDispose
+    .family<String, String>(
+      (ref, id) async =>
+          const JsonEncoder.withIndent('  ')
+              .convert((await ref.watch(repositoryProvider).getTask(id)).input),
+    );
 
 class TaskScreen extends ConsumerWidget {
   const TaskScreen({super.key, required this.taskId});
@@ -226,7 +236,13 @@ class TaskScreen extends ConsumerWidget {
                   ],
                 ),
                 child: SelectableText(
-                  const JsonEncoder.withIndent('  ').convert(task.input),
+                  ref
+                      .watch(_inputSnapshotProvider(task.id))
+                      .when(
+                        data: (json) => json,
+                        loading: () => '正在读取…',
+                        error: (e, _) => '无法读取输入快照：$e',
+                      ),
                 ),
               ),
             ],

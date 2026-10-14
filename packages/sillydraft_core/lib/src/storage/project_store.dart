@@ -171,6 +171,8 @@ extension ProjectOperations on StoryRepository {
         );
       }
     }
+    // A restored task may carry an input migrated from an older backup.
+    _listedInputs.clear();
     if ((await _rows('PRAGMA foreign_key_check')).isNotEmpty) {
       throw const FormatException('备份包含无效引用');
     }

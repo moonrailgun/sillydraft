@@ -48,10 +48,23 @@ final class StoryRepository {
       StoryRepository._(StoryDatabase.open(path));
 
   final StoryDatabase _db;
-  final _changes = StreamController<void>.broadcast();
+
+  /// Each write, as whether it touched only generation tasks.
+  final _changes = StreamController<bool>.broadcast();
   final _displayCache = <String, ({String key, DisplayContext context})>{};
+
+  /// Listed task inputs by task id: an input never changes once the task is
+  /// created, so SQLite trims each one once rather than on every list.
+  final _listedInputs = <String, String>{};
   bool _closed = false;
+
+  /// Every committed write.
   Stream<void> get changes => _changes.stream;
+
+  /// Writes beyond generation tasks. A streamed chapter saves its task a few
+  /// times a second; views that never read tasks need not reload for it.
+  Stream<void> get contentChanges =>
+      _changes.stream.where((tasksOnly) => !tasksOnly);
 
   Future<void> close() async {
     if (_closed) return;
@@ -60,10 +73,13 @@ final class StoryRepository {
     await _changes.close();
   }
 
-  Future<T> _write<T>(Future<T> Function() action) async {
+  Future<T> _write<T>(
+    Future<T> Function() action, {
+    bool tasksOnly = false,
+  }) async {
     if (_closed) throw StateError('资料库已关闭。');
     final result = await _db.transaction(action);
-    _changes.add(null);
+    _changes.add(tasksOnly);
     return result;
   }
 

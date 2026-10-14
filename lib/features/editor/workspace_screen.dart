@@ -21,7 +21,7 @@ import '../resources/writing_profile.dart';
 import '../transfer/transfer_screen.dart';
 
 final novelProvider = FutureProvider.family<Novel, String>((ref, id) {
-  ref.watch(repositoryChangesProvider);
+  ref.watch(repositoryContentChangesProvider);
   return ref.watch(repositoryProvider).getNovel(id);
 });
 

@@ -32,6 +32,39 @@ typedef ImageProviderFactory = Future<ImageProvider> Function(
   ModelConnection connection,
 );
 
+/// Saves streamed progress at most every [interval]: each save refreshes
+/// every task view, and a chapter streams thousands of deltas.
+// ponytail: no timer, so text from just before a pause shows with the next
+// delta (or [flush]); add a trailing timer if pauses leave views stale.
+final class _ProgressSaver {
+  _ProgressSaver(this._save);
+  static const interval = Duration(milliseconds: 250);
+  final Future<void> Function() _save;
+  final _sinceSave = Stopwatch();
+  bool _pending = false;
+
+  Future<void> save() async {
+    if (_sinceSave.isRunning && _sinceSave.elapsed < interval) {
+      _pending = true;
+      return;
+    }
+    await _write();
+  }
+
+  /// Saves what [save] held back, if anything.
+  Future<void> flush() async {
+    if (_pending) await _write();
+  }
+
+  Future<void> _write() {
+    _pending = false;
+    _sinceSave
+      ..reset()
+      ..start();
+    return _save();
+  }
+}
+
 final class TaskRunner {
   TaskRunner({
     required this.repository,
@@ -45,6 +78,10 @@ final class TaskRunner {
   final AssetLibrary? assetLibrary;
   final _running = <String, Future<void>>{};
   final _cancellations = <String, GenerationCancellation>{};
+
+  /// Streamed progress not yet saved, flushed before a stop marks the task
+  /// done: the runner's own final save is ignored once it is.
+  final _progress = <String, _ProgressSaver>{};
   bool _closing = false;
 
   Future<int> recoverInterrupted() {
@@ -82,6 +119,7 @@ final class TaskRunner {
       future.whenComplete(() {
         _running.remove(task.id);
         _cancellations.remove(task.id);
+        _progress.remove(task.id);
       }),
     );
     return task;
@@ -93,7 +131,7 @@ final class TaskRunner {
   }
 
   Future<void> cancel(String id) async {
-    final task = await repository.getTask(id);
+    final task = await repository.getTask(id, snapshots: false);
     if (task.isRemote) {
       final config = ModelConnection.fromJson(
         jsonObject(task.input['connection'], 'connection'),
@@ -106,10 +144,12 @@ final class TaskRunner {
         provider.close();
       }
       _cancellations[id]?.cancel();
+      await _progress[id]?.flush();
       await repository.acknowledgeRemoteCancellation(id);
       return;
     }
     _cancellations[id]?.cancel();
+    await _progress[id]?.flush();
     await repository.updateTask(id, status: TaskStatus.cancelled);
   }
 
@@ -209,6 +249,15 @@ final class TaskRunner {
         return;
       }
       GenerationFinished? finish;
+      // Completion and every failure path save the full text themselves.
+      final progress = _progress[task.id] = _ProgressSaver(
+        () => repository.updateTask(
+          task.id,
+          status: TaskStatus.running,
+          partialText: durableText,
+          reasoning: durableReasoning,
+        ),
+      );
       await for (final event in provider.generate(
         request,
         cancellation: cancel,
@@ -226,12 +275,7 @@ final class TaskRunner {
         }
         durableText = snapshot(durableText, text.toString());
         durableReasoning = snapshot(durableReasoning, reasoning.toString());
-        await repository.updateTask(
-          task.id,
-          status: TaskStatus.running,
-          partialText: durableText,
-          reasoning: durableReasoning,
-        );
+        await progress.save();
       }
       cancel.check();
       if (finish == null) {

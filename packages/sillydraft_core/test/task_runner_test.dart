@@ -343,4 +343,90 @@ void main() {
     expect(await repository.listBranches(novel.id), hasLength(1));
     expect(await repository.listProposals(novel.activeBranchId), isEmpty);
   });
+
+  test('task lists leave out request snapshots; the task keeps them', () async {
+    final task = await repository.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.writing,
+      input: {
+        'brief': '写下一段',
+        'preset': {'prompts': '大段预设'},
+        'request': {'messages': <Object>[]},
+      },
+    );
+    final listed = (await repository.listTasks(branchId: novel.activeBranchId))
+        .single;
+    expect(listed.input, {'brief': '写下一段'});
+    expect((await repository.getTask(task.id, snapshots: false)).input, {
+      'brief': '写下一段',
+    });
+    expect((await repository.getTask(task.id)).input['preset'], {
+      'prompts': '大段预设',
+    });
+  });
+
+  test(
+    'a streamed chapter is saved a few times a second, not per delta',
+    () async {
+      script = (_, _) async* {
+        for (var i = 0; i < 200; i++) {
+          yield const TextDelta('字');
+        }
+        yield const GenerationFinished('stop');
+      };
+      var saves = 0;
+      final counting = repository.changes.listen((_) => saves++);
+      addTearDown(counting.cancel);
+      final task = await generate();
+      final done = await runner.wait(task.id);
+      expect(done.partialText, '字' * 200);
+      expect(saves, lessThan(20));
+    },
+  );
+
+  test('stopping keeps text the save throttle held back', () async {
+    final reached = Completer<void>();
+    script = (_, cancel) async* {
+      yield const TextDelta('第一');
+      yield const TextDelta('第二');
+      yield const TextDelta('第三');
+      reached.complete();
+      final stopped = Completer<void>();
+      cancel.onCancel(stopped.complete);
+      await stopped.future;
+      cancel.check();
+    };
+    final task = await generate();
+    await reached.future;
+    await runner.cancel(task.id);
+    final done = await runner.wait(task.id);
+    expect(done.status, TaskStatus.cancelled);
+    expect(done.partialText, '第一第二第三');
+  });
+
+  test('task progress is a change, but not a content change', () async {
+    var all = 0, content = 0;
+    final a = repository.changes.listen((_) => all++);
+    final c = repository.contentChanges.listen((_) => content++);
+    addTearDown(a.cancel);
+    addTearDown(c.cancel);
+    final task = await repository.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.writing,
+      input: {'brief': '写下一段'},
+    );
+    await repository.updateTask(
+      task.id,
+      status: TaskStatus.running,
+      partialText: '半句',
+    );
+    await repository.saveChapter(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
+      content: ManuscriptContent.plainText('改过的原文'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect((all, content), (3, 1));
+  });
 }

@@ -48,21 +48,65 @@ extension TaskOperations on StoryRepository {
       ],
     );
     return getTask(id);
-  });
+  }, tasksOnly: true);
 
-  Future<GenerationTask> getTask(String id) async => _task(
-    await _one('SELECT * FROM generation_tasks WHERE id = ?', [id], '生成任务'),
-  );
+  /// With [snapshots] false the input leaves out the frozen request
+  /// snapshots, as in [listTasks].
+  Future<GenerationTask> getTask(String id, {bool snapshots = true}) async {
+    if (snapshots) {
+      return _task(
+        await _one('SELECT * FROM generation_tasks WHERE id = ?', [id], '生成任务'),
+      );
+    }
+    final listed = await _listed(
+      await _rows('SELECT $_taskColumns FROM generation_tasks WHERE id = ?', [
+        id,
+      ]),
+    );
+    if (listed.isEmpty) throw const StoryNotFound('生成任务');
+    return listed.single;
+  }
 
+  /// Tasks without the frozen request snapshots in their input
+  /// ([_snapshotKeys]): task views re-read this list on every repository
+  /// change, and one preset snapshot can be most of a megabyte. Running or
+  /// inspecting a task reads it whole with [getTask].
   Future<List<GenerationTask>> listTasks({
     String? branchId,
     bool activeOnly = false,
-  }) async => (await _rows(
-    '''SELECT * FROM generation_tasks WHERE (? IS NULL OR branch_id = ?)
+  }) async => _listed(
+    await _rows(
+      '''SELECT $_taskColumns FROM generation_tasks WHERE (? IS NULL OR branch_id = ?)
       AND (? = 0 OR status IN ('queued','running')) ORDER BY created_at DESC, id''',
-    [branchId, branchId, activeOnly ? 1 : 0],
-  )).map(_task).toList();
+      [branchId, branchId, activeOnly ? 1 : 0],
+    ),
+  );
 
+  /// [rows] as tasks with their trimmed inputs, trimming only inputs not yet
+  /// in [_listedInputs]. A task deleted in between is left out.
+  Future<List<GenerationTask>> _listed(List<Map<String, Object?>> rows) async {
+    final missing = [
+      for (final row in rows)
+        if (!_listedInputs.containsKey(row['id'])) row['id'],
+    ];
+    for (var i = 0; i < missing.length; i += 500) {
+      final ids = missing.skip(i).take(500).toList();
+      for (final row in await _rows(
+        'SELECT id, $_listedInput AS input_json FROM generation_tasks '
+        'WHERE id IN (${List.filled(ids.length, '?').join(',')})',
+        ids,
+      )) {
+        _listedInputs[row['id'] as String] = row['input_json'] as String;
+      }
+    }
+    return [
+      for (final row in rows)
+        if (_listedInputs[row['id']] case final input?)
+          _task({...row, 'input_json': input}),
+    ];
+  }
+
+  /// Returns the task without its request snapshots, like [listTasks].
   Future<GenerationTask> updateTask(
     String id, {
     required TaskStatus status,
@@ -71,7 +115,7 @@ extension TaskOperations on StoryRepository {
     String? error,
     Map<String, dynamic>? result,
   }) => _write(() async {
-    final old = await getTask(id);
+    final old = await getTask(id, snapshots: false);
     if (!old.isActive) return old;
     if (old.status == TaskStatus.running && status == TaskStatus.queued) {
       throw StateError('不能将运行中任务重新排队');
@@ -88,8 +132,8 @@ extension TaskOperations on StoryRepository {
         id,
       ],
     );
-    return getTask(id);
-  });
+    return getTask(id, snapshots: false);
+  }, tasksOnly: true);
 
   Future<int> recoverInterruptedTasks() => _write(() async {
     final rows = await _rows(
@@ -223,12 +267,35 @@ extension TaskOperations on StoryRepository {
   }
 }
 
-GenerationTask _task(Map<String, Object?> row) => GenerationTask(
+/// Input keys holding frozen request snapshots: what replays or inspects one
+/// task, and most of its size.
+const _snapshotKeys = [
+  'preset',
+  'writingPreset',
+  'agentPreset',
+  'card',
+  'compiled',
+  'request',
+  'outputRegex',
+  'chapterSnapshot',
+  'loreSnapshot',
+  'skills',
+  'originalContent',
+  'writingContext',
+  'mvu',
+];
+const _taskColumns =
+    'id, branch_id, kind, status, chapter_id, base_revision_id, '
+    'partial_text, reasoning, error, result_json, retry_of, created_at, updated_at';
+final _listedInput =
+    'json_remove(input_json, ${_snapshotKeys.map((k) => "'\$.$k'").join(', ')})';
+
+GenerationTask _task(Map<String, Object?> row) => GenerationTask.fromStoredJson(
   id: row['id'] as String,
   branchId: row['branch_id'] as String,
   kind: TaskKind.values.byName(row['kind'] as String),
   status: TaskStatus.values.byName(row['status'] as String),
-  input: jsonDecode(row['input_json'] as String) as Map<String, dynamic>,
+  inputJson: row['input_json'] as String,
   partialText: row['partial_text'] as String,
   reasoning: row['reasoning'] as String,
   error: row['error'] as String,
