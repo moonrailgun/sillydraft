@@ -20,7 +20,11 @@ const htmlBlockOrigin = 'https://render.sillydraft.invalid/';
 /// have no backend yet and show the source instead.
 bool get htmlBlocksSupported =>
     !kIsWeb &&
-    (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) &&
+    const {
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.macOS,
+    }.contains(defaultTargetPlatform) &&
     WebViewPlatform.instance != null;
 
 /// What one block needs to render; also what a test double receives.
@@ -41,16 +45,22 @@ final class HtmlBlockRequest {
 final htmlBlockBuilderProvider =
     Provider<Widget Function(HtmlBlockRequest request)?>((_) => null);
 
-/// Delivers `eventEmit` between the blocks of one page, as 酒馆助手 relays
-/// events between the iframes of a chat.
+/// Delivers `eventEmit` between the blocks of one page. In 酒馆助手 every
+/// iframe's listeners sit on SillyTavern's one `eventSource`, so each runs
+/// once per emit (JS-Slash-Runner `src/function/event.ts`). A page here has
+/// already run its own listeners, so members get the emitting [source] (its
+/// bridge) to skip their own events.
 final class HtmlEventBus {
-  final _members = <Object, void Function(String, List<Object?>)>{};
-  void join(Object member, void Function(String, List<Object?>) deliver) =>
-      _members[member] = deliver;
+  final _members =
+      <Object, void Function(String, List<Object?>, Object? source)>{};
+  void join(
+    Object member,
+    void Function(String event, List<Object?> args, Object? source) deliver,
+  ) => _members[member] = deliver;
   void leave(Object member) => _members.remove(member);
   void broadcast(String event, List<Object?> args, {Object? source}) {
-    for (final entry in _members.entries.toList()) {
-      if (!identical(entry.key, source)) entry.value(event, args);
+    for (final deliver in _members.values.toList()) {
+      deliver(event, args, source);
     }
   }
 }
@@ -171,6 +181,15 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
       if (!mounted || generation != _generation) return;
       await controller.loadHtmlString(document, baseUrl: htmlBlockOrigin);
       if (!mounted || generation != _generation) return;
+      // Joined only once mounted and current: a block disposed while its web
+      // view was being set up would otherwise stay on the bus for good.
+      widget.bus?.join(this, (event, args, source) {
+        // Emitted by this page, whose own listeners already ran.
+        if (source != null && identical(source, widget.bridge)) return;
+        _run(
+          'window.__sdDispatch && window.__sdDispatch(${jsonEncode(event)}, ${jsonEncode(args)});',
+        );
+      });
       setState(() {
         _controller = controller;
         _loading = false;
@@ -292,15 +311,6 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
         }
       }),
     );
-    widget.bus?.join(this, (event, args) {
-      unawaited(
-        controller
-            .runJavaScript(
-              'window.__sdDispatch && window.__sdDispatch(${jsonEncode(event)}, ${jsonEncode(args)});',
-            )
-            .catchError((Object _) {}),
-      );
-    });
     return controller;
   }
 

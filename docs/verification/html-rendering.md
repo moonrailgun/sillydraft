@@ -26,7 +26,7 @@
 | `getLastMessageId`、`getCurrentMessageId`、`getIframeName`、`getMessageId` | 同步；名称格式 `TH-message--楼层--序号` |
 | `getVariables`/`replaceVariables`/`updateVariablesWith`/`insertOrAssignVariables`/`insertVariables`/`deleteVariable`/`getAllVariables` | `chat` 与 `message` 对应分支在该章的版本化变量，`global` 对应全局变量，`character`/`preset`/`script`/`extension` 存入作品设置；非字符串值按 JSON 存取 |
 | `substitudeMacros` | 页面内处理 `{{user}}`、`{{char}}`、`{{lastMessageId}}`、`{{getvar}}`、`{{getglobalvar}}`、`{{newline}}`、`{{noop}}`、`{{trim}}` |
-| `eventOn`/`eventOnce`/`eventMakeFirst`/`eventMakeLast`/`eventOnButton`/`eventRemove*`/`eventClear*`/`eventEmit`/`eventEmitAndWait`/`eventWaitOnce` | 页面内事件表；`eventEmit` 经宿主转发给同一页面的其他界面。宿主不产生 ST 生成/消息事件 |
+| `eventOn`/`eventOnce`/`eventMakeFirst`/`eventMakeLast`/`eventOnButton`/`eventRemove*`/`eventClear*`/`eventEmit`/`eventEmitAndWait`/`eventWaitOnce` | 页面内事件表；`eventEmit` 经宿主转发给同一页面的其他界面，每个监听每次只触发一次（发送方自己的监听不会再收到一遍，同酒馆助手共用 `eventSource` 的行为）。宿主不产生 ST 生成/消息事件 |
 | `initializeGlobal`/`waitGlobalInitialized` | 单个界面内有效，不跨界面共享对象 |
 | `triggerSlash` | 见下表 |
 | `toastr.*` | 提示条；`alert`/`confirm`/`prompt` 由网页视图回调弹出对话框 |
