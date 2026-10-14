@@ -36,11 +36,7 @@ final _revisionPresentationProvider = FutureProvider.autoDispose
           .watch(repositoryProvider)
           .presentRevision(key.revisionId, branchId: key.branchId),
     );
-typedef _ReaderBook = ({
-  StorySnapshot story,
-  List<ManuscriptPresentation> pages,
-  DisplayContext display,
-});
+typedef _ReaderBook = ({StorySnapshot story, DisplayContext display});
 final _readerStoryProvider = FutureProvider.family<_ReaderBook, String>((
   ref,
   branchId,
@@ -49,18 +45,7 @@ final _readerStoryProvider = FutureProvider.family<_ReaderBook, String>((
   // ST 1.19.0 (06bde939), regex/index.js: changing rules reloads current chat.
   // DisplayContext is cached by profile, so reading-progress writes reuse pages.
   final display = await ref.watch(repositoryProvider).displayContext(branchId);
-  final pages = await Future.wait(
-    story.chapters.map(
-      (s) => ref.watch(
-        _revisionPresentationProvider((
-          revisionId: s.revisionId,
-          branchId: branchId,
-          display: display,
-        )).future,
-      ),
-    ),
-  );
-  return (story: story, pages: pages, display: display);
+  return (story: story, display: display);
 });
 
 /// Characters a reader gets through per minute, for time-left estimates.
@@ -117,6 +102,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   late final Ticker _ticker = createTicker(_autoScrollTick);
   Timer? _timer, _saveStyle;
   int _index = 0;
+
+  /// The chapter the page last showed, null while its presentation loads.
+  int? _shown;
   ReaderStyle _style = const ReaderStyle();
   bool _initialized = false;
   bool _displayRules = true;
@@ -242,7 +230,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       });
     }
     _awake(_style.keepAwake);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _whenShown(_index, () {
       if (mounted && _scroll.hasClients) {
         _scroll.jumpTo(
           _scroll.position.maxScrollExtent *
@@ -309,6 +297,14 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     return _document?.sourceOffset(offset) ?? offset;
   }
 
+  /// Runs [action] after the first frame that shows chapter [index], whose
+  /// presentation may still be loading when it is opened.
+  void _whenShown(int index, VoidCallback action) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _index != index) return;
+        _shown == index ? action() : _whenShown(index, action);
+      });
+
   /// Opens chapter [index], at its start, at [offset] in its text, or at its
   /// end when paging backwards into it.
   void _go(int index, {int offset = 0, bool atEnd = false}) {
@@ -320,7 +316,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     widget.onChapterChanged?.call(_story!.chapters[index]);
     if (_scroll.hasClients) _scroll.jumpTo(0);
     if (offset > 0 || atEnd) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      _whenShown(index, () {
         if (!mounted || !_scroll.hasClients) return;
         if (atEnd) {
           _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -701,11 +697,28 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       }
       _index = _index.clamp(0, story.chapters.length - 1);
       final chapter = story.chapters[_index];
+      // Only the chapter on screen is presented: presenting every chapter
+      // as the book opened ran each one's display regex at once.
+      final page = ref.watch(
+        _revisionPresentationProvider((
+          revisionId: chapter.revisionId,
+          branchId: widget.branchId,
+          display: book.display,
+        )),
+      );
+      final presentation = page.value;
+      if (presentation == null) {
+        _shown = null;
+        return page.hasError
+            ? ErrorPane(message: page.error.toString())
+            : const Center(child: FCircularProgress());
+      }
+      _shown = _index;
       final htmlEnabled =
           ref.watch(settingProvider('html')).value?['render'] != false;
       _document = ReaderDocument.build(
         _displayRules
-            ? book.pages[_index]
+            ? presentation
             : ManuscriptPresentation.identity(chapter.content),
         fontSize: _style.fontSize,
         paragraphSpacing: _style.paragraphSpacing,
@@ -800,7 +813,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                             ),
                           ),
                         ),
-                      _topBar(story, book, chapter, background, ui),
+                      _topBar(story, presentation, chapter, background, ui),
                       _bottomBar(story, background, ui),
                       if (_ticker.isActive)
                         Positioned(
@@ -1257,7 +1270,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   Widget _topBar(
     StorySnapshot story,
-    _ReaderBook book,
+    ManuscriptPresentation presentation,
     Chapter chapter,
     Color background,
     FThemeData ui,
@@ -1310,7 +1323,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                   () => _bookmarks(story),
                   icon: FLucideIcons.bookmark,
                 ),
-                if (book.pages[_index].content != chapter.content)
+                if (presentation.content != chapter.content)
                   menuEntry(
                     _displayRules ? '显示原正文' : '应用显示正则',
                     () => setState(() => _displayRules = !_displayRules),
