@@ -71,6 +71,9 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   /// here, which keeps the stored choice.
   bool? _toolsOpen, _outlineOpen;
 
+  /// The latest request for the assistant from the reader.
+  AgentRequest? _agentRequest;
+
   // Sections are built on first visit and then kept alive, so a half-typed
   // message or a scroll position survives switching and nothing runs early.
   late final _visited = {_section};
@@ -130,6 +133,21 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       Navigator.push(context, MaterialPageRoute<void>(builder: (_) => page));
 
   void _edit(Chapter chapter) => _push(EditorScreen(chapter: chapter));
+
+  /// Hands a selection to the assistant, which draws it with its image tool.
+  /// A reader opened on top of the workspace closes so the reply is in view.
+  void _illustrate(Chapter chapter, String selection) {
+    final here = ModalRoute.of(context);
+    Navigator.popUntil(context, (route) => route == here);
+    setState(
+      () => _agentRequest = AgentRequest(
+        '为这段正文生成一张插图：\n\n${selection.trim()}',
+        chapterId: chapter.id,
+      ),
+    );
+    _go(WorkspaceSection.agent);
+  }
+
   Future<void> _addChapter(StorySnapshot story) async {
     // The number comes from the order; only the name is asked for.
     final name = await askText(
@@ -193,6 +211,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         key: ValueKey('agent:$branchKey'),
         branchId: branchKey,
         focusChapterId: wide ? selected?.id : null,
+        request: _agentRequest,
       ),
       WorkspaceSection.gallery => IllustrationGallery(
         key: ValueKey('gallery:$branchKey'),
@@ -294,8 +313,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               key: const Key('open-reader'),
               icon: FLucideIcons.bookOpen,
               tooltip: '阅读',
-              onPress: () =>
-                  _push(ReaderScreen(branchId: branchKey, onEdit: _edit)),
+              onPress: () => _push(
+                ReaderScreen(
+                  branchId: branchKey,
+                  onEdit: _edit,
+                  onIllustrate: _illustrate,
+                ),
+              ),
             ),
             MenuAction(
               header: true,
@@ -497,6 +521,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             if (_selected != chapter.id) setState(() => _selected = chapter.id);
           },
           onEdit: _edit,
+          onIllustrate: _illustrate,
         );
 
   /// The table of contents. On wide screens picking a chapter shows it on the
@@ -608,6 +633,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                     branchId: story.branch.id,
                     chapterId: chapter.id,
                     onEdit: _edit,
+                    onIllustrate: _illustrate,
                   ),
                 );
               }

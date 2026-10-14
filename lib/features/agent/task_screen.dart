@@ -97,14 +97,10 @@ class TaskScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             _action(
               FButton(
-                onPress: () => Navigator.push(
+                onPress: () => showIllustrationDetail(
                   context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => IllustrationDetail(
-                      assetId: assetId,
-                      branchId: task.branchId,
-                    ),
-                  ),
+                  assetId: assetId,
+                  branchId: task.branchId,
                 ),
                 child: const Text('查看插画与使用方式'),
               ),

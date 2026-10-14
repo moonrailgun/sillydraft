@@ -12,6 +12,41 @@ final class IllustrationService {
   final StoryRepository repository;
   final TaskRunner runner;
 
+  /// What the author last chose on the illustration page for [connection]:
+  /// size, quality, extra parameters and download hosts.
+  Future<Map<String, dynamic>> savedDefaults(
+    ModelConnection connection,
+  ) async =>
+      await repository.getSetting(
+        'imageDefaults/${connection.id}/${Uri.encodeComponent(connection.model)}',
+      ) ??
+      (connection.protocol != ModelProtocol.comfyUI
+          ? await repository.getSetting('imageDefaults/${connection.id}')
+          : null) ??
+      {};
+
+  /// [prompt] with [saved] defaults, as the illustration page would send it.
+  static ImageRequest requestFrom(
+    ModelConnection connection,
+    String prompt,
+    Map<String, dynamic> saved,
+  ) {
+    final comfy = connection.protocol == ModelProtocol.comfyUI,
+        novelAI = connection.protocol == ModelProtocol.novelAI,
+        size = saved['size'] as String? ?? '',
+        quality = saved['quality'] as String? ?? '';
+    return ImageRequest(
+      prompt: prompt,
+      parameters: {
+        ...(saved['parameters'] as Map? ?? {}).cast<String, dynamic>(),
+        if (!comfy && size.isNotEmpty) 'size': size,
+        if (!comfy && !novelAI && quality.isNotEmpty) 'quality': quality,
+      },
+      allowedDownloadHosts: (saved['allowedDownloadHosts'] as List? ?? [])
+          .cast<String>(),
+    );
+  }
+
   /// [connection] with its ComfyUI workflow re-read from the server, so a
   /// run uses the nodes the author last saved there.
   Future<ModelConnection> withLatestWorkflow(ModelConnection connection) async {

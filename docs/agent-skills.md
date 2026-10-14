@@ -52,7 +52,7 @@ disable-model-invocation: true # 可选：只允许手动 /villain-voice 启用
 | `continuity-check` 设定与时间线连续性检查 | 时间、地点、物品、谁知道什么 |
 | `next-chapter-plan` 下一章规划 | 当前局面、三种方向、章节节拍 |
 
-内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。
+内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。配置了生图模型时助手另有 `generate_image`，内置技能不依赖它。
 
 ## 注意
 

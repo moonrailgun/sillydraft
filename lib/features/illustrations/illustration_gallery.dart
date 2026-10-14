@@ -143,12 +143,10 @@ class _GalleryState extends ConsumerState<IllustrationGallery> {
     if (widget.picker) {
       Navigator.pop(context, asset);
     } else {
-      Navigator.push(
+      showIllustrationDetail(
         context,
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              IllustrationDetail(assetId: asset.id, branchId: widget.branchId),
-        ),
+        assetId: asset.id,
+        branchId: widget.branchId,
       );
     }
   }

@@ -126,6 +126,37 @@ const _editingTools = <Map<String, dynamic>>[
   },
 ];
 
+/// NovelAI always takes a negative prompt; another engine only when the
+/// author already sends one, which shows the endpoint accepts it.
+bool _takesNegative(Map<String, dynamic> image) =>
+    (image['connection'] as Map)['protocol'] == ModelProtocol.novelAI.name ||
+    ((image['defaults'] as Map?)?['parameters'] as Map?)?.containsKey(
+          'negative_prompt',
+        ) ==
+        true;
+
+Map<String, dynamic> _imageTool(Map<String, dynamic> image) => {
+  'type': 'function',
+  'function': {
+    'name': 'generate_image',
+    'description': '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
+        if (_takesNegative(image))
+          'negative_prompt': {
+            'type': 'string',
+            'description': '负面提示词，填写时替换作者默认的负面提示词',
+          },
+        'name': {'type': 'string', 'description': '图片的简短名称'},
+      },
+      'required': ['prompt', 'name'],
+      'additionalProperties': false,
+    },
+  },
+};
+
 extension _AgentExecution on TaskRunner {
   Future<void> _executeAgent(
     GenerationTask task,
@@ -147,7 +178,12 @@ extension _AgentExecution on TaskRunner {
       for (final s in input['skills'] as List? ?? const [])
         AgentSkill.fromJson(s as Map<String, dynamic>),
     ];
-    final tools = [..._editingTools, ...skillTools(skills)];
+    final tools = [
+      ..._editingTools,
+      if (input['image'] case final Map<String, dynamic> image)
+        _imageTool(image),
+      ...skillTools(skills),
+    ];
     for (var round = 0; round < 8; round++) {
       cancel.check();
       if (estimateTokens(jsonEncode(messages)) +
@@ -391,6 +427,91 @@ extension _AgentExecution on TaskRunner {
         'accepted': false,
         'message': '资料建议已保存，等待作者逐条审阅。',
       };
+    }
+    if (call.name == 'generate_image') {
+      final image = task.input['image'];
+      final prompt = args['prompt'], name = args['name'];
+      final negative = args['negative_prompt'];
+      if (image is! Map<String, dynamic> ||
+          args.length != (args.containsKey('negative_prompt') ? 3 : 2) ||
+          (negative != null &&
+              (negative is! String || !_takesNegative(image))) ||
+          prompt is! String ||
+          name is! String ||
+          name.trim().isEmpty ||
+          name.length > 100) {
+        throw const FormatException('参数无效');
+      }
+      final connection = ModelConnection.fromJson(
+        jsonObject(image['connection'], 'image.connection'),
+      );
+      final saved = (image['defaults'] as Map? ?? {}).cast<String, dynamic>();
+      final request = IllustrationService.requestFrom(connection, prompt, {
+        ...saved,
+        if (negative != null)
+          'parameters': {
+            ...?saved['parameters'] as Map?,
+            'negative_prompt': negative,
+          },
+      });
+      final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
+      final answer = Completer<bool>();
+      _imageConfirmations[task.id] = (id: confirmationId, answer: answer);
+      final removeConfirmation = cancel.onCancel(() {
+        if (!answer.isCompleted) answer.complete(false);
+      });
+      bool approved;
+      try {
+        await repository.updateTask(
+          task.id,
+          status: TaskStatus.running,
+          result: {
+            'imageConfirmation': {
+              'id': confirmationId,
+              'name': name,
+              'prompt': request.prompt,
+              'negativePrompt': ?request.parameters['negative_prompt'],
+            },
+          },
+        );
+        approved = await answer.future;
+      } finally {
+        removeConfirmation();
+        _imageConfirmations.remove(task.id);
+        await repository.updateTask(
+          task.id,
+          status: TaskStatus.running,
+          result: {'imageConfirmation': null},
+        );
+      }
+      cancel.check();
+      if (!approved) {
+        return {'cancelled': true, 'message': '作者已取消本次生图，未调用生图引擎。请勿自动重试。'};
+      }
+      final child =
+          await IllustrationService(
+            repository: repository,
+            runner: this,
+          ).generate(
+            branchId: task.branchId,
+            connection: connection,
+            name: name,
+            request: request,
+            chapterId: image['chapterId'] as String?,
+          );
+      final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
+      try {
+        final result = await wait(child.id);
+        cancel.check();
+        return {
+          'taskId': child.id,
+          'status': result.status.name,
+          'assetId': ?result.result['assetId'],
+          if (result.error.isNotEmpty) 'error': result.error,
+        };
+      } finally {
+        remove();
+      }
     }
     if (call.name == 'list_chapters') {
       if (args.isNotEmpty) throw const FormatException('list_chapters 无参数');

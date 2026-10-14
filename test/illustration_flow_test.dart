@@ -8,6 +8,7 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/features/illustrations/asset_image.dart';
+import 'package:sillydraft/features/illustrations/illustration_detail.dart';
 import 'package:sillydraft/features/illustrations/illustration_gallery.dart';
 import 'package:sillydraft/features/illustrations/illustration_request.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -300,4 +301,65 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('the detail modal shows generation info beside the image on '
+      'wide screens and behind 图片详情 on phones', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final novel = await services.repository.createNovel(title: '插图详情');
+    final asset = await services.repository.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '天台',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 100,
+        height: 100,
+        byteLength: 200,
+      ),
+      metadata: {'prompt': '风中交叠的手'},
+    );
+    Future<void> show(Size size) async {
+      tester.view.physicalSize = size;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [servicesProvider.overrideWithValue(services)],
+          child: testHost(
+            Builder(
+              builder: (context) => FButton(
+                onPress: () => showIllustrationDetail(
+                  context,
+                  assetId: asset.id,
+                  branchId: novel.activeBranchId,
+                ),
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+    }
+
+    await show(const Size(1200, 800));
+    expect(find.text('风中交叠的手'), findsOneWidget);
+    expect(findAction('图片详情'), findsNothing);
+    await tester.tap(findAction('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.text('风中交叠的手'), findsNothing);
+    expect(find.text('打开'), findsOneWidget);
+
+    await show(const Size(390, 844));
+    expect(find.text('风中交叠的手'), findsNothing);
+    await tester.tap(findAction('图片详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('风中交叠的手'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

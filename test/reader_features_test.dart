@@ -163,6 +163,26 @@ void main() {
     },
   );
 
+  testWidgets('selection takes the page colour, not the app theme', (
+    tester,
+  ) async {
+    // A light page in a dark app: the app's selection colour is near white.
+    await _open(tester, mode: ThemeMode.dark, style: {'autoNight': false});
+    final page = find.byKey(const Key('reader-page'));
+    final text = find.descendant(of: page, matching: find.byType(RichText));
+    expect(
+      DefaultSelectionStyle.of(tester.element(text.first)).selectionColor,
+      ReaderTheme.paper.selection,
+    );
+    final painter = tester
+        .widgetList<CustomPaint>(
+          find.descendant(of: page, matching: find.byType(CustomPaint)),
+        )
+        .map((p) => p.painter)
+        .firstWhere((p) => '${p.runtimeType}' == '_LineSelectionPainter');
+    expect((painter as dynamic).color, ReaderTheme.paper.selection);
+  });
+
   testWidgets('keyboard pages across chapters', (tester) async {
     await _open(tester);
     final scroll = _scroll(tester);

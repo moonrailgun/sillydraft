@@ -1,8 +1,17 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show BoxHeightStyle;
 
+import 'package:flutter/cupertino.dart'
+    show
+        CupertinoTextSelectionToolbar,
+        CupertinoTextSelectionToolbarButton,
+        CupertinoTheme,
+        CupertinoThemeData;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show MaterialPageRoute, SelectionArea;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
+import 'package:flutter/material.dart'
+    show MaterialPageRoute, SelectionArea, SelectionAreaState;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -69,6 +78,7 @@ class ReaderScreen extends ConsumerStatefulWidget {
     this.chapterId,
     this.onChapterChanged,
     this.onEdit,
+    this.onIllustrate,
   });
   final String branchId;
   final bool embedded;
@@ -79,6 +89,10 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
   /// Shows an edit action for the chapter being read.
   final ValueChanged<Chapter>? onEdit;
+
+  /// Offers 生图 on selected text: the chapter and the selection go to the
+  /// assistant, which draws it.
+  final void Function(Chapter chapter, String selection)? onIllustrate;
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderState();
 }
@@ -111,7 +125,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   /// Whether the top and bottom bars are showing.
   bool _chrome = true;
-  bool _hasSelection = false;
+  final _selectionArea = GlobalKey<SelectionAreaState>();
+  final _menu = ContextMenuController();
+  String _selected = '';
+
+  /// Whether the assistant and an image engine are configured, for 生图.
+  bool _canIllustrate = false;
+  bool get _hasSelection => _selected.isNotEmpty;
   Duration? _lastTick;
 
   /// Chapter picked on the progress slider but not yet opened.
@@ -120,6 +140,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   // Tap detection that does not compete with text selection gestures.
   Offset? _down;
   DateTime? _downAt;
+  bool _primaryDown = false;
   bool _consumed = false;
 
   StorySnapshot? _story;
@@ -168,6 +189,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   void dispose() {
     _timer?.cancel();
     _saveStyle?.cancel();
+    _menu.remove();
     _ticker.dispose();
     _services.unregisterDraft(this);
     _scroll.dispose();
@@ -428,11 +450,30 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   void _pointerDown(PointerDownEvent event) {
     _down = event.position;
     _downAt = DateTime.now();
+    _primaryDown = event.buttons == kPrimaryButton;
+    _menu.remove();
   }
 
   /// A quick tap that is not part of selecting text, scrolling or pressing a
   /// button shows or hides the bars.
   void _pointerUp(PointerUpEvent event) {
+    // A mouse leaves no menu after selecting, unlike touch; offer it at the
+    // pointer once the selection has settled.
+    if (_primaryDown &&
+        !_consumed &&
+        [
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+        ].contains(event.kind)) {
+      scheduleMicrotask(() {
+        final region = _selectionArea.currentState?.selectableRegion;
+        if (!mounted || !_hasSelection || region == null) return;
+        _menu.show(
+          context: context,
+          contextMenuBuilder: (_) => _selectionMenu(region),
+        );
+      });
+    }
     final consumed = _consumed;
     _consumed = false;
     final down = _down, at = _downAt;
@@ -448,6 +489,55 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       return;
     }
     _showChrome(!_chrome);
+  }
+
+  /// The selection's menu, a bubble above the selection (below it when there
+  /// is no room): the platform's items (copy, select all…) and 生图, greyed
+  /// out until the assistant and an image engine are configured.
+  Widget _selectionMenu(SelectableRegionState region) {
+    final illustrate = widget.onIllustrate;
+    // Anchored to the selection rather than the pointer, so the bubble never
+    // covers the selected text.
+    final anchors = TextSelectionToolbarAnchors.fromSelection(
+      renderBox: region.context.findRenderObject()! as RenderBox,
+      startGlyphHeight: region.startGlyphHeight,
+      endGlyphHeight: region.endGlyphHeight,
+      selectionEndpoints: region.selectionEndpoints,
+    );
+    // The bubble follows the page, not the system: a light one on a night
+    // page glares.
+    return CupertinoTheme(
+      data: CupertinoThemeData(
+        brightness: _pageTheme.dark ? Brightness.dark : Brightness.light,
+      ),
+      child: CupertinoTextSelectionToolbar(
+        anchorAbove: anchors.primaryAnchor,
+        anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+        children: [
+          for (final item in [
+            for (final item in region.contextMenuButtonItems)
+              item.copyWith(
+                onPressed: () {
+                  ContextMenuController.removeAny();
+                  item.onPressed?.call();
+                },
+              ),
+            if (illustrate != null)
+              ContextMenuButtonItem(
+                label: '生图',
+                onPressed: _canIllustrate
+                    ? () {
+                        ContextMenuController.removeAny();
+                        final chapter = _story?.chapters[_index];
+                        if (chapter != null) illustrate(chapter, _selected);
+                      }
+                    : null,
+              ),
+          ])
+            CupertinoTextSelectionToolbarButton.buttonItem(buttonItem: item),
+        ],
+      ),
+    );
   }
 
   /// Wraps controls inside the page so tapping them does not also toggle the bars.
@@ -794,12 +884,15 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                           style: TextStyle(color: foreground),
                           child: IconTheme.merge(
                             data: IconThemeData(color: foreground),
-                            child: _reading(
-                              story,
-                              chapter,
-                              foreground,
-                              before,
-                              total,
+                            child: DefaultSelectionStyle(
+                              selectionColor: theme.selection,
+                              child: _reading(
+                                story,
+                                chapter,
+                                foreground,
+                                before,
+                                total,
+                              ),
                             ),
                           ),
                         ),
@@ -973,6 +1066,11 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final faint = foreground.withValues(alpha: .5);
     final small = TextStyle(color: faint, fontSize: 12);
     final last = _index == story.chapters.length - 1;
+    _canIllustrate = ['editor', 'image'].every(
+      (role) => ref.watch(
+        roleConnectionProvider(role).select((c) => c.value != null),
+      ),
+    );
     // Show inline generation while preserving any saved text. Tasks started
     // in the candidate editor keep their existing review flow.
     final tasks = ref.watch(tasksProvider(widget.branchId)).value ?? const [];
@@ -1039,8 +1137,12 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                   onPointerDown: _pointerDown,
                   onPointerUp: _pointerUp,
                   child: SelectionArea(
-                    onSelectionChanged: (content) =>
-                        _hasSelection = content?.plainText.isNotEmpty == true,
+                    key: _selectionArea,
+                    onSelectionChanged: (content) {
+                      _selected = content?.plainText ?? '';
+                      if (_selected.isEmpty) _menu.remove();
+                    },
+                    contextMenuBuilder: (_, region) => _selectionMenu(region),
                     child: Align(
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
@@ -1071,13 +1173,21 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                               ),
                               SizedBox(height: _style.fontSize * 1.5),
                               if (hasText || draft == null)
-                                Text.rich(
-                                  _document!.span,
-                                  key: _textKey,
-                                  textAlign: _style.justify
-                                      ? TextAlign.justify
-                                      : TextAlign.start,
-                                  style: _style.body(foreground),
+                                CustomPaint(
+                                  painter: _LineSelectionPainter(
+                                    () => _paragraph,
+                                    _pageTheme.selection,
+                                  ),
+                                  child: Text.rich(
+                                    _document!.span,
+                                    key: _textKey,
+                                    textAlign: _style.justify
+                                        ? TextAlign.justify
+                                        : TextAlign.start,
+                                    style: _style.body(foreground),
+                                    // Painted line by line underneath instead.
+                                    selectionColor: const Color(0x00000000),
+                                  ),
                                 ),
                               if (draft != null)
                                 ChapterDraft(
@@ -1598,4 +1708,34 @@ class _ClockState extends State<_Clock> {
       style: widget.style,
     );
   }
+}
+
+/// Paints the reader's selection a full line tall, under the text. Flutter's
+/// own highlight follows each run's font, so emoji, Latin punctuation and CJK
+/// sit at different heights and only the glyphs are covered.
+class _LineSelectionPainter extends CustomPainter {
+  _LineSelectionPainter(this.paragraph, this.color);
+  final RenderParagraph? Function() paragraph;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final text = paragraph();
+    if (text == null) return;
+    final paint = Paint()..color = color;
+    // ponytail: `selections` is test-only API; the alternative is
+    // re-implementing SelectionArea's selection tracking.
+    // ignore: invalid_use_of_visible_for_testing_member
+    for (final selection in text.selections) {
+      for (final box in text.getBoxesForSelection(
+        selection,
+        boxHeightStyle: BoxHeightStyle.max,
+      )) {
+        canvas.drawRect(box.toRect(), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LineSelectionPainter old) => old.color != color;
 }

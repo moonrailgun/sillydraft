@@ -20,6 +20,10 @@ enum ReaderTheme {
   /// Faded text for italics, as ST greys them: the text colour taken a
   /// third of the way to the page.
   Color get italic => Color.lerp(foreground, background, .35)!;
+
+  /// Selected text, tinted with the page's own text colour: the app
+  /// theme's colour was near white on a light page in dark mode.
+  Color get selection => foreground.withValues(alpha: .25);
 }
 
 /// Typefaces readers usually choose between. Each lists the common names of

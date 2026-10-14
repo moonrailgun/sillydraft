@@ -446,6 +446,15 @@ final settingProvider = FutureProvider.family<Map<String, dynamic>?, String>((
   return ref.watch(repositoryProvider).getSetting(key);
 });
 
+/// The connection a model role uses, or null while none is configured.
+final roleConnectionProvider = FutureProvider.family<ModelConnection?, String>((
+  ref,
+  role,
+) {
+  ref.watch(repositoryContentChangesProvider);
+  return ref.watch(servicesProvider).connectionFor(role);
+});
+
 /// The editor also needs tool calls: OpenAI-compatible or a local CLI.
 bool connectionServes(ModelConnection connection, String role) =>
     switch (role) {

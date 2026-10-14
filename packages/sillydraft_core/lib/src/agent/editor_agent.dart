@@ -12,6 +12,7 @@ import '../st/prompt_compiler.dart';
 import '../st/world_book_engine.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
+import 'illustration_service.dart';
 import 'skills.dart';
 
 final class EditorAgent {
@@ -43,6 +44,14 @@ final class EditorAgent {
     /// The chapter the author is looking at beside the chat, which "this
     /// chapter" means. Ignored when it lies beyond the conversation's position.
     String? focusChapterId,
+
+    /// The image engine the assistant may draw with; without one the
+    /// `generate_image` tool is not offered.
+    ModelConnection? imageConnection,
+
+    /// A chapter sent along with [message] as its context, e.g. the one a
+    /// selection was made in. It stays with the message for later turns.
+    String? attachChapterId,
   }) async {
     if (message.trim().isEmpty) throw ArgumentError('请输入创作要求');
     final branchId = await repository.conversationBranch(conversationId);
@@ -61,6 +70,10 @@ final class EditorAgent {
       branchId,
       throughChapterId: throughChapterId,
     );
+    final attached = attachChapterId == null
+        ? null
+        : chapters.where((s) => s.id == attachChapterId).firstOrNull ??
+              (throw StateError('附带的章节不在本会话范围内'));
     final explicit = explicitSkill(message, skills);
     if (explicit != null) {
       await repository.appendAgentMessage(
@@ -77,6 +90,14 @@ final class EditorAgent {
       conversationId,
       role: 'user',
       content: message.trim(),
+      metadata: {
+        if (attached != null)
+          'attachment': {
+            'chapterId': attached.id,
+            'title': attached.title,
+            'text': attached.content.text,
+          },
+      },
     );
     final messages = await repository.getAgentMessages(conversationId);
     // Skills activated earlier in this conversation (by the author or the
@@ -88,12 +109,23 @@ final class EditorAgent {
     final activeSkills = [
       for (final name in active) ...skills.where((s) => s.name == name).take(1),
     ];
-    final focus = chapters.where((s) => s.id == focusChapterId).firstOrNull;
+    final focus =
+        attached ?? chapters.where((s) => s.id == focusChapterId).firstOrNull;
     final focusNote = focus == null
         ? ''
         : '\n作者正在看章节「${focus.title.isEmpty ? '未命名章节' : focus.title}」'
               '（chapterId: ${focus.id}）。作者说“这一章”“当前章节”时指它。';
-    final instructions = '$editorInstructions$focusNote${skillCatalog(skills)}';
+    final imageDefaults = imageConnection == null
+        ? null
+        : await IllustrationService(
+            repository: repository,
+            runner: runner,
+          ).savedDefaults(imageConnection);
+    final imageNote = imageConnection == null
+        ? ''
+        : imageInstructions(imageConnection, imageDefaults!);
+    final rules = '$editorInstructions$focusNote$imageNote';
+    final instructions = '$rules${skillCatalog(skills)}';
     final skillMessages = [
       for (final s in activeSkills)
         {'role': 'system', 'content': skillContent(s)},
@@ -104,7 +136,12 @@ final class EditorAgent {
     final chat = [
       for (final m in messages)
         if (['user', 'assistant'].contains(m.role) && m.content.isNotEmpty)
-          PromptMessage(m.role, m.content, source: 'agent-message:${m.id}'),
+          PromptMessage(m.role, switch (m.raw['attachment']) {
+            {'title': final String title, 'text': final String text} =>
+              '<chapter title="${title.replaceAll('"', '&quot;')}">\n'
+                  '$text\n</chapter>\n\n${m.content}',
+            _ => m.content,
+          }, source: 'agent-message:${m.id}'),
     ];
     var request = ProviderRequest(
       messages: [
@@ -162,7 +199,7 @@ final class EditorAgent {
           {
             'role': 'system',
             'content':
-                '$editorInstructions$focusNote\n以下由作者选择的预设决定你的语气、身份与写作偏好；'
+                '$rules\n以下由作者选择的预设决定你的语气、身份与写作偏好；'
                 '但工具权限、只能提出候选、不能自行采纳等编辑规则始终以本段为准。'
                 '${skillCatalog(skills)}',
           },
@@ -197,6 +234,12 @@ final class EditorAgent {
         if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
         if (active.isNotEmpty) 'activeSkills': active,
         'editChapterId': chapters.lastOrNull?.id,
+        if (imageConnection != null)
+          'image': {
+            'connection': imageConnection.raw,
+            'defaults': imageDefaults,
+            'chapterId': ?focus?.id,
+          },
         'sourceRevisions': [
           for (final s in chapters)
             {'chapterId': s.id, 'revisionId': s.revisionId},
@@ -256,3 +299,13 @@ const editorInstructions =
     '用 list_lore 和 read_lore 查阅资料，通过 propose_lore 提出设定或人物资料建议，作者审阅后才会采纳。'
     'sourceStale 为 true 的资料依据已变化，不得直接当作当前事实。事实、计划、推测必须明确区分。'
     '使用简洁中文说明已完成的操作、候选与需要作者判断的取舍。';
+
+/// Only facts about the engine; how to write the prompt is the model's call.
+String imageInstructions(
+  ModelConnection connection,
+  Map<String, dynamic> defaults,
+) =>
+    '\n可用 generate_image 提交插图提示词，作者确认后才会调用生图引擎，图片会存入作品资产库。'
+    '作者取消时不要自动重试。'
+    '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
+    '作者保存的默认设置：${jsonEncode(defaults)}。提示词按该引擎的写法由你编写。';

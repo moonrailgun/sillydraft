@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../agent/illustration_service.dart';
 import '../agent/skills.dart';
 import '../agent/writing_service.dart';
 import '../assets/asset_library.dart';
@@ -82,7 +83,27 @@ final class TaskRunner {
   /// Streamed progress not yet saved, flushed before a stop marks the task
   /// done: the runner's own final save is ignored once it is.
   final _progress = <String, _ProgressSaver>{};
+  final _imageConfirmations = <String, ({String id, Completer<bool> answer})>{};
+  int _imageConfirmationSequence = 0;
   bool _closing = false;
+
+  /// An answer applies only to this pending request, never a later tool call.
+  bool respondToImageConfirmation(
+    String taskId,
+    String confirmationId, {
+    required bool approved,
+  }) {
+    final pending = _imageConfirmations[taskId];
+    if (pending == null ||
+        pending.id != confirmationId ||
+        pending.answer.isCompleted ||
+        _cancellations[taskId]?.isCancelled != false) {
+      return false;
+    }
+    _imageConfirmations.remove(taskId);
+    pending.answer.complete(approved);
+    return true;
+  }
 
   Future<int> recoverInterrupted() {
     if (_running.isNotEmpty) throw StateError('运行中不能恢复旧任务');

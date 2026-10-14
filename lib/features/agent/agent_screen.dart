@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../illustrations/asset_image.dart';
+import '../illustrations/illustration_detail.dart';
 import '../presets/preset_screen.dart';
 import '../skills/skill_providers.dart';
 import '../skills/skills_screen.dart';
@@ -77,6 +79,15 @@ const _starterPrompts = [
   '为下一个章节提出三种不同的发展',
 ];
 
+/// A message sent to the assistant on the author's behalf, such as "draw this
+/// selection" from the reader, with the chapter it came from as context.
+/// Each instance is sent once.
+final class AgentRequest {
+  AgentRequest(this.message, {this.chapterId});
+  final String message;
+  final String? chapterId;
+}
+
 /// The editing assistant for one story branch: conversation, manuscript
 /// candidates awaiting review, and the task history, in one place. It is a
 /// section of the novel workspace and sits beside the editor.
@@ -86,8 +97,12 @@ class AgentPanel extends ConsumerStatefulWidget {
     required this.branchId,
     this.chapterId,
     this.focusChapterId,
+    this.request,
   });
   final String branchId;
+
+  /// Sent as soon as it arrives; see [AgentRequest].
+  final AgentRequest? request;
 
   /// Story position the assistant is limited to; null means the end of the
   /// branch.
@@ -106,18 +121,23 @@ class _AgentState extends ConsumerState<AgentPanel> {
   final _inputFocus = FocusNode();
   late String? _chapter = widget.chapterId;
   String? _conversation;
+  late Future<void> _selecting;
   bool _sending = false;
   Object? _error;
   @override
   void initState() {
     super.initState();
-    _selectConversation();
+    _selecting = _selectConversation();
+    if (widget.request case final request?) _send(request);
   }
 
   @override
   void didUpdateWidget(AgentPanel old) {
     super.didUpdateWidget(old);
     if (old.chapterId != widget.chapterId) _moveTo(widget.chapterId);
+    if (widget.request case final request? when request != old.request) {
+      _send(request);
+    }
   }
 
   @override
@@ -132,7 +152,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       _chapter = chapter;
       _conversation = null;
     });
-    _selectConversation();
+    _selecting = _selectConversation();
   }
 
   /// Opens the latest conversation at this story position. Nothing is created
@@ -172,8 +192,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
     }
   }
 
-  Future<void> _send() async {
-    final text = _input.text;
+  /// Sends what the author typed, or [request] on their behalf.
+  Future<void> _send([AgentRequest? request]) async {
+    final text = request?.message ?? _input.text;
     if (_sending || text.trim().isEmpty) return;
     setState(() {
       _sending = true;
@@ -183,6 +204,17 @@ class _AgentState extends ConsumerState<AgentPanel> {
       final services = ref.read(servicesProvider),
           connection = await services.connectionFor('editor');
       if (connection == null) throw const FormatException('请先在模型设置里配置编辑助手连接。');
+      await _selecting;
+      final busy =
+          (await services.repository.listTasks(
+            branchId: widget.branchId,
+            activeOnly: true,
+          )).any(
+            (t) =>
+                _conversation != null &&
+                t.input['conversationId'] == _conversation,
+          );
+      if (busy) throw const FormatException('助手还在回复，请等这一轮结束再发送。');
       final conversation = await _ensureConversation();
       if (mounted) setState(() {});
       final profile = await WritingContext.load(services, widget.branchId);
@@ -201,8 +233,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
         chatPreset: profile.assistantPreset,
         skills: await services.skills.enabled(),
         focusChapterId: widget.focusChapterId ?? _chapter,
+        imageConnection: await services.connectionFor('image'),
+        attachChapterId: request?.chapterId,
       );
-      if (mounted) _input.clear();
+      if (mounted && request == null) _input.clear();
     } catch (e) {
       if (mounted) setState(() => _error = e);
     } finally {
@@ -346,6 +380,80 @@ class _AgentState extends ConsumerState<AgentPanel> {
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  /// The assistant's `generate_image` call waits on this card; nothing
+  /// reaches the image engine until the author confirms.
+  Widget _imageConfirmation(GenerationTask task, Map<String, dynamic> pending) {
+    final theme = context.theme;
+    final engine = ModelConnection.fromJson(
+      (task.input['image'] as Map)['connection'] as Map<String, dynamic>,
+    );
+    final label = theme.typography.body.xs.copyWith(
+      color: theme.colors.mutedForeground,
+      fontWeight: FontWeight.w600,
+    );
+    void answer(bool approved) => ref
+        .read(servicesProvider)
+        .runner
+        .respondToImageConfirmation(
+          task.id,
+          pending['id'] as String,
+          approved: approved,
+        );
+    return FCard(
+      key: const Key('agent-image-confirmation'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(FLucideIcons.image, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text('生成插图「${pending['name']}」？')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('生图引擎', style: label),
+            const SizedBox(height: 4),
+            Text(imageEngineLabel(engine)),
+            const SizedBox(height: 8),
+            Text('提示词', style: label),
+            const SizedBox(height: 4),
+            SelectableText('${pending['prompt']}'),
+            if (pending['negativePrompt'] case final String negative) ...[
+              const SizedBox(height: 8),
+              Text('负面提示词', style: label),
+              const SizedBox(height: 4),
+              SelectableText(negative),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => answer(false),
+                  child: const Text('取消'),
+                ),
+                FButton(
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => answer(true),
+                  child: const Text('确认生成'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openSettings() {
@@ -777,7 +885,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
                         shrinkWrap: true,
                         padding: const EdgeInsets.all(20),
                         children: [
-                          if (task != null &&
+                          if (active?.result['imageConfirmation']
+                              case final Map<String, dynamic> pending)
+                            _imageConfirmation(active!, pending)
+                          else if (task != null &&
                               task.status != TaskStatus.completed)
                             FCard(
                               child: Padding(
@@ -1148,6 +1259,37 @@ class _AgentState extends ConsumerState<AgentPanel> {
       );
     }
     if (message.role == 'system') return const SizedBox.shrink();
+    if (metadata['tool_name'] == 'generate_image') {
+      final result = jsonDecode(message.content);
+      if (result case {'cancelled': true}) {
+        return _foldedCard(
+          icon: FLucideIcons.imageOff,
+          title: '已取消生图',
+          subtitle: '未调用生图引擎',
+          child: SelectableText(message.content),
+        );
+      }
+      if (result case {'assetId': final String id}) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: GestureDetector(
+              key: Key('agent-image-$id'),
+              onTap: () => showIllustrationDetail(
+                context,
+                assetId: id,
+                branchId: widget.branchId,
+              ),
+              child: ClipRRect(
+                borderRadius: context.theme.style.borderRadius.lg,
+                child: AssetImageView(assetId: id, height: 280),
+              ),
+            ),
+          ),
+        );
+      }
+    }
     if (message.role == 'tool' || metadata['tool_calls'] != null) {
       return _foldedCard(
         title: message.role == 'tool' ? '工具结果' : '工具调用',
@@ -1193,9 +1335,44 @@ class _AgentState extends ConsumerState<AgentPanel> {
               )
             else
               _markdown(message.content),
+            if (metadata['attachment'] case {'title': final String title})
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      FLucideIcons.paperclip,
+                      size: 14,
+                      color: theme.colors.mutedForeground,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '附：${title.isEmpty ? '未命名章节' : title}',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.typography.body.xs.copyWith(
+                          color: theme.colors.mutedForeground,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+/// The image engine as the author set it up: the connection, the ComfyUI
+/// workflow file, and the model only when it is actually sent.
+String imageEngineLabel(ModelConnection connection) {
+  final workflow = connection.comfyWorkflow;
+  return [
+    connection.name,
+    if (workflow != null && workflow.filename.isNotEmpty) workflow.filename,
+    ?connection.sentModel,
+  ].join(' · ');
 }

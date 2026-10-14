@@ -95,16 +95,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
         _connection?.id == connection.id &&
         _connection?.model == connection.model;
     try {
-      final saved =
-          await services.repository.getSetting(
-            'imageDefaults/${connection.id}/${Uri.encodeComponent(connection.model)}',
-          ) ??
-          (connection.protocol != ModelProtocol.comfyUI
-              ? await services.repository.getSetting(
-                  'imageDefaults/${connection.id}',
-                )
-              : null) ??
-          {};
+      final saved = await services.illustrations.savedDefaults(connection);
       if (!current()) return;
       setState(() {
         _size = saved['size'] as String? ?? '';
