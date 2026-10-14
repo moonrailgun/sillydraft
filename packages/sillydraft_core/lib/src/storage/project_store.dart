@@ -97,7 +97,7 @@ extension ProjectOperations on StoryRepository {
     return ProjectSnapshot.fromJson({
       'format': 'sillydraft-project',
       'version': 1,
-      'schema': 8,
+      'schema': 9,
       'tables': result,
     });
   });

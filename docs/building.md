@@ -98,7 +98,7 @@ python3 tool/verify_macos_atomic_export.py
 
 ## 数据与升级
 
-作品库位于系统 Application Support 目录：SQLite 保存结构和版本，图片以内容哈希管理，ST 原文件使用本地密钥加密。数据库 schema 有迁移版本。改动 schema 前添加旧版迁移测试，不删除迁移代码来规避已有作品。
+作品库位于系统 Application Support 目录：SQLite 保存结构和版本，图片以内容哈希管理，ST 原文件使用本地密钥加密。数据库 schema 有迁移版本。改动 schema 前添加旧版迁移测试，不删除迁移代码来规避已有作品。旧版应用打开较新 schema 的库会报错并保持数据不变，不会降级写入。
 
 跨设备迁移使用加密作品备份，不能只复制数据库而遗漏图片或本机密钥文件。不要在有用户作品的目录运行测试夹具脚本。
 

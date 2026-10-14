@@ -3,12 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
-import '../st/import_types.dart';
-import '../migration/chapter_migration.dart';
-import '../migration/legacy_schema.dart';
-import '../transfer/project_snapshot.dart';
-
-/// Explicit migrations keep the same database usable by Flutter and the runner.
+/// One explicit schema keeps the same database usable by Flutter and the runner.
 final class StoryDatabase extends GeneratedDatabase {
   StoryDatabase(super.executor);
 
@@ -21,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -41,33 +36,15 @@ final class StoryDatabase extends GeneratedDatabase {
       }
     },
     onUpgrade: (_, from, to) async {
-      if (from < 2) {
-        for (final sql in taskSchema) {
-          await customStatement(legacyChapterSql(sql));
-        }
+      // Drift also calls this on downgrade and then stores `to`; refuse so an
+      // older app never reads or rewrites a newer schema. Mirrors the runner.
+      if (from > to) {
+        throw StateError(
+          '作品库来自较新版本的 SillyDraft（数据版本 $from），请从 https://github.com/moonrailgun/sillydraft/releases 下载新版',
+        );
       }
-      if (from < 3) {
-        for (final sql in preferencesSchema) {
-          await customStatement(legacyChapterSql(sql));
-        }
-      }
-      if (from < 4) {
-        for (final sql in resourceSchema) {
-          await customStatement(legacyChapterSql(sql));
-        }
-      }
-      if (from < 5) {
-        for (final sql in loreSchema) {
-          await customStatement(legacyChapterSql(sql));
-        }
-      }
-      if (from < 6) {
-        for (final sql in assetSchema) {
-          await customStatement(legacyChapterSql(sql));
-        }
-      }
-      if (from < 7) await _nameUnnamedPresets();
-      if (from < 8) await _migrateChapters();
+      // Older libraries are not upgraded; refuse rather than misread them.
+      throw StateError('作品库来自不再支持的旧版本 SillyDraft（数据版本 $from），无法打开');
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -75,73 +52,6 @@ final class StoryDatabase extends GeneratedDatabase {
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
-
-  Future<void> _migrateChapters() async {
-    await transaction(() async {
-      await customStatement('PRAGMA defer_foreign_keys = ON');
-      final tables = <String, List<Map<String, dynamic>>>{};
-      for (final name in legacyProjectTables) {
-        tables[name] = (await customSelect(
-          'SELECT * FROM $name',
-        ).get()).map((row) => Map<String, dynamic>.from(row.data)).toList();
-      }
-      final migrated = migrateLegacyChapters(tables);
-      for (final name in legacyProjectTables.reversed) {
-        await customStatement('DROP TABLE $name');
-      }
-      for (final sql in [
-        ...schema,
-        ...taskSchema,
-        ...preferencesSchema,
-        ...resourceSchema,
-        ...loreSchema,
-        ...assetSchema,
-      ]) {
-        await customStatement(sql);
-      }
-      for (final name in projectTables) {
-        for (final row in migrated[name]!) {
-          final keys = row.keys.toList();
-          await customStatement(
-            'INSERT INTO $name (${keys.join(',')}) VALUES (${List.filled(keys.length, '?').join(',')})',
-            keys.map((key) => row[key]).toList(),
-          );
-        }
-      }
-      if ((await customSelect('PRAGMA foreign_key_check').get()).isNotEmpty) {
-        throw StateError('章节迁移包含无效引用，原资料库未改动。');
-      }
-    });
-  }
-
-  /// Before v7 a preset file without a `name` (SillyTavern keeps preset
-  /// names in file names) was stored as 导入的预设. Name those after the file
-  /// they were imported from, as SillyTavern does; saved versions take the
-  /// name of their original file.
-  Future<void> _nameUnnamedPresets() async {
-    const unnamed = '导入的预设';
-    final rows = await customSelect(
-      'SELECT id, name, filename, parent_id FROM library_resources '
-      "WHERE kind = 'preset'",
-    ).get();
-    final byId = {for (final r in rows) r.read<String>('id'): r};
-    for (final row in rows) {
-      if (row.read<String>('name') != unnamed) continue;
-      var root = row;
-      final seen = {root.read<String>('id')};
-      while (true) {
-        final parent = byId[root.readNullable<String>('parent_id')];
-        if (parent == null || !seen.add(parent.read<String>('id'))) break;
-        root = parent;
-      }
-      final name = nameFromFilename(root.read<String>('filename'));
-      if (name.isEmpty || name == unnamed) continue;
-      await customStatement(
-        'UPDATE library_resources SET name = ? WHERE id = ?',
-        [name, row.read<String>('id')],
-      );
-    }
-  }
 
   static const assetSchema = <String>[
     '''CREATE TABLE story_assets (

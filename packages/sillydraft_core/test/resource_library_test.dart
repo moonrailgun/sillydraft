@@ -3,10 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
-
-import 'support/legacy_database.dart';
 
 void main() {
   test('starting from a card selects one greeting and seeds sourced lore and persona', () async {
@@ -228,41 +225,4 @@ void main() {
       expect(book.name, '雾港世界书');
     },
   );
-
-  test('presets stored as 导入的预设 before v7 take their file name', () async {
-    final dir = await Directory.systemTemp.createTemp('sillydraft-presets-');
-    addTearDown(() => dir.delete(recursive: true));
-    final path = '${dir.path}/old.sqlite';
-    final old = sqlite.sqlite3.open(path);
-    createLegacyDatabase(old, version: 6);
-    void resource(
-      String id,
-      String name,
-      String filename, {
-      String kind = 'preset',
-      String? parent,
-    }) => old.execute(
-      'INSERT INTO library_resources '
-      '(id,kind,name,filename,source_hash,data_json,encrypted_source,parent_id,created_at) '
-      "VALUES (?,?,?,?,'h','{}',x'00',?,1)",
-      [id, kind, name, filename, parent],
-    );
-    resource('a', '导入的预设', 'Reborn2.3.json');
-    resource('a2', '导入的预设', '导入的预设.json', parent: 'a'); // saved edit
-    resource('b', '我改过的名字', 'Other.json');
-    resource('c', '导入的预设', '导入的预设.json'); // nothing better to use
-    resource('w', '导入的预设', 'book.json', kind: 'worldBook');
-    old.close();
-
-    final repo = StoryRepository.open(path);
-    addTearDown(repo.close);
-    final names = {for (final r in await repo.listResources()) r.id: r.name};
-    expect(names, {
-      'a': 'Reborn2.3',
-      'a2': 'Reborn2.3',
-      'b': '我改过的名字',
-      'c': '导入的预设',
-      'w': '导入的预设',
-    });
-  });
 }

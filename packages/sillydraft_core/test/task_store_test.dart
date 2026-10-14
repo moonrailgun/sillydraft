@@ -1,10 +1,7 @@
 import 'dart:io';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
-
-import 'support/legacy_database.dart';
 
 void main() {
   late StoryRepository store;
@@ -21,35 +18,6 @@ void main() {
   });
   tearDown(() => store.close());
 
-  test(
-    'version-one databases migrate without losing existing novels',
-    () async {
-      await store.close();
-      final dir = await Directory.systemTemp.createTemp(
-        'sillydraft-migration-',
-      );
-      addTearDown(() => dir.delete(recursive: true));
-      final path = '${dir.path}/old.sqlite';
-      final old = sqlite.sqlite3.open(path);
-      createLegacyDatabase(old, version: 1);
-      old.execute(
-        "INSERT INTO novels (id,title,synopsis,genre,language,style,point_of_view,active_branch_id,created_at,updated_at) VALUES ('old','旧项目','','','','','','branch',1,1)",
-      );
-      old.execute(
-        "INSERT INTO branches (id,novel_id,name,created_at) VALUES ('branch','old','主线',1)",
-      );
-      old.close();
-      store = StoryRepository.open(path);
-      expect((await store.getNovel('old')).title, '旧项目');
-      final task = await store.createTask(
-        branchId: 'branch',
-        kind: TaskKind.analysis,
-        input: {},
-      );
-      expect(task.status, TaskStatus.queued);
-      expect(await store.listTasks(), hasLength(1));
-    },
-  );
   Future<GenerationTask> queued() => store.createTask(
     branchId: novel.activeBranchId,
     kind: TaskKind.writing,

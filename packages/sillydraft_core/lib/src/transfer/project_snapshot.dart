@@ -3,29 +3,23 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
-import '../migration/chapter_migration.dart';
-import '../migration/legacy_schema.dart';
-
 /// Versioned, portable project graph. Encrypted ST sources and image bytes are
 /// separate archive members; no global connection settings or secrets are here.
 final class ProjectSnapshot {
   factory ProjectSnapshot.fromJson(Map<String, dynamic> json) {
     if (json['format'] != 'sillydraft-project' ||
         json['version'] != 1 ||
-        ![6, 8].contains(json['schema']) ||
+        json['schema'] != 9 ||
         json['tables'] is! Map) {
       throw const FormatException('不支持的项目备份格式');
     }
     final tables = json['tables'] as Map;
-    final expectedTables = json['schema'] == 6
-        ? legacyProjectTables
-        : projectTables;
-    if (tables.length != expectedTables.length ||
-        tables.keys.any((k) => !expectedTables.contains(k))) {
+    if (tables.length != projectTables.length ||
+        tables.keys.any((k) => !projectTables.contains(k))) {
       throw const FormatException('备份数据表不完整');
     }
     var count = 0;
-    for (final name in expectedTables) {
+    for (final name in projectTables) {
       final rows = tables[name];
       if (rows is! List) throw const FormatException('备份数据表无效');
       count += rows.length;
@@ -35,16 +29,6 @@ final class ProjectSnapshot {
     }
     if ((tables['novels'] as List).length != 1) {
       throw const FormatException('备份须包含一部作品');
-    }
-    if (json['schema'] == 6) {
-      json = {
-        ...json,
-        'schema': 8,
-        'tables': migrateLegacyChapters({
-          for (final name in expectedTables)
-            name: (tables[name] as List).cast<Map<String, dynamic>>(),
-        }),
-      };
     }
     return ProjectSnapshot._(jsonEncode(json));
   }
@@ -107,7 +91,7 @@ final class ProjectSnapshot {
       snapshot: ProjectSnapshot.fromJson({
         'format': 'sillydraft-project',
         'version': 1,
-        'schema': 8,
+        'schema': 9,
         'tables': rows,
       }),
       ids: Map.unmodifiable(ids),
