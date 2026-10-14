@@ -2,7 +2,10 @@
 # Publishes a release: bumps pubspec.yaml, commits, tags and pushes the branch
 # and tag together; .github/workflows/release.yml then builds the packages.
 #
-#   ./release.sh [patch|minor|major]   # no argument: choose from a menu
+#   ./release.sh [--allow-dirty] [patch|minor|major]   # no kind: choose from a menu
+#
+# --allow-dirty releases with uncommitted changes in the working tree. They are
+# left as they are: only pubspec.yaml is committed, and CI builds the tag.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -26,7 +29,15 @@ bump() {
   esac
 }
 
-kind=${1:-}
+usage="用法：./release.sh [--allow-dirty] [patch|minor|major]"
+allow_dirty=false
+kind=
+for arg in "$@"; do
+  case $arg in
+    --allow-dirty) allow_dirty=true ;;
+    *) [[ -z $kind ]] || die "$usage"; kind=$arg ;;
+  esac
+done
 if [[ -z $kind ]]; then
   kinds=(patch minor major)
   echo "当前版本 ${name}（构建号 ${build}），选择发布类型："
@@ -37,11 +48,16 @@ if [[ -z $kind ]]; then
   [[ ${choice} =~ ^[1-3]$ ]] || die "无效选择：${choice}"
   kind=${kinds[choice - 1]}
 fi
-next=$(bump "${kind}") || die "用法：./release.sh [patch|minor|major]"
+next=$(bump "${kind}") || die "$usage"
 next_build=$((build + 1))
 tag="v$next"
 
-[[ -z $(git status --porcelain) ]] || die "工作区有未提交的改动，请先提交或暂存"
+if [[ $allow_dirty == true ]]; then
+  # The release commit takes pubspec.yaml whole, so its own edits would ride along.
+  [[ -z $(git status --porcelain -- pubspec.yaml) ]] || die "pubspec.yaml 有未提交的改动，请先提交或还原"
+else
+  [[ -z $(git status --porcelain) ]] || die "工作区有未提交的改动，请先提交或暂存（或加 --allow-dirty）"
+fi
 branch=$(git symbolic-ref --short -q HEAD) || die "当前不在分支上"
 git fetch --quiet --tags origin
 if git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null; then

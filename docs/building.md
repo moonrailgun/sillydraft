@@ -105,9 +105,10 @@ python3 tool/verify_macos_atomic_export.py
 ```sh
 ./release.sh patch   # 0.1.0 → 0.1.1；minor → 0.2.0；major → 1.0.0
 ./release.sh         # 不带参数时列出三项和结果版本供选择
+./release.sh --allow-dirty minor   # 工作区有未提交改动时照常发布
 ```
 
-脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在；确认后只提交 `pubspec.yaml`（`chore(release): vX.Y.Z`），打附注 tag，再用 `git push --atomic` 同时推送分支和 tag。
+脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在。加 `--allow-dirty` 时只要求 `pubspec.yaml` 没有未提交改动，其余改动原样留在工作区，不进入发布提交，CI 也只按 tag 构建。确认后只提交 `pubspec.yaml`（`chore(release): vX.Y.Z`），打附注 tag，再用 `git push --atomic` 同时推送分支和 tag。
 
 tag 触发 `.github/workflows/release.yml`：
 
