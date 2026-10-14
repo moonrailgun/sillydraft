@@ -8,6 +8,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../skills/skills_screen.dart';
+import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
 import 'model_select.dart';
 
@@ -27,6 +28,10 @@ class SettingsScreen extends ConsumerWidget {
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
+    final version = ref.watch(appVersionProvider).value;
+    final updates = ref.watch(servicesProvider).updateEndpoint != null;
+    final autoUpdate =
+        ref.watch(settingProvider('update')).value?['auto'] != false;
     final theme = context.theme;
     final heading = theme.typography.body.md.copyWith(
       fontWeight: FontWeight.w600,
@@ -213,6 +218,37 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (updates) ...[
+                const SizedBox(height: 24),
+                FTileGroup(
+                  children: [
+                    FTile(
+                      key: const Key('settings-check-update'),
+                      prefix: const Icon(FLucideIcons.refreshCw),
+                      title: const Text('检查更新'),
+                      subtitle: _wrapped('从 GitHub Releases 获取新版本，下载后手动安装'),
+                      onPress: () => checkUpdates(context, ref, manual: true),
+                    ),
+                    FTile(
+                      key: const Key('settings-auto-update'),
+                      prefix: const Icon(FLucideIcons.bellRing),
+                      title: const Text('自动检查更新'),
+                      subtitle: _wrapped('启动时每天最多访问一次 GitHub'),
+                      suffix: FSwitch(
+                        value: autoUpdate,
+                        onChange: (value) => setAutoUpdateCheck(
+                          ref.read(repositoryProvider),
+                          value,
+                        ),
+                      ),
+                      onPress: () => setAutoUpdateCheck(
+                        ref.read(repositoryProvider),
+                        !autoUpdate,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 32),
               const FDivider(),
               const SizedBox(height: 8),
@@ -232,7 +268,10 @@ class SettingsScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'SillyDraft · 胡闹草稿',
+                          key: const Key('settings-version'),
+                          version == null
+                              ? 'SillyDraft'
+                              : 'SillyDraft ${version.version} (${version.buildNumber})',
                           style: theme.typography.body.sm.copyWith(
                             fontWeight: FontWeight.w500,
                           ),

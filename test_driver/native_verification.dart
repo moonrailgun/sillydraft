@@ -14,8 +14,10 @@ Future<void> main() => integrationDriver(
     }
     final output = Directory('docs/verification');
     await output.create(recursive: true);
-    for (final name in ['workspace', 'reader', 'preset']) {
-      final encoded = (data['captures'] as Map)[name];
+    final captures = data['captures'] as Map;
+    if (captures.isEmpty) throw StateError('No screenshots returned.');
+    // Each target decides its screenshots and fails itself when one is missing.
+    for (final MapEntry(key: name, value: encoded) in captures.entries) {
       if (encoded is! String) throw StateError('Missing $name screenshot.');
       final file = File('${output.path}/native-$platform-$name.png');
       await file.writeAsBytes(base64Decode(encoded));

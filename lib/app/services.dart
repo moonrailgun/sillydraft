@@ -190,6 +190,7 @@ final class AppServices {
     required this.repository,
     required this.secrets,
     this.dataDirectory,
+    this.updateEndpoint,
     ProviderFactory? modelProviderFactory,
     ImageProviderFactory? imageProviderFactory,
   }) : _modelProviderFactory = modelProviderFactory {
@@ -217,6 +218,10 @@ final class AppServices {
   final StoryRepository repository;
   final SecretStore secrets;
   final Directory? dataDirectory;
+
+  /// Where update checks ask for the latest release; null turns them off
+  /// (tests, and iOS, which has no published package).
+  final Uri? updateEndpoint;
   late final TaskRunner runner;
   late final WritingService writing;
   late final EditorAgent editor;
@@ -252,7 +257,7 @@ final class AppServices {
 
   final _drafts = <Object, Future<void> Function()>{};
 
-  static Future<AppServices> open() async {
+  static Future<AppServices> open({bool checkUpdates = true}) async {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
     final secretsFile = File('${dir.path}/secrets.json');
@@ -275,6 +280,7 @@ final class AppServices {
       repository: StoryRepository.open('${dir.path}/library.sqlite'),
       secrets: secrets,
       dataDirectory: dir,
+      updateEndpoint: checkUpdates && !Platform.isIOS ? latestReleaseUrl : null,
     );
     await services.runner.recoverInterrupted();
     try {

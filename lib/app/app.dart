@@ -13,6 +13,7 @@ import '../features/bookshelf/novel_start.dart';
 import '../features/bookshelf/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/resources/resource_library_screen.dart';
+import '../features/update/update_prompt.dart';
 import 'desktop_commands.dart';
 import 'devtool_trim.dart';
 import 'home_screen.dart';
@@ -94,6 +95,10 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _navigator.currentContext;
+      if (context != null) unawaited(checkUpdates(context, ref));
+    });
   }
 
   @override

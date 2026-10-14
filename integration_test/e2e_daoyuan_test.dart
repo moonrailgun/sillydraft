@@ -60,7 +60,7 @@ void main() {
       }
     }
 
-    final services = await AppServices.open();
+    final services = await AppServices.open(checkUpdates: false);
     final repo = services.repository;
     for (final c in await services.connections()) {
       note('connection ${c.name} ${c.protocol.name} ${c.model} ${c.baseUrl}');

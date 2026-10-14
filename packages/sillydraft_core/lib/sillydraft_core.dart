@@ -58,3 +58,4 @@ export 'src/mvu/mvu_commands.dart';
 export 'src/mvu/mvu_data.dart';
 export 'src/mvu/mvu_init.dart';
 export 'src/mvu/mvu_service.dart';
+export 'src/update/update_check.dart';
