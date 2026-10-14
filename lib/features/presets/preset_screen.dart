@@ -608,7 +608,19 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     final tile = FTile(
       key: Key('preset-regex-$index'),
       title: _wrapped(name),
-      subtitle: _wrapped('${enabled ? '已启用' : '已停用'} · ${stages.join('、')}'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _wrapped('${enabled ? '已启用' : '已停用'} · ${stages.join('、')}'),
+          const SizedBox(height: 4),
+          Text(
+            '${rule['findRegex'] ?? ''}',
+            style: const TextStyle(fontFamily: 'monospace'),
+            overflow: TextOverflow.visible,
+            softWrap: true,
+          ),
+        ],
+      ),
       suffix: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -621,7 +633,6 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
           FSwitch(semanticsLabel: name, value: enabled, onChange: toggle),
         ],
       ),
-      onPress: () => toggle(!enabled),
     );
     return Opacity(
       opacity: enabled ? 1 : context.theme.colors.disabledOpacity,

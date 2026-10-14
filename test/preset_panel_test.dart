@@ -258,6 +258,30 @@ void main() {
     final disabledOpacity = tester.element(status).theme.colors.disabledOpacity;
     expect(opacity(status), disabledOpacity);
     expect(opacity(prompt), 1);
+    final expression = find.descendant(
+      of: status,
+      matching: find.text(r'/\[STATUS\](.*?)\[\/STATUS\]/gs'),
+    );
+    expect(expression, findsOneWidget);
+    expect(
+      find.descendant(of: prompt, matching: find.text('/雾/g')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('顶部状态栏美化'));
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse, reason: 'the title must not toggle');
+    await tester.tap(status);
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse, reason: 'the row must not toggle');
+    await tester.tap(prompt);
+    await tester.pumpAndSettle();
+    expect(enabled(prompt), isTrue, reason: 'the row must not toggle');
+    await tester.tap(expression);
+    await tester.pumpAndSettle();
+    expect(enabled(status), isFalse, reason: 'the expression must not toggle');
+    expect(await repo.getSetting('writing/$branch'), {'presetId': original.id});
+
     await tester.tap(find.byKey(const Key('preset-regex-details-0')));
     await tester.pumpAndSettle();
     final rule = DisplayContext.regexRulesOf(data['extensions']).first;

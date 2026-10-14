@@ -24,7 +24,7 @@ SillyDraft 沿用 API 节点图执行语义，支持本地导入、粘贴，以�
 
 - 下拉框切换本作品当前预设，选择即生效；“不使用预设”回到 SillyDraft 默认写作配置。导入 ST 预设后自动选中。
 - 面板按「采样参数」「提示词管理」「预设正则」「兼容提示」分组，按预设内容显示适用页签；预设选择、助手开关与自动保存状态保留在顶部。各页签独立滚动，提示词长列表只构建可见区域及邻近缓存的条目。
-- 预设正则：列出 `extensions.regex_scripts` 内的规则名称、用途与启停开关；「查看正则内容」展示可选取的完整查找表达式、替换内容及其余字段，支持复制完整规则 JSON。开关只修改 `disabled`，保留规则顺序和其他字段，语义依据固定 ST 基线的[正则开关](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L653-L656)。显示规则变更后阅读器刷新已有章节，与 ST [保存规则后重载聊天](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L557-L560)一致；切换到其他分支时使用该分支规则。后续生成也使用新设置，已有任务记录和正式正文不变。
+- 预设正则：列出 `extensions.regex_scripts` 内的规则名称、用途、查找表达式与启停开关；查找表达式使用等宽字体并自动换行，仅操作开关可切换启停，点击条目正文不会更改状态；「查看正则内容」展示可选取的完整查找表达式、替换内容及其余字段，支持复制完整规则 JSON。开关只修改 `disabled`，保留规则顺序和其他字段，语义依据固定 ST 基线的[正则开关](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L653-L656)。显示规则变更后阅读器刷新已有章节，与 ST [保存规则后重载聊天](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L557-L560)一致；切换到其他分支时使用该分支规则。后续生成也使用新设置，已有任务记录和正式正文不变。
 - 采样参数：聊天补全预设显示温度、Top P/K、Min P、频率/存在/重复惩罚、最大回复与上下文长度、随机种子；文本补全预设与高级格式组合包编辑对应的 `temp`、`rep_pen`、`max_length` 等字段。未设置的参数不写入预设，交由模型默认值。
 - 提示词管理：开关、拖动或箭头排序、编辑、新增与删除自定义条目；ST 内置条目和动态标记只能关闭，不能删除。
 - 面板调整自动保存到当前分支，不修改预设库原件或其他分支；“恢复预设”清除本分支调整。“存入预设库…”创建并选中新资源，也可导出当前配置的 JSON（移除已识别凭据）。
