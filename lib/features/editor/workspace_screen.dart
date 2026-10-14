@@ -53,26 +53,19 @@ const _tools = [
 /// always in the middle, and the assistant, lore or images on the right.
 /// Either side folds away and stays as the author left it.
 class NovelWorkspace extends ConsumerStatefulWidget {
-  const NovelWorkspace({
-    super.key,
-    required this.novelId,
-    this.initialSection = WorkspaceSection.manuscript,
-  });
+  const NovelWorkspace({super.key, required this.novelId});
   final String novelId;
-  final WorkspaceSection initialSection;
   @override
   ConsumerState<NovelWorkspace> createState() => _WorkspaceState();
 }
 
 class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   String? _selected;
-  late var _section = widget.initialSection;
+  var _section = WorkspaceSection.manuscript;
 
   /// The tool on the right of a wide screen: the assistant until another is
   /// picked.
-  late var _tool = widget.initialSection == WorkspaceSection.manuscript
-      ? WorkspaceSection.agent
-      : widget.initialSection;
+  var _tool = WorkspaceSection.agent;
 
   /// Whether the side panes of a wide screen are open; null until changed
   /// here, which keeps the stored choice.

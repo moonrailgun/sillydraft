@@ -132,7 +132,7 @@ void main() {
       await tester.tap(find.byKey(const Key('agent-quick-修改')));
       await tester.pumpAndSettle();
       expect(_input(tester), '修改「码头」：');
-      expect(find.text('参考范围：截至「码头」'), findsOneWidget);
+      expect(find.text('截至「码头」'), findsOneWidget);
       await tester.tap(find.byKey(const Key('agent-quick-查找')));
       await tester.pumpAndSettle();
       expect(_input(tester), '在正文中查找：');
@@ -140,7 +140,7 @@ void main() {
       await tester.tap(find.byKey(const Key('agent-quick-续写')));
       await tester.pumpAndSettle();
       expect(_input(tester), startsWith('续写「灯塔」'));
-      expect(find.text('参考范围：分支末尾'), findsOneWidget);
+      expect(find.text('分支末尾'), findsOneWidget);
       // Filling in never sends, so nothing was saved.
       expect(await repo.listConversations(novel.activeBranchId), isEmpty);
 

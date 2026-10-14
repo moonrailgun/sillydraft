@@ -277,7 +277,7 @@ void main() {
     },
   );
 
-  testWidgets('pending candidates on the shelf open the novel assistant', (
+  testWidgets('pending candidates wait in the assistant menu, not the shelf', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -307,11 +307,12 @@ void main() {
     );
     await tester.pumpWidget(SillyDraftApp(services: services));
     await tester.pumpAndSettle();
-    expect(find.text('1 个候选待审'), findsOneWidget);
-    await tester.tap(find.byKey(ValueKey('pending-${novel.id}')));
+    expect(find.textContaining('待审'), findsNothing);
+    await tester.tap(find.text('候选测试'));
     await tester.pumpAndSettle();
-    expect(_selected(tester), 2);
-    expect(find.text('候选 · 1'), findsOneWidget);
+    await _section(tester, '助手');
+    await tester.tap(findAction('候选与任务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('候选 · 1'));
     await tester.pumpAndSettle();
     expect(find.text('待审阅正文'), findsOneWidget);
@@ -330,7 +331,7 @@ void main() {
         await tester.tap(find.byKey(const Key('editor-assistant')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('agent-input')), findsOneWidget);
-        expect(find.text('参考范围：截至「灯塔」'), findsOneWidget);
+        expect(find.text('截至「灯塔」'), findsOneWidget);
         // Docked or floating, the manuscript stays on screen with it.
         expect(find.byKey(const Key('manuscript-editor')), findsOneWidget);
         expect(

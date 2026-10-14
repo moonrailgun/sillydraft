@@ -7,7 +7,6 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/sample.dart';
 import '../../app/widgets.dart';
-import '../agent/agent_providers.dart';
 import '../editor/workspace_screen.dart';
 import 'novel_start.dart';
 import 'search_screen.dart';
@@ -35,15 +34,9 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
     await startFromFile(context, name: file.name, read: file.readAsBytes);
   }
 
-  void _open(
-    Novel novel, [
-    WorkspaceSection section = WorkspaceSection.manuscript,
-  ]) => Navigator.push(
+  void _open(Novel novel) => Navigator.push(
     context,
-    MaterialPageRoute<void>(
-      builder: (_) =>
-          NovelWorkspace(novelId: novel.id, initialSection: section),
-    ),
+    MaterialPageRoute<void>(builder: (_) => NovelWorkspace(novelId: novel.id)),
   );
   Future<void> _delete(Novel novel) async {
     final yes = await confirmAction(
@@ -221,8 +214,6 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                         (context, i) => _NovelCard(
                           novel: novels[i],
                           onOpen: () => _open(novels[i]),
-                          onReview: () =>
-                              _open(novels[i], WorkspaceSection.agent),
                           onArchive: () async {
                             await ref
                                 .read(repositoryProvider)
@@ -381,7 +372,6 @@ class _NovelCard extends ConsumerWidget {
   const _NovelCard({
     required this.novel,
     required this.onOpen,
-    required this.onReview,
     required this.onArchive,
     this.onDelete,
   });
@@ -390,12 +380,9 @@ class _NovelCard extends ConsumerWidget {
   /// Only archived works can be deleted.
   final VoidCallback? onDelete;
 
-  /// [onReview] opens the novel on its assistant, where candidates wait.
-  final VoidCallback onOpen, onReview, onArchive;
+  final VoidCallback onOpen, onArchive;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pending =
-        ref.watch(pendingReviewCountProvider(novel.activeBranchId)).value ?? 0;
     final colors = [
       const Color(0xffe2dff0),
       const Color(0xffd9e6df),
@@ -412,31 +399,7 @@ class _NovelCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _cover(color),
-                  if (pending > 0)
-                    Positioned(
-                      left: 12,
-                      bottom: 12,
-                      child: FTooltip(
-                        tipBuilder: (_, _) => const Text('在助手中审阅候选'),
-                        child: FButton(
-                          key: ValueKey('pending-${novel.id}'),
-                          variant: FButtonVariant.secondary,
-                          size: FButtonSizeVariant.sm,
-                          mainAxisSize: MainAxisSize.min,
-                          onPress: onReview,
-                          prefix: const Icon(FLucideIcons.sparkles),
-                          child: Text('$pending 个候选待审'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            Expanded(child: _cover(color)),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 8, 10),
               child: _footer(context),

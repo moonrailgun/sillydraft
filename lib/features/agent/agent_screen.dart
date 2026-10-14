@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
@@ -372,20 +374,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         constraints: const BoxConstraints(maxWidth: 920),
         child: Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: FTabs(
-            expands: true,
-            children: [
-              FTabEntry(label: const Text('对话'), child: _chat(currentTask)),
-              FTabEntry(
-                label: Text(pending > 0 ? '候选 · $pending' : '候选'),
-                child: _proposals(),
-              ),
-              FTabEntry(
-                label: Text(running > 0 ? '任务 · $running' : '任务'),
-                child: _history(),
-              ),
-            ],
-          ),
+          child: _chat(currentTask, pending: pending, running: running),
         ),
       ),
     );
@@ -421,7 +410,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       key: const Key('agent-skills'),
       tooltip: '管理助手技能；对话开头输入 / 可直接启用',
       icon: FLucideIcons.puzzle,
-      label: Text('技能 · $on'),
+      label: Flexible(child: Text('技能 · $on', overflow: TextOverflow.ellipsis)),
       onPress: () => Navigator.push(
         context,
         MaterialPageRoute<void>(builder: (_) => const SkillsScreen()),
@@ -482,6 +471,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         '把人物、设定与伏笔整理成资料建议',
         () => fill('归纳目前为止出场的人物、地点、设定和伏笔，整理成资料建议。'),
       ),
+      (FLucideIcons.notebookPen, '生成正文', '为参考位置的章节生成正文候选', _generate),
     ];
     return SingleChildScrollView(
       key: const Key('agent-quick-actions'),
@@ -560,17 +550,11 @@ class _AgentState extends ConsumerState<AgentPanel> {
         (setting?['presetOverrides'] as Map?)?.containsKey(id) == true;
     return _chip(
       key: const Key('agent-preset'),
-      tooltip: '选择与编辑 ST 预设',
+      tooltip:
+          'ST 预设${customized ? ' · 已自定义' : ''}${off ? '（未用于对话）' : ''}，点击选择与编辑',
       icon: FLucideIcons.slidersHorizontal,
       label: Flexible(
-        child: Text(
-          name == null
-              ? '预设：未选择'
-              : off
-              ? '预设：$name${customized ? ' · 已自定义' : ''}（未用于对话）'
-              : '预设：$name${customized ? ' · 已自定义' : ''}',
-          overflow: TextOverflow.ellipsis,
-        ),
+        child: Text(name ?? '未选择预设', overflow: TextOverflow.ellipsis),
       ),
       onPress: () => Navigator.push(
         context,
@@ -613,7 +597,24 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
-  Widget _chat(GenerationTask? task) {
+  /// Opens a list the conversation keeps out of the way: candidates or
+  /// tasks, built by [body] so it follows changes while open.
+  void _openList(String title, Widget Function(WidgetRef ref) body) =>
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => PageScaffold(
+            title: title,
+            body: Consumer(builder: (_, ref, _) => body(ref)),
+          ),
+        ),
+      );
+
+  Widget _chat(
+    GenerationTask? task, {
+    required int pending,
+    required int running,
+  }) {
     final active = task?.isActive == true ? task : null;
     final story = ref.watch(storyProvider(widget.branchId)).value;
     final chapter = story?.chapters.where((s) => s.id == _chapter).firstOrNull;
@@ -631,38 +632,89 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _modelBanner(),
+                  // Context on one line: the position and the skills are
+                  // capped, the preset name takes the rest, all truncate.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(
+                      children: [
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: (bounds.maxWidth - 32) * .35,
+                          ),
+                          child: _chip(
+                            key: const Key('agent-position'),
+                            tooltip: '参考范围：助手只读取截至此处的正文与资料',
+                            icon: FLucideIcons.mapPin,
+                            label: Flexible(
+                              child: Text(
+                                _chapter == null
+                                    ? '分支末尾'
+                                    : '截至「${chapter == null || chapter.title.isEmpty ? '当前章节' : chapter.title}」',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            onPress: _choosePosition,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(child: _presetChip()),
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: (bounds.maxWidth - 32) * .3,
+                          ),
+                          child: _skillsChip(),
+                        ),
+                      ],
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
                     child: Row(
                       children: [
                         Expanded(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            children: [
-                              _chip(
-                                key: const Key('agent-position'),
-                                tooltip: '助手只读取截至此处的正文与资料',
-                                icon: FLucideIcons.mapPin,
-                                label: Flexible(
-                                  child: Text(
-                                    _chapter == null
-                                        ? '参考范围：分支末尾'
-                                        : '参考范围：截至「${chapter == null || chapter.title.isEmpty ? '当前章节' : chapter.title}」',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                          child: AsyncView(
+                            value: ref.watch(
+                              conversationsProvider(widget.branchId),
+                            ),
+                            builder: (conversations) {
+                              final all = conversations
+                                  .where(
+                                    (c) => c['through_chapter_id'] == _chapter,
+                                  )
+                                  .toList();
+                              if (all.isEmpty) return const SizedBox.shrink();
+                              String label(int i) =>
+                                  '${all[i]['title']} · ${all.length - i}';
+                              return FSelect<String>.rich(
+                                hint: '选择会话',
+                                control: FSelectControl<String>.lifted(
+                                  value:
+                                      all.any((c) => c['id'] == _conversation)
+                                      ? _conversation
+                                      : null,
+                                  onChange: (v) =>
+                                      setState(() => _conversation = v),
                                 ),
-                                onPress: _choosePosition,
-                              ),
-                              _presetChip(),
-                              _skillsChip(),
-                              _chip(
-                                tooltip: '为参考位置的章节生成正文候选',
-                                icon: FLucideIcons.notebookPen,
-                                label: const Text('生成正文'),
-                                onPress: _generate,
-                              ),
-                            ],
+                                format: (id) {
+                                  final i = all.indexWhere(
+                                    (c) => c['id'] == id,
+                                  );
+                                  return i < 0 ? '' : label(i);
+                                },
+                                children: [
+                                  for (final (i, c) in all.indexed)
+                                    FSelectItem<String>(
+                                      title: Text(
+                                        label(i),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      value: c['id'] as String,
+                                    ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                         IconAction(
@@ -675,45 +727,23 @@ class _AgentState extends ConsumerState<AgentPanel> {
                           tooltip: '删除当前会话',
                           onPress: _conversation == null ? null : _delete,
                         ),
-                      ],
-                    ),
-                  ),
-                  AsyncView(
-                    value: ref.watch(conversationsProvider(widget.branchId)),
-                    builder: (conversations) {
-                      final all = conversations
-                          .where((c) => c['through_chapter_id'] == _chapter)
-                          .toList();
-                      if (all.length < 2) return const SizedBox.shrink();
-                      String label(int i) =>
-                          '${all[i]['title']} · ${all.length - i}';
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: FSelect<String>.rich(
-                          hint: '选择会话',
-                          control: FSelectControl<String>.lifted(
-                            value: all.any((c) => c['id'] == _conversation)
-                                ? _conversation
-                                : null,
-                            onChange: (v) => setState(() => _conversation = v),
-                          ),
-                          format: (id) {
-                            final i = all.indexWhere((c) => c['id'] == id);
-                            return i < 0 ? '' : label(i);
-                          },
-                          children: [
-                            for (final (i, c) in all.indexed)
-                              FSelectItem<String>(
-                                title: Text(
-                                  label(i),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                value: c['id'] as String,
-                              ),
+                        MenuAction(
+                          tooltip: '候选与任务',
+                          entries: [
+                            menuEntry(
+                              pending > 0 ? '候选 · $pending' : '候选',
+                              () => _openList('候选', _proposals),
+                              icon: FLucideIcons.gitCompareArrows,
+                            ),
+                            menuEntry(
+                              running > 0 ? '任务 · $running' : '任务',
+                              () => _openList('任务', _history),
+                              icon: FLucideIcons.listChecks,
+                            ),
                           ],
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
                   if (_error != null)
                     Padding(
@@ -770,11 +800,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                     if (task.isActive ||
                                         task.partialText.isNotEmpty) ...[
                                       const SizedBox(height: 12),
-                                      SelectableText(
-                                        task.partialText.isEmpty
-                                            ? '编辑助手正在工作…'
-                                            : task.partialText,
-                                      ),
+                                      task.partialText.isEmpty
+                                          ? const SelectableText('编辑助手正在工作…')
+                                          : _markdown(task.partialText),
                                     ],
                                     const SizedBox(height: 8),
                                     Align(
@@ -918,7 +946,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
     ),
   );
 
-  Widget _proposals() => AsyncView(
+  Widget _proposals(WidgetRef ref) => AsyncView(
     value: ref.watch(proposalsProvider(widget.branchId)),
     builder: (proposals) => proposals.isEmpty
         ? Center(
@@ -981,7 +1009,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           ),
   );
 
-  Widget _history() => AsyncView(
+  Widget _history(WidgetRef ref) => AsyncView(
     value: ref.watch(tasksProvider(widget.branchId)),
     builder: (tasks) => tasks.isEmpty
         ? const Center(child: Text('生成任务会保留输入、进度和结果。'))
@@ -1082,6 +1110,23 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
+  /// The assistant's reply as Markdown, which is what chat models write.
+  Widget _markdown(String text) {
+    final theme = context.theme;
+    return MarkdownBody(
+      data: text,
+      selectable: true,
+      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+        p: TextStyle(height: 1.6, color: theme.colors.foreground),
+        a: TextStyle(color: theme.colors.primary),
+      ),
+      onTapLink: (_, href, _) {
+        final uri = href == null ? null : Uri.tryParse(href);
+        if (uri != null) launchUrl(uri);
+      },
+    );
+  }
+
   Widget _message(AgentMessage message) {
     final metadata = message.raw;
     if (metadata['skill'] is String) {
@@ -1138,15 +1183,16 @@ class _AgentState extends ConsumerState<AgentPanel> {
               ),
             ),
             const SizedBox(height: 8),
-            SelectableText(
-              message.content,
-              style: TextStyle(
-                height: 1.6,
-                color: mine
-                    ? theme.colors.secondaryForeground
-                    : theme.colors.foreground,
-              ),
-            ),
+            if (mine)
+              SelectableText(
+                message.content,
+                style: TextStyle(
+                  height: 1.6,
+                  color: theme.colors.secondaryForeground,
+                ),
+              )
+            else
+              _markdown(message.content),
           ],
         ),
       ),
