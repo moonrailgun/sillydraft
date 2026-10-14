@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -6,72 +8,6 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../agent/agent_providers.dart';
 import '../resources/writing_profile.dart';
-
-const _digits = '零一二三四五六七八九';
-const _values = {
-  '零': 0,
-  '〇': 0,
-  '一': 1,
-  '二': 2,
-  '两': 2,
-  '三': 3,
-  '四': 4,
-  '五': 5,
-  '六': 6,
-  '七': 7,
-  '八': 8,
-  '九': 9,
-};
-const _units = {'十': 10, '百': 100, '千': 1000};
-
-/// [n] in Chinese numerals, as chapter numbers are written: 十二, 一百零五.
-String chineseNumber(int n) {
-  if (n <= 0 || n >= 10000) return '$n';
-  final out = StringBuffer();
-  var zero = false;
-  for (final (unit, name) in [(1000, '千'), (100, '百'), (10, '十'), (1, '')]) {
-    final d = n ~/ unit % 10;
-    if (d == 0) {
-      zero = out.isNotEmpty;
-      continue;
-    }
-    if (zero) out.write('零');
-    zero = false;
-    // 十二, not 一十二, when the tens lead.
-    if (!(unit == 10 && d == 1 && out.isEmpty)) out.write(_digits[d]);
-    out.write(name);
-  }
-  return '$out';
-}
-
-/// The number in a chapter title such as 第十二章 or 第12章.
-({int number, bool arabic})? _chapterNumber(String title) {
-  final match = RegExp(r'^第([0-9]+|[零〇一二两三四五六七八九十百千]+)章').firstMatch(title);
-  if (match == null) return null;
-  final text = match.group(1)!;
-  final arabic = int.tryParse(text);
-  if (arabic != null) return (number: arabic, arabic: true);
-  var total = 0, digit = 0;
-  for (final c in text.split('')) {
-    if (_values[c] case final v?) {
-      digit = v;
-    } else {
-      total += (digit == 0 ? 1 : digit) * _units[c]!;
-      digit = 0;
-    }
-  }
-  return (number: total + digit, arabic: false);
-}
-
-/// The title of the chapter after [chapters], numbered the way the book
-/// numbers its chapters, then [name].
-String nextChapterTitle(List<Chapter> chapters, String name) {
-  final last = chapters.lastOrNull;
-  final found = last == null ? null : _chapterNumber(last.title);
-  final n = (found?.number ?? chapters.length) + 1;
-  final number = found?.arabic == true ? '$n' : chineseNumber(n);
-  return '第$number章 ${name.trim()}'.trim();
-}
 
 /// The brief that writes the next chapter along [direction].
 String chapterBrief(Map direction) =>
@@ -97,7 +33,7 @@ Future<GenerationTask> writeChapter(
   if (rewrite && !brief.startsWith(rewriteInstruction)) {
     brief = '$rewriteInstruction$brief';
   }
-  return services.writing.startPrepared(
+  final task = await services.writing.startPrepared(
     await services.writing.prepare(
       branchId: chapter.branchId,
       chapterId: chapter.id,
@@ -116,6 +52,28 @@ Future<GenerationTask> writeChapter(
       autoAccept: true,
     ),
   );
+  unawaited(_nameWhenWritten(services, task));
+  return task;
+}
+
+/// Gives a chapter titled only by its number a name once [task] has written
+/// it, with the analysis model when one is set up.
+Future<void> _nameWhenWritten(AppServices services, GenerationTask task) async {
+  try {
+    final done = await services.runner.wait(task.id);
+    if (done.status != TaskStatus.completed) return;
+    final connection =
+        await services.connectionFor('analysis') ??
+        await services.connectionFor('writing');
+    if (connection == null) return;
+    await services.writing.nameChapter(
+      branchId: done.branchId,
+      chapterId: done.chapterId!,
+      connection: connection,
+    );
+  } catch (_) {
+    // A name is a nicety: on failure the chapter keeps its number.
+  }
 }
 
 /// Starts the next chapter of [story] along [brief] and returns its chapter:
@@ -135,22 +93,17 @@ Future<Chapter> startNextChapter(
   final last = story.chapters.lastOrNull;
   final Chapter chapter;
   if (last != null && last.content.text.trim().isEmpty) {
-    final title = nextChapterTitle(
-      story.chapters.take(story.chapters.length - 1).toList(),
-      name,
-    );
     await repo.renameChapter(
       branchId: story.branch.id,
       chapterId: last.id,
-      title: title,
+      name: name,
     );
     chapter = await repo.getChapter(
       branchId: story.branch.id,
       chapterId: last.id,
     );
   } else {
-    final title = nextChapterTitle(story.chapters, name);
-    chapter = await repo.createChapter(branchId: story.branch.id, title: title);
+    chapter = await repo.createChapter(branchId: story.branch.id, name: name);
   }
   await writeChapter(ref, chapter, brief: brief);
   return chapter;

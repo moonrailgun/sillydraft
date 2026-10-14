@@ -63,8 +63,16 @@ extension BranchOperations on StoryRepository {
     for (final chapter in selectedChapters) {
       await _execute(
         '''INSERT INTO branch_chapters
-        (branch_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?)''',
-        [id, chapter.id, chapter.title, chapter.position, chapter.revisionId],
+        (branch_id, chapter_id, title, numbered, position, revision_id)
+        VALUES (?, ?, ?, ?, ?, ?)''',
+        [
+          id,
+          chapter.id,
+          chapter.name,
+          chapter.numbered ? 1 : 0,
+          chapter.position,
+          chapter.revisionId,
+        ],
       );
     }
     await _forkSideData(source, id, selectedChapters);

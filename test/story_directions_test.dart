@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/html/html_block_view.dart';
-import 'package:sillydraft/features/reader/next_chapter.dart';
 import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -103,7 +102,7 @@ Future<_Open> _open(
   final novel = await repo.createNovel(title: '灯塔');
   final chapter = await repo.createChapter(
     branchId: novel.activeBranchId,
-    title: '风暴前夜',
+    name: '风暴前夜',
     content: ManuscriptContent.plainText(text),
   );
   await tester.pumpWidget(
@@ -409,31 +408,6 @@ void main() {
     );
   });
 
-  test(
-    'the next chapter is numbered the way the book numbers its chapters',
-    () {
-      Chapter chapter(String title) => Chapter(
-        id: title,
-        branchId: 'b',
-        title: title,
-        position: 0,
-        revisionId: 'r',
-        content: ManuscriptContent.plainText(''),
-      );
-      expect(nextChapterTitle([], '开端'), '第一章 开端');
-      expect(nextChapterTitle([chapter('一')], '出海'), '第二章 出海');
-      expect(nextChapterTitle([chapter('第十九章 雨')], '晴'), '第二十章 晴');
-      expect(nextChapterTitle([chapter('第一百零四章')], '归'), '第一百零五章 归');
-      expect(nextChapterTitle([chapter('第12章 码头')], '灯塔'), '第13章 灯塔');
-      expect(
-        [
-          for (final n in [10, 12, 20, 110, 1001]) chineseNumber(n),
-        ],
-        ['十', '十二', '二十', '一百一十', '一千零一'],
-      );
-    },
-  );
-
   testWidgets('a chapter that failed waits on its page and is written again', (
     tester,
   ) async {
@@ -517,7 +491,7 @@ void main() {
       gate.complete();
       await tester.pumpAndSettle();
       final story = await repo.getStory(book.branchId);
-      expect(story.chapters.map((c) => c.title), ['风暴前夜', '第二章 留守']);
+      expect(story.chapters.map((c) => c.title), ['第一章 风暴前夜', '第二章 留守']);
       expect(story.chapters.first.content.text.trim(), '风暴要来了。');
       expect(story.chapters.last.title, '第二章 留守');
       expect(story.chapters.last.content.text, contains('她推开门。她守在灯下。'));

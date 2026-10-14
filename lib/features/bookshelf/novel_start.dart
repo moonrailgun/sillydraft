@@ -386,7 +386,11 @@ class _NovelImportState extends ConsumerState<NovelImportScreen> {
     int count(ImportedChapter c) => c.text.replaceAll(RegExp(r'\s'), '').length;
     Widget chapter(ImportedChapter c) => FItem(
       prefix: const Icon(FLucideIcons.fileText),
-      title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        c.title.isEmpty ? '（无标题，自动编号）' : c.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       details: Text('${count(c)} 字'),
     );
     return Align(

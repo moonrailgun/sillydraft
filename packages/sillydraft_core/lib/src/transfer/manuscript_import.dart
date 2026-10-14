@@ -267,7 +267,8 @@ abstract final class ManuscriptImporter {
         if (text.replaceAll(_space, '').isEmpty) continue;
         chapters.add(
           ImportedChapter(
-            title: heading.isEmpty ? '第${chapters.length + 1}章' : heading,
+            // Untitled: numbered when it becomes a chapter.
+            title: heading,
             text: text,
           ),
         );

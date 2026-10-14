@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../model/chapter_title.dart';
 import '../model/manuscript.dart';
 import '../model/manuscript_presentation.dart';
 import '../model/story.dart';
@@ -118,6 +119,7 @@ final class StoryRepository {
     String language = 'zh',
     String style = '',
     String pointOfView = '第三人称',
+    ChapterNumerals chapterNumerals = ChapterNumerals.chinese,
   }) => _write(() async {
     _validateTitle(title);
     final id = _id();
@@ -126,8 +128,8 @@ final class StoryRepository {
     await _execute(
       '''INSERT INTO novels
       (id, title, synopsis, genre, language, style, point_of_view,
-       active_branch_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+       active_branch_id, chapter_numerals, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
       [
         id,
         title.trim(),
@@ -137,6 +139,7 @@ final class StoryRepository {
         style,
         pointOfView,
         branchId,
+        chapterNumerals.name,
         now,
         now,
       ],
@@ -173,7 +176,8 @@ final class StoryRepository {
     await _execute(
       '''UPDATE novels SET title = ?, synopsis = ?, genre = ?,
       language = ?, style = ?, point_of_view = ?, active_branch_id = ?,
-      cover_asset_id = ?, archived = ?, updated_at = ? WHERE id = ?''',
+      cover_asset_id = ?, archived = ?, chapter_numerals = ?, updated_at = ?
+      WHERE id = ?''',
       [
         novel.title.trim(),
         novel.synopsis,
@@ -184,6 +188,7 @@ final class StoryRepository {
         novel.activeBranchId,
         novel.coverAssetId,
         novel.archived ? 1 : 0,
+        novel.chapterNumerals.name,
         _now(),
         novel.id,
       ],
@@ -203,7 +208,7 @@ final class StoryRepository {
   Future<StorySnapshot> getStory(String branchId) => _db.transaction(() async {
     final branch = await getBranch(branchId);
     final chapters = await _rows(
-      '$_chapterQuery WHERE s.branch_id = ? ORDER BY s.position, s.chapter_id',
+      '$_chapterQuery ORDER BY c.position, c.chapter_id',
       [branchId],
     );
     return StorySnapshot(
@@ -213,9 +218,18 @@ final class StoryRepository {
     );
   });
 
-  static const _chapterQuery =
-      '''SELECT s.*, r.content_json FROM branch_chapters s
-    JOIN revisions r ON r.id = s.revision_id''';
+  /// One branch's chapters (`c`) with their place in the numbering, then
+  /// their content. Filter on `c` from outside: the count still covers the
+  /// whole branch, and only the chapters kept have their content read.
+  static const _chapterQuery = '''SELECT c.*, r.content_json FROM (
+      SELECT s.*, n.chapter_numerals,
+        CASE WHEN s.numbered = 1 THEN sum(s.numbered)
+          OVER (ORDER BY s.position, s.chapter_id) END AS number
+      FROM branch_chapters s
+      JOIN branches b ON b.id = s.branch_id
+      JOIN novels n ON n.id = b.novel_id
+      WHERE s.branch_id = ?
+    ) c JOIN revisions r ON r.id = c.revision_id''';
 }
 
 String _id() => const Uuid().v4();

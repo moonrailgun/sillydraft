@@ -360,46 +360,107 @@ void main() {
     );
   }
 
-  testWidgets('the outline adds and renames standalone chapters', (
+  testWidgets('chapters number themselves and keep their own names', (
     tester,
   ) async {
     final (services, novel) = await _openNovel(
       tester,
       size: const Size(390, 844),
     );
+    Future<List<String>> titles() async => [
+      for (final c in (await services.repository.getStory(
+        novel.activeBranchId,
+      )).chapters)
+        c.title,
+    ];
     await tester.tap(find.text('新增章节'));
     await tester.pumpAndSettle();
     final titleInput = find.descendant(
       of: find.byType(AppDialog),
       matching: find.byType(EditableText),
     );
-    await tester.enterText(titleInput, '第三章 来信');
+    // Only the name is asked for; the number comes from the order.
+    expect(tester.widget<EditableText>(titleInput).controller.text, isEmpty);
+    await tester.enterText(titleInput, '来信');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('manuscript-editor')), findsOneWidget);
     await tester.tap(findAction('保存并返回'));
     await tester.pumpAndSettle();
-    final beforeRename = await services.repository.getStory(
-      novel.activeBranchId,
-    );
-    expect(beforeRename.chapters.map((chapter) => chapter.title), [
-      '码头',
-      '灯塔',
-      '第三章 来信',
-    ]);
+    final added = await services.repository.getStory(novel.activeBranchId);
+    // 码头 and 灯塔 were titled without numbers and stay as written.
+    expect(await titles(), ['码头', '灯塔', '第一章 来信']);
+
+    await tester.tap(findAction('章节操作').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('计入编号'));
+    await tester.pumpAndSettle();
+    expect(await titles(), ['第一章 码头', '灯塔', '第二章 来信']);
+    expect(find.text('第二章 来信'), findsOneWidget);
 
     await tester.tap(findAction('章节操作').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('重命名章节'));
     await tester.pumpAndSettle();
-    await tester.enterText(titleInput, '第三章 旧友来信');
+    expect(tester.widget<EditableText>(titleInput).controller.text, '来信');
+    await tester.enterText(titleInput, '旧友来信');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     final renamed = await services.repository.getStory(novel.activeBranchId);
-    expect(renamed.chapters, hasLength(3));
-    expect(renamed.chapters.last.id, beforeRename.chapters.last.id);
-    expect(renamed.chapters.last.title, '第三章 旧友来信');
-    expect(find.text('第三章 旧友来信'), findsOneWidget);
+    expect(renamed.chapters.last.id, added.chapters.last.id);
+    expect(await titles(), ['第一章 码头', '灯塔', '第二章 旧友来信']);
+
+    await tester.tap(findAction('作品操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('作品信息'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byWidgetPredicate((w) => w is FSelect<ChapterNumerals>),
+        matching: find.byType(EditableText),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('阿拉伯数字（第6章）').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存修改'));
+    await tester.pumpAndSettle();
+    expect(await titles(), ['第1章 码头', '灯塔', '第2章 旧友来信']);
+    expect(find.text('第2章 旧友来信'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a book that skipped a number numbers on from a chapter', (
+    tester,
+  ) async {
+    final (services, novel) = await _openNovel(
+      tester,
+      size: const Size(390, 844),
+    );
+    final repo = services.repository, branch = novel.activeBranchId;
+    final chapters = (await repo.getStory(branch)).chapters;
+    await repo.setChapterNumbered(
+      branchId: branch,
+      chapterId: chapters.first.id,
+      numbered: true,
+    );
+    // As migration keeps a title past a gap in the old numbering.
+    await repo.renameChapter(
+      branchId: branch,
+      chapterId: chapters.last.id,
+      name: '第三章 灯塔',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('第三章 灯塔'), findsOneWidget);
+    await tester.tap(findAction('章节操作').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从此章起全部计入编号'));
+    await tester.pumpAndSettle();
+    expect(find.text('第二章 灯塔'), findsOneWidget);
+    // Nothing is left to take in.
+    await tester.tap(findAction('章节操作').last);
+    await tester.pumpAndSettle();
+    expect(find.text('从此章起全部计入编号'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

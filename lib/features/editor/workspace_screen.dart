@@ -138,16 +138,18 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
 
   void _edit(Chapter chapter) => _push(EditorScreen(chapter: chapter));
   Future<void> _addChapter(StorySnapshot story) async {
+    // The number comes from the order; only the name is asked for.
     final name = await askText(
       context,
       title: '新增章节',
-      initial: '第${story.chapters.length + 1}章',
+      label: '章节名（可留空）',
+      allowEmpty: true,
     );
     if (name == null || !mounted) return;
     try {
       final chapter = await ref
           .read(repositoryProvider)
-          .createChapter(branchId: story.branch.id, title: name);
+          .createChapter(branchId: story.branch.id, name: name);
       if (mounted) {
         setState(() => _selected = chapter.id);
         _edit(chapter);
@@ -412,7 +414,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   }
 
   Future<void> _renameChapter(StorySnapshot story, Chapter chapter) async {
-    final name = await askText(context, title: '章节名称', initial: chapter.title);
+    final name = await askText(
+      context,
+      title: '章节名称',
+      initial: chapter.name,
+      label: '章节名',
+      allowEmpty: true,
+    );
     if (name == null) return;
     try {
       await ref
@@ -420,7 +428,31 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           .renameChapter(
             branchId: story.branch.id,
             chapterId: chapter.id,
-            title: name,
+            name: name,
+          );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _numberFrom(StorySnapshot story, Chapter chapter) async {
+    try {
+      await ref
+          .read(repositoryProvider)
+          .numberChaptersFrom(branchId: story.branch.id, chapterId: chapter.id);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _toggleNumbered(StorySnapshot story, Chapter chapter) async {
+    try {
+      await ref
+          .read(repositoryProvider)
+          .setChapterNumbered(
+            branchId: story.branch.id,
+            chapterId: chapter.id,
+            numbered: !chapter.numbered,
           );
     } catch (e) {
       if (mounted) showError(context, e);
@@ -478,6 +510,12 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   /// page beside it.
   Widget _outline(StorySnapshot story, Chapter? selected, bool wide) {
     final theme = context.theme;
+    // Whether a chapter, or one after it, still reads 第N章 outside the
+    // numbering: there, numbering on from it closes an old gap.
+    final kept = List.filled(story.chapters.length + 1, false);
+    for (var i = story.chapters.length - 1; i >= 0; i--) {
+      kept[i] = kept[i + 1] || story.chapters[i].keptOldNumber;
+    }
     final muted = theme.typography.body.xs.copyWith(
       color: theme.colors.mutedForeground,
     );
@@ -535,7 +573,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             padding: EdgeInsets.all(20),
             child: Text('先创建一个章节，开始你的故事。'),
           ),
-        for (final chapter in story.chapters)
+        for (final (i, chapter) in story.chapters.indexed)
           FItem(
             selected: wide && selected?.id == chapter.id,
             prefix: const Icon(FLucideIcons.fileText),
@@ -549,6 +587,17 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                   () => _renameChapter(story, chapter),
                   icon: FLucideIcons.pencil,
                 ),
+                menuEntry(
+                  chapter.numbered ? '不计入编号' : '计入编号',
+                  () => _toggleNumbered(story, chapter),
+                  icon: FLucideIcons.hash,
+                ),
+                if (kept[i])
+                  menuEntry(
+                    '从此章起全部计入编号',
+                    () => _numberFrom(story, chapter),
+                    icon: FLucideIcons.listOrdered,
+                  ),
                 menuEntry(
                   '删除章节',
                   () => _deleteChapter(story, chapter),

@@ -73,6 +73,8 @@ final class StoryDatabase extends GeneratedDatabase {
       style TEXT NOT NULL, point_of_view TEXT NOT NULL,
       active_branch_id TEXT NOT NULL, cover_asset_id TEXT,
       archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
+      chapter_numerals TEXT NOT NULL DEFAULT 'chinese'
+        CHECK(chapter_numerals IN ('chinese', 'arabic')),
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     )''',
     '''CREATE TABLE branches (
@@ -92,6 +94,7 @@ final class StoryDatabase extends GeneratedDatabase {
       branch_id TEXT NOT NULL REFERENCES branches(id), chapter_id TEXT NOT NULL,
       title TEXT NOT NULL, position INTEGER NOT NULL CHECK(position >= 0),
       revision_id TEXT NOT NULL REFERENCES revisions(id),
+      numbered INTEGER NOT NULL DEFAULT 1 CHECK(numbered IN (0, 1)),
       PRIMARY KEY(branch_id, chapter_id)
     )''',
     '''CREATE TABLE proposals (

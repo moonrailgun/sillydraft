@@ -437,4 +437,119 @@ void main() {
       );
     },
   );
+  test('chapters are numbered by their order', () async {
+    final novel = await repository.createNovel(title: '雾港来信');
+    final branch = novel.activeBranchId;
+    final a = await repository.createChapter(branchId: branch, name: '码头');
+    final prologue = await repository.createChapter(
+      branchId: branch,
+      title: '序章',
+    );
+    final b = await repository.createChapter(branchId: branch);
+    Future<List<String>> shown() async => [
+      for (final c in (await repository.getStory(branch)).chapters) c.title,
+    ];
+    expect(await shown(), ['第一章 码头', '序章', '第二章']);
+    expect(
+      (await repository.getChapter(branchId: branch, chapterId: b.id)).number,
+      2,
+    );
+    await repository.reorderChapters(
+      branchId: branch,
+      chapterIds: [b.id, prologue.id, a.id],
+    );
+    expect(await shown(), ['第一章', '序章', '第二章 码头']);
+    await repository.setChapterNumbered(
+      branchId: branch,
+      chapterId: prologue.id,
+      numbered: true,
+    );
+    expect(await shown(), ['第一章', '第二章 序章', '第三章 码头']);
+    await repository.renameChapter(
+      branchId: branch,
+      chapterId: a.id,
+      name: '灯塔',
+    );
+    await repository.deleteChapter(branchId: branch, chapterId: b.id);
+    expect(await shown(), ['第一章 序章', '第二章 灯塔']);
+    await repository.updateNovel(
+      (await repository.getNovel(novel.id))
+          .copyWith(chapterNumerals: ChapterNumerals.arabic),
+    );
+    expect(await shown(), ['第1章 序章', '第2章 灯塔']);
+  });
+
+  test(
+    'a chapter joining the numbering drops the number in its name',
+    () async {
+      final novel = await repository.createNovel(title: '雾港来信');
+      final branch = novel.activeBranchId;
+      // As migration leaves a title past a gap in the old numbering.
+      final c = await repository.createChapter(branchId: branch, title: '序章');
+      await repository.renameChapter(
+        branchId: branch,
+        chapterId: c.id,
+        name: '第三章 归途',
+      );
+      expect(
+        (await repository.getChapter(branchId: branch, chapterId: c.id)).title,
+        '第三章 归途',
+      );
+      await repository.setChapterNumbered(
+        branchId: branch,
+        chapterId: c.id,
+        numbered: true,
+      );
+      expect(
+        (await repository.getChapter(branchId: branch, chapterId: c.id)).title,
+        '第一章 归途',
+      );
+    },
+  );
+
+  test('a forked branch keeps names and numbering', () async {
+    final novel = await repository.createNovel(title: '雾港来信');
+    final branch = novel.activeBranchId;
+    await repository.createChapter(branchId: branch, name: '码头');
+    final second = await repository.createChapter(
+      branchId: branch,
+      title: '番外',
+    );
+    final fork = await repository.forkBranch(
+      branchId: branch,
+      name: '支线',
+      atChapterId: second.id,
+    );
+    expect(
+      [for (final c in (await repository.getStory(fork.id)).chapters) c.title],
+      ['第一章 码头', '番外'],
+    );
+  });
+  test(
+    'numbering from a chapter on takes in the titles kept as written',
+    () async {
+      final novel = await repository.createNovel(title: '雾港来信');
+      final branch = novel.activeBranchId;
+      await repository.createChapter(branchId: branch, title: '第一章 码头');
+      // As migration leaves a book whose old numbering skipped 第二章.
+      Future<Chapter> kept(String title) async {
+        final c = await repository.createChapter(branchId: branch, title: '序章');
+        await repository.renameChapter(
+          branchId: branch,
+          chapterId: c.id,
+          name: title,
+        );
+        return c;
+      }
+
+      final gap = await kept('第三章 灯塔');
+      await kept('番外');
+      await kept('第四章 夜');
+      await repository.numberChaptersFrom(branchId: branch, chapterId: gap.id);
+      expect(
+        [for (final c in (await repository.getStory(branch)).chapters) c.title],
+        ['第一章 码头', '第二章 灯塔', '番外', '第三章 夜'],
+      );
+    },
+  );
 }

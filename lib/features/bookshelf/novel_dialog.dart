@@ -27,6 +27,7 @@ class _NovelDialogState extends ConsumerState<NovelDialog> {
   final _goal = TextEditingController();
   late String _genre = widget.novel?.genre ?? '自由创作';
   late String _pointOfView = widget.novel?.pointOfView ?? '第三人称';
+  late var _numerals = widget.novel?.chapterNumerals ?? ChapterNumerals.chinese;
   bool _busy = false;
   @override
   void initState() {
@@ -64,8 +65,9 @@ class _NovelDialogState extends ConsumerState<NovelDialog> {
           genre: _genre,
           style: _style.text.trim(),
           pointOfView: _pointOfView,
+          chapterNumerals: _numerals,
         );
-        await repo.createChapter(branchId: result.activeBranchId, title: '第一章');
+        await repo.createChapter(branchId: result.activeBranchId);
       } else {
         result = old.copyWith(
           title: _title.text.trim(),
@@ -73,6 +75,7 @@ class _NovelDialogState extends ConsumerState<NovelDialog> {
           genre: _genre,
           style: _style.text.trim(),
           pointOfView: _pointOfView,
+          chapterNumerals: _numerals,
         );
         await repo.updateNovel(result);
       }
@@ -143,6 +146,18 @@ class _NovelDialogState extends ConsumerState<NovelDialog> {
             control: FSelectControl.lifted(
               value: _pointOfView,
               onChange: (v) => setState(() => _pointOfView = v ?? _pointOfView),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FSelect<ChapterNumerals>(
+            label: const Text('章节编号'),
+            items: const {
+              '中文数字（第六章）': ChapterNumerals.chinese,
+              '阿拉伯数字（第6章）': ChapterNumerals.arabic,
+            },
+            control: FSelectControl.lifted(
+              value: _numerals,
+              onChange: (v) => setState(() => _numerals = v ?? _numerals),
             ),
           ),
           const SizedBox(height: 16),

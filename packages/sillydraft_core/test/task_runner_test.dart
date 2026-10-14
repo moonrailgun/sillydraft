@@ -344,6 +344,69 @@ void main() {
     expect(await repository.listProposals(novel.activeBranchId), isEmpty);
   });
 
+  test('a chapter titled only by its number is named after its text', () async {
+    final branchId = novel.activeBranchId;
+    final bare = await repository.createChapter(
+      branchId: branchId,
+      content: ManuscriptContent.plainText('两只手在桌下交缠。'),
+    );
+    script = (_, _) async* {
+      yield const TextDelta('<think>想想</think>\n章节名：《桌底下的契约》。');
+      yield const GenerationFinished('stop');
+    };
+    expect(
+      await service.nameChapter(
+        branchId: branchId,
+        chapterId: bare.id,
+        connection: connection,
+      ),
+      '第二章 桌底下的契约',
+    );
+    // A chapter with a name keeps it.
+    expect(
+      await service.nameChapter(
+        branchId: branchId,
+        chapterId: bare.id,
+        connection: connection,
+      ),
+      isNull,
+    );
+    final named = await repository.getChapter(
+      branchId: branchId,
+      chapterId: bare.id,
+    );
+    expect(named.title, '第二章 桌底下的契约');
+    // A name the author gives meanwhile is kept.
+    final other = await repository.createChapter(
+      branchId: branchId,
+      content: ManuscriptContent.plainText('雨停了。'),
+    );
+    script = (_, _) async* {
+      await repository.renameChapter(
+        branchId: branchId,
+        chapterId: other.id,
+        name: '作者起的名',
+      );
+      yield const TextDelta('雨后');
+      yield const GenerationFinished('stop');
+    };
+    expect(
+      await service.nameChapter(
+        branchId: branchId,
+        chapterId: other.id,
+        connection: connection,
+      ),
+      isNull,
+    );
+    expect(
+      (await repository.getChapter(
+        branchId: branchId,
+        chapterId: other.id,
+      )).name,
+      '作者起的名',
+    );
+  });
+
   test('task lists leave out request snapshots; the task keeps them', () async {
     final task = await repository.createTask(
       branchId: novel.activeBranchId,

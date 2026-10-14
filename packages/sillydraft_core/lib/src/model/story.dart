@@ -1,3 +1,4 @@
+import 'chapter_title.dart';
 import 'manuscript.dart';
 
 final class Novel {
@@ -14,6 +15,7 @@ final class Novel {
     this.pointOfView = '第三人称',
     this.coverAssetId,
     this.archived = false,
+    this.chapterNumerals = ChapterNumerals.chinese,
   });
 
   final String id;
@@ -26,6 +28,9 @@ final class Novel {
   final String activeBranchId;
   final String? coverAssetId;
   final bool archived;
+
+  /// How the novel writes its chapter numbers.
+  final ChapterNumerals chapterNumerals;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -40,6 +45,7 @@ final class Novel {
     String? coverAssetId,
     bool clearCover = false,
     bool? archived,
+    ChapterNumerals? chapterNumerals,
     DateTime? updatedAt,
   }) => Novel(
     id: id,
@@ -52,6 +58,7 @@ final class Novel {
     activeBranchId: activeBranchId ?? this.activeBranchId,
     coverAssetId: clearCover ? null : coverAssetId ?? this.coverAssetId,
     archived: archived ?? this.archived,
+    chapterNumerals: chapterNumerals ?? this.chapterNumerals,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -81,18 +88,35 @@ final class Chapter {
   const Chapter({
     required this.id,
     required this.branchId,
-    required this.title,
+    required this.name,
     required this.position,
     required this.revisionId,
     required this.content,
+    this.number,
+    this.numerals = ChapterNumerals.chinese,
   });
 
   final String id;
   final String branchId;
-  final String title;
+
+  /// The chapter's own name, without its number; may be empty.
+  final String name;
+
+  /// Its place in the numbering, from 1; null for a chapter outside it.
+  final int? number;
+  final ChapterNumerals numerals;
   final int position;
   final String revisionId;
   final ManuscriptContent content;
+
+  bool get numbered => number != null;
+
+  /// Outside the numbering under a name that still reads 第N章, as
+  /// migration keeps a title past a gap in the old numbering.
+  bool get keptOldNumber => !numbered && splitChapterTitle(name).number != null;
+
+  /// What the chapter is called on screen, in exports and in prompts.
+  String get title => chapterTitle(number, name, numerals);
 }
 
 final class DocumentRevision {

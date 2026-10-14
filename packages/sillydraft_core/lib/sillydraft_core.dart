@@ -8,6 +8,7 @@ export 'src/transfer/manuscript_import.dart';
 
 export 'src/model/manuscript.dart';
 export 'src/model/manuscript_presentation.dart';
+export 'src/model/chapter_title.dart';
 export 'src/model/story.dart';
 export 'src/storage/story_repository.dart';
 export 'src/st/card_importer.dart';

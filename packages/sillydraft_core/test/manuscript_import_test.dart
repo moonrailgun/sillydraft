@@ -164,7 +164,8 @@ void main() {
     final result = ManuscriptImporter.parse(bytes, filename: 'book.epub');
     expect(result.title, '雾港来信');
     expect(result.synopsis, '港口的故事');
-    expect(result.chapters.map((c) => c.title), ['码头', '第2章']);
+    // An untitled chapter is numbered when imported, not named here.
+    expect(result.chapters.map((c) => c.title), ['码头', '']);
     expect(result.chapters.first.text, '雾从港口升起。\n她 来了…');
   });
 
@@ -189,5 +190,21 @@ void main() {
       chapterId: story.chapters.first.id,
     );
     expect(history.single.reason, 'import');
+  });
+  test('imported headings keep how they read', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final book = ManuscriptImporter.parse(
+      _utf8('第1章 码头\n雾。\n第2章 灯塔\n光。\n番外\n夜。\n'),
+      filename: '雾港.txt',
+    );
+    final created = await repo.createNovelFromManuscript(book);
+    final story = await repo.getStory(created.activeBranchId);
+    expect(
+      [for (final c in story.chapters) c.title],
+      ['第1章 码头', '第2章 灯塔', '番外'],
+    );
+    expect(created.chapterNumerals, ChapterNumerals.arabic);
+    expect(story.chapters.map((c) => c.name), ['码头', '灯塔', '番外']);
   });
 }

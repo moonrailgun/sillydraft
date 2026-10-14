@@ -84,7 +84,6 @@ extension CardStartOperations on StoryRepository {
     );
     final chapter = await createChapter(
       branchId: novel.activeBranchId,
-      title: '第一章',
       content: ManuscriptContent.plainText(opening),
     );
     await setSetting('writing/${novel.activeBranchId}', {

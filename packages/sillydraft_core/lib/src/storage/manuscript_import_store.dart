@@ -10,11 +10,18 @@ extension ManuscriptImportOperations on StoryRepository {
     String pointOfView = '第三人称',
   }) => _write(() async {
     if (book.chapters.isEmpty) throw const FormatException('没有可导入的章节');
+    // Headings keep how they read; those the order numbers join it.
+    final titles = [for (final c in book.chapters) _importTitle(c.title)];
+    final numbering = numberChapterTitles(titles);
     final novel = await createNovel(
       title: title ?? book.title,
       synopsis: book.synopsis,
       genre: genre,
       pointOfView: pointOfView,
+      chapterNumerals: inferNumerals([
+        for (final (i, t) in titles.indexed)
+          if (numbering[i].numbered) t,
+      ]),
     );
     final branchId = novel.activeBranchId;
     for (final (position, chapter) in book.chapters.indexed) {
@@ -28,11 +35,13 @@ extension ManuscriptImportOperations on StoryRepository {
       );
       await _execute(
         '''INSERT INTO branch_chapters
-        (branch_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?)''',
+        (branch_id, chapter_id, title, numbered, position, revision_id)
+        VALUES (?, ?, ?, ?, ?, ?)''',
         [
           branchId,
           chapterId,
-          _importTitle(chapter.title, '第${position + 1}章'),
+          numbering[position].name,
+          numbering[position].numbered ? 1 : 0,
           position,
           revisionId,
         ],
@@ -43,8 +52,7 @@ extension ManuscriptImportOperations on StoryRepository {
   });
 }
 
-String _importTitle(String title, String fallback) {
+String _importTitle(String title) {
   final trimmed = title.trim();
-  if (trimmed.isEmpty) return fallback;
   return trimmed.length > 120 ? '${trimmed.substring(0, 120)}…' : trimmed;
 }

@@ -14,6 +14,9 @@ Novel _novel(Map<String, Object?> r) => Novel(
   activeBranchId: r['active_branch_id'] as String,
   coverAssetId: r['cover_asset_id'] as String?,
   archived: r['archived'] == 1,
+  chapterNumerals: ChapterNumerals.values.byName(
+    r['chapter_numerals'] as String,
+  ),
   createdAt: _date(r['created_at']),
   updatedAt: _date(r['updated_at']),
 );
@@ -31,7 +34,9 @@ StoryBranch _branch(Map<String, Object?> r) => StoryBranch(
 Chapter _chapter(Map<String, Object?> r) => Chapter(
   id: r['chapter_id'] as String,
   branchId: r['branch_id'] as String,
-  title: r['title'] as String,
+  name: r['title'] as String,
+  number: r['number'] as int?,
+  numerals: ChapterNumerals.values.byName(r['chapter_numerals'] as String),
   position: r['position'] as int,
   revisionId: r['revision_id'] as String,
   content: ManuscriptContent.decode(r['content_json'] as String),

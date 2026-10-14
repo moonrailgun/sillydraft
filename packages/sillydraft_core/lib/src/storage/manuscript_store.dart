@@ -5,19 +5,26 @@ extension ManuscriptOperations on StoryRepository {
     required String branchId,
     required String chapterId,
   }) async => _chapter(
-    await _one(
-      '${StoryRepository._chapterQuery} WHERE s.branch_id = ? AND s.chapter_id = ?',
-      [branchId, chapterId],
-      '章节',
-    ),
+    await _one('${StoryRepository._chapterQuery} WHERE c.chapter_id = ?', [
+      branchId,
+      chapterId,
+    ], '章节'),
   );
 
+  /// Adds a chapter at the end of [branchId], numbered and called [name].
+  /// A whole heading in [title] is split instead: 第三章 归途 is numbered
+  /// (the order gives the number) and named 归途; 序章 stays outside the
+  /// numbering.
   Future<Chapter> createChapter({
     required String branchId,
-    String title = '新章节',
+    String? title,
+    String name = '',
+    bool numbered = true,
     ManuscriptContent? content,
   }) => _write(() async {
-    _validateTitle(title);
+    final split = title == null ? null : splitChapterTitle(title);
+    final chapterName = split?.name ?? name.trim();
+    final isNumbered = split == null ? numbered : split.number != null;
     final branch = await getBranch(branchId);
     final id = _id();
     final revisionId = await _insertRevision(
@@ -35,8 +42,16 @@ extension ManuscriptOperations on StoryRepository {
     );
     await _execute(
       '''INSERT INTO branch_chapters
-      (branch_id, chapter_id, title, position, revision_id) VALUES (?, ?, ?, ?, ?)''',
-      [branchId, id, title.trim(), next['position'], revisionId],
+      (branch_id, chapter_id, title, numbered, position, revision_id)
+      VALUES (?, ?, ?, ?, ?, ?)''',
+      [
+        branchId,
+        id,
+        chapterName,
+        isNumbered ? 1 : 0,
+        next['position'],
+        revisionId,
+      ],
     );
     await _touchNovel(branch.novelId);
     return getChapter(branchId: branchId, chapterId: id);
@@ -261,19 +276,67 @@ extension ManuscriptOperations on StoryRepository {
     await _touchNovel(story.branch.novelId);
   });
 
+  /// Renames a chapter; its number, if it has one, stays.
   Future<void> renameChapter({
     required String branchId,
     required String chapterId,
-    required String title,
+    required String name,
   }) => _write(() async {
-    _validateTitle(title);
     await getChapter(branchId: branchId, chapterId: chapterId);
     await _execute(
       'UPDATE branch_chapters SET title = ? WHERE branch_id = ? AND chapter_id = ?',
-      [title.trim(), branchId, chapterId],
+      [name.trim(), branchId, chapterId],
     );
     await _touchNovel((await getBranch(branchId)).novelId);
   });
+
+  /// Puts a chapter in or out of the numbering. Joining it, a name that
+  /// still opens with 第N章 loses that part, so it never reads 第二章 第三章.
+  Future<void> setChapterNumbered({
+    required String branchId,
+    required String chapterId,
+    required bool numbered,
+  }) => _write(() async {
+    final chapter = await getChapter(branchId: branchId, chapterId: chapterId);
+    await _execute(
+      '''UPDATE branch_chapters SET numbered = ?, title = ?
+      WHERE branch_id = ? AND chapter_id = ?''',
+      [
+        numbered ? 1 : 0,
+        numbered ? _withoutNumber(chapter.name) : chapter.name,
+        branchId,
+        chapterId,
+      ],
+    );
+    await _touchNovel((await getBranch(branchId)).novelId);
+  });
+
+  /// Takes [chapterId], and every later chapter still named 第N章 outside
+  /// the numbering, into it: a book whose old numbering skipped reads on
+  /// without the gap. 番外 and the like stay out.
+  Future<void> numberChaptersFrom({
+    required String branchId,
+    required String chapterId,
+  }) => _write(() async {
+    final chapters = (await getStory(branchId)).chapters;
+    final from = chapters.indexWhere((c) => c.id == chapterId);
+    if (from < 0) throw const StoryNotFound('章节');
+    for (final (i, chapter) in chapters.indexed.skip(from)) {
+      if (i != from && !chapter.keptOldNumber) continue;
+      await _execute(
+        '''UPDATE branch_chapters SET numbered = 1, title = ?
+        WHERE branch_id = ? AND chapter_id = ?''',
+        [_withoutNumber(chapter.name), branchId, chapter.id],
+      );
+    }
+    await _touchNovel((await getBranch(branchId)).novelId);
+  });
+
+  /// [name] without a leading 第N章, which the number now shows.
+  String _withoutNumber(String name) {
+    final split = splitChapterTitle(name);
+    return split.number == null ? name : split.name;
+  }
 
   Future<void> reorderChapters({
     required String branchId,

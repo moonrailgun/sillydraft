@@ -673,10 +673,17 @@ Future<String?> askText(
   required String title,
   String initial = '',
   String label = '名称',
+  int maxLines = 1,
+  bool allowEmpty = false,
 }) => showAppDialog<String>(
   context: context,
-  builder: (context) =>
-      _TextDialog(title: title, initial: initial, label: label),
+  builder: (context) => _TextDialog(
+    title: title,
+    initial: initial,
+    label: label,
+    maxLines: maxLines,
+    allowEmpty: allowEmpty,
+  ),
 );
 
 class _TextDialog extends StatefulWidget {
@@ -684,8 +691,14 @@ class _TextDialog extends StatefulWidget {
     required this.title,
     required this.initial,
     required this.label,
+    required this.maxLines,
+    required this.allowEmpty,
   });
   final String title, initial, label;
+  final int maxLines;
+
+  /// Whether an empty answer is one, as a name that may be left blank.
+  final bool allowEmpty;
   @override
   State<_TextDialog> createState() => _TextDialogState();
 }
@@ -699,9 +712,8 @@ class _TextDialogState extends State<_TextDialog> {
   }
 
   void _submit() {
-    if (controller.text.trim().isNotEmpty) {
-      Navigator.pop(context, controller.text.trim());
-    }
+    final text = controller.text.trim();
+    if (text.isNotEmpty || widget.allowEmpty) Navigator.pop(context, text);
   }
 
   @override
@@ -710,6 +722,7 @@ class _TextDialogState extends State<_TextDialog> {
     body: FTextField(
       control: FTextFieldControl.managed(controller: controller),
       autofocus: true,
+      maxLines: widget.maxLines,
       label: Text(widget.label),
       onSubmit: (_) => _submit(),
     ),
