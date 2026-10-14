@@ -298,17 +298,22 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               ],
             ),
           ),
-          prefixes: [if (canPop) const AppBackButton()],
-          suffixes: [
+          // Each pane's toggle sits above it, at its own edge: the outline's
+          // on the left, the tools' on the right. The divider is solid while
+          // the pane shows and dashed once it folds.
+          prefixes: [
+            if (canPop) const AppBackButton(),
             if (wide)
               HeaderIconAction(
                 key: const Key('workspace-outline-toggle'),
                 icon: open.outline
-                    ? FLucideIcons.panelLeftClose
-                    : FLucideIcons.panelLeftOpen,
+                    ? FLucideIcons.panelLeft
+                    : FLucideIcons.panelLeftDashed,
                 tooltip: open.outline ? '收起目录' : '显示目录',
                 onPress: () => _panes(outline: !open.outline),
               ),
+          ],
+          suffixes: [
             HeaderIconAction(
               key: const Key('open-reader'),
               icon: FLucideIcons.bookOpen,
@@ -352,6 +357,15 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                 ),
               ],
             ),
+            if (wide)
+              HeaderIconAction(
+                key: const Key('workspace-tools-toggle'),
+                icon: open.tools
+                    ? FLucideIcons.panelRight
+                    : FLucideIcons.panelRightDashed,
+                tooltip: '${open.tools ? '收起' : '显示'}${_tool.label}',
+                onPress: () => _panes(tools: !open.tools),
+              ),
           ],
         ),
         footer: wide

@@ -144,6 +144,16 @@ void main() {
       // Filling in never sends, so nothing was saved.
       expect(await repo.listConversations(novel.activeBranchId), isEmpty);
 
+      // The tools fold on their own, leaving the outline as it is.
+      await tester.tap(find.byKey(const Key('workspace-tools-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('agent-input')), findsNothing);
+      expect(find.text('正文目录'), findsOneWidget);
+      expect((await repo.getSetting('workspacePanes'))?['tools'], isFalse);
+      await tester.tap(findAction('显示助手'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('agent-input')), findsOneWidget);
+
       // The outline folds away and stays folded.
       await tester.tap(find.byKey(const Key('workspace-outline-toggle')));
       await tester.pumpAndSettle();
