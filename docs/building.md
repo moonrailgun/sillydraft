@@ -114,7 +114,7 @@ tag 触发 `.github/workflows/release.yml`：
 
 1. 调用 `verify.yml` 跑完整测试与构建；与下面的打包同时进行。发布提交推送到分支时 `verify.yml` 跳过，测试只在这里跑一遍。
 2. 校验 tag 与 pubspec 版本一致，创建草稿 Release，说明为上个 tag 以来的提交标题与安装提示。
-3. 并行构建并上传 `sillydraft-<版本>-android.apk`、`-macos.zip`、`-windows-x64.zip`（含 VC++ 运行库）、`-linux-x64.tar.gz`。iOS 需要证书，不出包。
+3. 并行构建并上传 `sillydraft-<版本>-android.apk`（只含 arm64-v8a；三种 ABI 合打时原生库未压缩，约 85 MB，仅 arm64 约 32 MB）、`-macos.zip`、`-windows-x64.zip`（含 VC++ 运行库）、`-linux-x64.tar.gz`。iOS 需要证书，不出包。
 4. 测试通过且所有平台打包成功后转为正式发布。任一失败时 Release 停在草稿，应用的更新检查看不到它；修复后在 Actions 里重跑失败的任务即可（上传会覆盖同名文件）。
 
 Android 签名需在仓库 Settings → Secrets and variables → Actions 中配置：
