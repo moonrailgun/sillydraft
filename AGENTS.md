@@ -64,7 +64,7 @@ macOS 在 `macos/Runner/Info.plist` 里设置了 `FLTEnableImpeller=false`（绕
 
 ## 调试正在运行的应用
 
-macOS 上的数据库位于 `~/Library/Application Support/app.sillydraft.sillydraft/library.sqlite`。用只读方式打开（`sqlite3 "file:<路径>?mode=ro"`），不要在应用运行时写入。章节原文在 `revisions.content_json`，生成时的输入（含显示正则）在 `generation_tasks.input_json`。
+macOS 上的数据库位于 `~/Library/Application Support/com.moonrailgun.sillydraft/library.sqlite`。用只读方式打开（`sqlite3 "file:<路径>?mode=ro"`），不要在应用运行时写入。章节原文在 `revisions.content_json`，生成时的输入（含显示正则）在 `generation_tasks.input_json`。
 
 ## 约定
 

@@ -1,4 +1,4 @@
-package app.sillydraft.sillydraft
+package com.moonrailgun.sillydraft
 
 import io.flutter.embedding.android.FlutterActivity
 
