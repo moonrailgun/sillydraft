@@ -323,8 +323,7 @@ class ResourceDetailScreen extends ConsumerWidget {
         final preset = resource.kind == ResourceKind.preset
             ? PresetImporter().decode(resource.data)
             : null;
-        return ListView(
-          padding: const EdgeInsets.all(24),
+        final header = SliverList.list(
           children: [
             Text(
               resource.name,
@@ -421,7 +420,16 @@ class ResourceDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            _ResourceBody(resource, preset),
+          ],
+        );
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.all(24),
+              sliver: SliverMainAxisGroup(
+                slivers: [header, _ResourceBody(resource, preset)],
+              ),
+            ),
           ],
         );
       },
@@ -429,8 +437,7 @@ class ResourceDetailScreen extends ConsumerWidget {
   );
 }
 
-/// A resource read two ways: a preview of what it holds, or its raw JSON
-/// as a foldable tree. Without a preview only the JSON shows.
+/// Slivers for a resource preview or its raw JSON as a foldable tree.
 class _ResourceBody extends StatefulWidget {
   const _ResourceBody(this.resource, this.preset);
   final LibraryResource resource;
@@ -463,29 +470,35 @@ class _ResourceBodyState extends State<_ResourceBody> {
   @override
   Widget build(BuildContext context) {
     final preview = _preview();
-    if (preview == null) return JsonTreeView(widget.resource.data);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            ChoicePill(
-              label: '预览',
-              icon: FLucideIcons.eye,
-              selected: !_raw,
-              onPress: () => setState(() => _raw = false),
-            ),
-            const SizedBox(width: 8),
-            ChoicePill(
-              label: '原始 JSON',
-              icon: FLucideIcons.braces,
-              selected: _raw,
-              onPress: () => setState(() => _raw = true),
-            ),
-          ],
+    if (preview == null) {
+      return SliverToBoxAdapter(child: JsonTreeView(widget.resource.data));
+    }
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Row(
+            children: [
+              ChoicePill(
+                label: '预览',
+                icon: FLucideIcons.eye,
+                selected: !_raw,
+                onPress: () => setState(() => _raw = false),
+              ),
+              const SizedBox(width: 8),
+              ChoicePill(
+                label: '原始 JSON',
+                icon: FLucideIcons.braces,
+                selected: _raw,
+                onPress: () => setState(() => _raw = true),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-        if (_raw) JsonTreeView(widget.resource.data) else preview,
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        if (_raw)
+          SliverToBoxAdapter(child: JsonTreeView(widget.resource.data))
+        else
+          preview,
       ],
     );
   }
@@ -668,88 +681,98 @@ class _PresetPreviewState extends State<_PresetPreview> {
       for (final p in preset.prompts)
         if (!placed.contains(p.identifier)) p,
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    return SliverMainAxisGroup(
+      slivers: [
         if (samplers.isNotEmpty) ...[
-          previewHeading(context, '采样参数'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final MapEntry(:key, :value) in samplers.entries)
-                if (key == continuePrefillIgnored.path && value == true)
-                  FTooltip(
-                    tipBuilder: (_, _) => ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 280),
-                      child: Text(continuePrefillIgnored.message),
-                    ),
-                    child: _samplerBadge(
-                      theme,
-                      key,
-                      value,
-                      warning: const Icon(
-                        FLucideIcons.triangleAlert,
-                        key: Key('preset-ignored-continue_prefill'),
-                        size: 14,
-                        color: Color(0xFFEAB308),
+          SliverToBoxAdapter(child: previewHeading(context, '采样参数')),
+          SliverToBoxAdapter(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final MapEntry(:key, :value) in samplers.entries)
+                  if (key == continuePrefillIgnored.path && value == true)
+                    FTooltip(
+                      tipBuilder: (_, _) => ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        child: Text(continuePrefillIgnored.message),
                       ),
-                    ),
-                  )
-                else
-                  _samplerBadge(theme, key, value),
-            ],
+                      child: _samplerBadge(
+                        theme,
+                        key,
+                        value,
+                        warning: const Icon(
+                          FLucideIcons.triangleAlert,
+                          key: Key('preset-ignored-continue_prefill'),
+                          size: 14,
+                          color: Color(0xFFEAB308),
+                        ),
+                      ),
+                    )
+                  else
+                    _samplerBadge(theme, key, value),
+              ],
+            ),
           ),
-          const SizedBox(height: 24),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
         if (rows.isNotEmpty) ...[
-          previewHeading(
-            context,
-            '提示词',
-            '启用 ${rows.where((p) => on.contains(p.identifier)).length} / '
-                '${rows.length}'
-                '${preset.orderGroups.length > 1 ? ' · 按默认顺序组（共 ${preset.orderGroups.length} 组）' : ''}',
+          SliverToBoxAdapter(
+            child: previewHeading(
+              context,
+              '提示词',
+              '启用 ${rows.where((p) => on.contains(p.identifier)).length} / '
+                  '${rows.length}'
+                  '${preset.orderGroups.length > 1 ? ' · 按默认顺序组（共 ${preset.orderGroups.length} 组）' : ''}',
+            ),
           ),
-          FTileGroup(
-            children: [
-              for (final p in rows)
-                FTile(
-                  key: ValueKey('preset-prompt-${p.identifier}'),
-                  prefix: Icon(
-                    on.contains(p.identifier)
-                        ? FLucideIcons.circleCheck
-                        : FLucideIcons.circle,
-                    color: on.contains(p.identifier)
-                        ? null
-                        : theme.colors.mutedForeground,
-                  ),
-                  title: Text(
-                    p.name,
-                    style: on.contains(p.identifier)
-                        ? null
-                        : TextStyle(color: theme.colors.mutedForeground),
-                  ),
-                  subtitle: p.marker
-                      ? const Text('动态标记 · 生成时填入')
-                      : Text(
-                          p.content.trim().isEmpty ? '（空）' : p.content.trim(),
-                          maxLines: _open.contains(p.identifier) ? null : 2,
-                          softWrap: true,
-                          overflow: _open.contains(p.identifier)
-                              ? TextOverflow.visible
-                              : TextOverflow.ellipsis,
-                        ),
-                  details: Text(
-                    [
-                      p.role,
-                      if (p.injectionPosition == 1) '深度 ${p.depth}',
-                    ].join(' · '),
-                  ),
-                  onPress: () => setState(() {
-                    if (!_open.remove(p.identifier)) _open.add(p.identifier);
-                  }),
+          SliverTileGroup(
+            itemCount: rows.length,
+            itemBuilder: (context, index) {
+              final p = rows[index];
+              final open = _open.contains(p.identifier);
+              final content = p.content.trim();
+              return FTile(
+                key: ValueKey('preset-prompt-${p.identifier}'),
+                prefix: Icon(
+                  on.contains(p.identifier)
+                      ? FLucideIcons.circleCheck
+                      : FLucideIcons.circle,
+                  color: on.contains(p.identifier)
+                      ? null
+                      : theme.colors.mutedForeground,
                 ),
-            ],
+                title: Text(
+                  p.name,
+                  style: on.contains(p.identifier)
+                      ? null
+                      : TextStyle(color: theme.colors.mutedForeground),
+                ),
+                subtitle: p.marker
+                    ? const Text('动态标记 · 生成时填入')
+                    : Text(
+                        content.isEmpty
+                            ? '（空）'
+                            : open || content.length <= 400
+                            ? content
+                            : content.substring(0, 400),
+                        maxLines: open ? null : 2,
+                        softWrap: true,
+                        overflow: open
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                      ),
+                details: Text(
+                  [
+                    p.role,
+                    if (p.injectionPosition == 1) '深度 ${p.depth}',
+                  ].join(' · '),
+                ),
+                onPress: () => setState(() {
+                  if (!_open.remove(p.identifier)) _open.add(p.identifier);
+                }),
+              );
+            },
           ),
         ],
       ],

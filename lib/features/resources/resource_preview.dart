@@ -50,7 +50,57 @@ class FoldItem {
   final bool mono;
 }
 
-/// Read-only rows whose text folds to two lines until tapped.
+/// A tile group that participates in the page's lazy scroll layout.
+class SliverTileGroup extends StatelessWidget {
+  const SliverTileGroup({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+  });
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FTileGroupStyleData.of(context);
+    final radius = context.theme.style.borderRadius.md;
+    return DecoratedSliver(
+      decoration: style.decoration,
+      sliver: SliverPadding(
+        padding: style.decoration.padding,
+        sliver: SliverList.builder(
+          itemCount: itemCount,
+          itemBuilder: (context, index) => FInheritedItemData.merge(
+            styles: FVariants.raw(
+              style.tileStyles.base,
+              style.tileStyles.variants,
+            ),
+            divider: FItemDivider.indented,
+            dividerColor: style.dividerColor,
+            dividerWidth: style.dividerWidth,
+            index: index,
+            last: index == itemCount - 1,
+            child: ClipRSuperellipse(
+              borderRadius: BorderRadius.only(
+                topLeft: index == 0 ? radius.topLeft : Radius.zero,
+                topRight: index == 0 ? radius.topRight : Radius.zero,
+                bottomLeft: index == itemCount - 1
+                    ? radius.bottomLeft
+                    : Radius.zero,
+                bottomRight: index == itemCount - 1
+                    ? radius.bottomRight
+                    : Radius.zero,
+              ),
+              child: itemBuilder(context, index),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Read-only sliver rows whose text folds to two lines until tapped.
 class FoldGroup extends StatefulWidget {
   const FoldGroup(this.items, {super.key});
   final List<FoldItem> items;
@@ -65,55 +115,49 @@ class _FoldGroupState extends State<FoldGroup> {
   Widget build(BuildContext context) {
     final theme = context.theme;
     final muted = TextStyle(color: theme.colors.mutedForeground);
-    return FTileGroup(
-      children: [
-        for (final item in widget.items)
-          () {
-            final open = _open.contains(item.id);
-            final body = item.body.trim().isEmpty ? '（空）' : item.body.trim();
-            return FTile(
-              key: ValueKey('fold-${item.id}'),
-              prefix: item.enabled == null
-                  ? null
-                  : Icon(
-                      item.enabled!
-                          ? FLucideIcons.circleCheck
-                          : FLucideIcons.circle,
-                      color: item.enabled!
-                          ? null
-                          : theme.colors.mutedForeground,
-                    ),
-              title: Text(
-                item.title,
-                style: item.enabled == false ? muted : null,
-              ),
-              subtitle: Text.rich(
-                TextSpan(
-                  children: [
-                    if (item.note != null)
-                      TextSpan(text: '${item.note}\n', style: muted),
-                    TextSpan(
-                      // Folded rows lay out a slice, not a whole HTML greeting.
-                      text: open || body.length <= 400
-                          ? body
-                          : body.substring(0, 400),
-                      style: item.mono
-                          ? const TextStyle(fontFamily: 'monospace')
-                          : null,
-                    ),
-                  ],
+    return SliverTileGroup(
+      itemCount: widget.items.length,
+      itemBuilder: (context, index) {
+        final item = widget.items[index];
+        final open = _open.contains(item.id);
+        final body = item.body.trim().isEmpty ? '（空）' : item.body.trim();
+        return FTile(
+          key: ValueKey('fold-${item.id}'),
+          prefix: item.enabled == null
+              ? null
+              : Icon(
+                  item.enabled!
+                      ? FLucideIcons.circleCheck
+                      : FLucideIcons.circle,
+                  color: item.enabled! ? null : theme.colors.mutedForeground,
                 ),
-                maxLines: open ? null : 2,
-                softWrap: true,
-                overflow: open ? TextOverflow.visible : TextOverflow.ellipsis,
-              ),
-              details: item.details == null ? null : Text(item.details!),
-              onPress: () => setState(() {
-                if (!_open.remove(item.id)) _open.add(item.id);
-              }),
-            );
-          }(),
-      ],
+          title: Text(item.title, style: item.enabled == false ? muted : null),
+          subtitle: Text.rich(
+            TextSpan(
+              children: [
+                if (item.note != null)
+                  TextSpan(text: '${item.note}\n', style: muted),
+                TextSpan(
+                  // Folded rows lay out a slice, not a whole HTML greeting.
+                  text: open || body.length <= 400
+                      ? body
+                      : body.substring(0, 400),
+                  style: item.mono
+                      ? const TextStyle(fontFamily: 'monospace')
+                      : null,
+                ),
+              ],
+            ),
+            maxLines: open ? null : 2,
+            softWrap: true,
+            overflow: open ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          details: item.details == null ? null : Text(item.details!),
+          onPress: () => setState(() {
+            if (!_open.remove(item.id)) _open.add(item.id);
+          }),
+        );
+      },
     );
   }
 }
@@ -128,7 +172,7 @@ const _cardFields = {
   'creator_notes': '作者备注',
 };
 
-/// A character card read as its settings, greetings, lorebook and regex.
+/// Slivers showing a card's settings, greetings, lorebook and regex.
 class CharacterPreview extends StatelessWidget {
   const CharacterPreview(this.raw, {super.key});
 
@@ -174,36 +218,39 @@ class CharacterPreview extends StatelessWidget {
       // Shown in the raw view; the preview leaves it out.
     }
     final rules = DisplayContext.regexRulesOf(data['extensions']);
-    const gap = SizedBox(height: 24);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    const gap = SliverToBoxAdapter(child: SizedBox(height: 24));
+    return SliverMainAxisGroup(
+      slivers: [
         if (tags.isNotEmpty || meta.isNotEmpty) ...[
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (final tag in tags)
-                FBadge(variant: FBadgeVariant.secondary, child: Text(tag)),
-              if (meta.isNotEmpty)
-                Text(
-                  meta.join(' · '),
-                  style: theme.typography.body.sm.copyWith(
-                    color: theme.colors.mutedForeground,
+          SliverToBoxAdapter(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (final tag in tags)
+                  FBadge(variant: FBadgeVariant.secondary, child: Text(tag)),
+                if (meta.isNotEmpty)
+                  Text(
+                    meta.join(' · '),
+                    style: theme.typography.body.sm.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
           gap,
         ],
         if (fields.isNotEmpty) ...[
-          previewHeading(context, '设定'),
+          SliverToBoxAdapter(child: previewHeading(context, '设定')),
           FoldGroup(fields),
           gap,
         ],
         if (greetings.any((g) => g.trim().isNotEmpty)) ...[
-          previewHeading(context, '开场白', '共 ${greetings.length} 条'),
+          SliverToBoxAdapter(
+            child: previewHeading(context, '开场白', '共 ${greetings.length} 条'),
+          ),
           FoldGroup([
             for (final (i, g) in greetings.indexed)
               FoldItem('greeting-$i', i == 0 ? '开场白' : '备用开场 $i', g),
@@ -231,19 +278,20 @@ String _position(WorldBookEntry e) => switch (e.position) {
   _ => '位置 ${e.position}',
 };
 
-/// A world book's entries, in file order.
+/// Slivers showing a world book's entries in file order.
 class WorldBookPreview extends StatelessWidget {
   const WorldBookPreview(this.book, {super.key, this.title = '条目'});
   final WorldBook book;
   final String title;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      previewHeading(
-        context,
-        title,
-        '启用 ${book.entries.where((e) => e.enabled).length} / ${book.entries.length}',
+  Widget build(BuildContext context) => SliverMainAxisGroup(
+    slivers: [
+      SliverToBoxAdapter(
+        child: previewHeading(
+          context,
+          title,
+          '启用 ${book.entries.where((e) => e.enabled).length} / ${book.entries.length}',
+        ),
       ),
       if (book.entries.isNotEmpty)
         FoldGroup([
@@ -267,7 +315,7 @@ class WorldBookPreview extends StatelessWidget {
 
 const _placements = {1: '用户输入', 2: 'AI 输出', 3: '快捷命令', 5: '世界书', 6: '推理'};
 
-/// SillyTavern regex scripts: what each finds, what it writes, and where.
+/// Slivers showing what each ST regex finds, what it writes, and where.
 class RegexPreview extends StatelessWidget {
   const RegexPreview(this.rules, {super.key});
   final List<Map<String, dynamic>> rules;
@@ -282,13 +330,14 @@ class RegexPreview extends StatelessWidget {
       : [raw];
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      previewHeading(
-        context,
-        '正则脚本',
-        '启用 ${rules.where((r) => r['disabled'] != true).length} / ${rules.length}',
+  Widget build(BuildContext context) => SliverMainAxisGroup(
+    slivers: [
+      SliverToBoxAdapter(
+        child: previewHeading(
+          context,
+          '正则脚本',
+          '启用 ${rules.where((r) => r['disabled'] != true).length} / ${rules.length}',
+        ),
       ),
       FoldGroup([
         for (final (i, rule) in rules.indexed)

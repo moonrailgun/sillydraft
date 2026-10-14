@@ -8,6 +8,120 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'support/host.dart';
 
 void main() {
+  for (final kind in ResourceKind.values) {
+    testWidgets('large ${kind.name} previews build rows on demand', (
+      tester,
+    ) async {
+      final services = AppServices(
+        repository: StoryRepository.memory(),
+        secrets: MemorySecrets(),
+      );
+      addTearDown(services.close);
+      final content = '${'长正文。' * 400}正文结尾';
+      final book = {
+        'entries': [
+          for (var i = 0; i < 400; i++)
+            {'id': i, 'comment': '条目 $i', 'content': content},
+        ],
+      };
+      await services.repository.storeResource(
+        id: 'large',
+        kind: kind,
+        name: '大资源',
+        filename: 'large.json',
+        sourceHash: 'fixture-hash-large',
+        encryptedSource: [],
+        data: switch (kind) {
+          ResourceKind.preset => {
+            'prompts': [
+              for (var i = 0; i < 400; i++)
+                {
+                  'identifier': 'entry-$i',
+                  'name': '条目 $i',
+                  'role': 'system',
+                  'content': content,
+                },
+            ],
+            'prompt_order': [
+              {
+                'character_id': 100001,
+                'order': [
+                  for (var i = 0; i < 400; i++)
+                    {'identifier': 'entry-$i', 'enabled': true},
+                ],
+              },
+            ],
+          },
+          ResourceKind.character => {
+            'spec': 'chara_card_v2',
+            'data': {'name': '大资源', 'character_book': book},
+          },
+          ResourceKind.worldBook => book,
+          ResourceKind.regex => {
+            'scripts': [
+              for (var i = 0; i < 400; i++)
+                {
+                  'scriptName': '条目 $i',
+                  'findRegex': 'test',
+                  'replaceString': content,
+                },
+            ],
+          },
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [servicesProvider.overrideWithValue(services)],
+          child: testHost(const ResourceDetailScreen(resourceId: 'large')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('条目 0'), findsOneWidget);
+      expect(find.text('条目 399'), findsNothing);
+      expect(
+        find.textContaining(RegExp(r'^条目 \d+$')).evaluate().length,
+        lessThan(20),
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              (widget.data ?? widget.textSpan?.toPlainText() ?? '').contains(
+                '正文结尾',
+              ),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.text('条目 0'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('正文结尾'), findsOneWidget);
+      await tester.tap(find.text('条目 0'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('条目 399'),
+        600,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 100,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('条目 399'), findsOneWidget);
+      await tester.tap(find.text('条目 399'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('正文结尾'), findsOneWidget);
+      final position = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+      final bottom = position.pixels;
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(find.text('条目 399'), findsNothing);
+      position.jumpTo(bottom);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('正文结尾'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a card\'s detail page previews it and shows its raw JSON', (
     tester,
   ) async {
@@ -70,6 +184,11 @@ void main() {
     expect(find.text('设定'), findsOneWidget);
     expect(find.textContaining('住在雾港'), findsOneWidget);
     expect(find.text('备用开场 1'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('隐藏状态栏'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('角色书  启用 1 / 1'), findsOneWidget);
     expect(find.textContaining('关键词：灯塔'), findsOneWidget);
     expect(find.text('隐藏状态栏'), findsOneWidget);
