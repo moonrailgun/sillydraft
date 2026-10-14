@@ -15,6 +15,9 @@ dependencies:
   sillydraft_core:
     path: packages/sillydraft_core
   flutter_riverpod: ^3.4.3
+  # Pinned: DevtoolHistoryTrim reaches into its internal debug history, so
+  # an upgrade must re-check lib/app/devtool_trim.dart.
+  riverpod: 3.4.3
   flutter_quill: ^11.6.0
   path_provider: ^2.1.6
   file_selector: ^1.1.0
@@ -23,8 +26,12 @@ dependencies:
   desktop_drop: ^0.8.4
   wakelock_plus: ^1.8.0
   webview_flutter: ^4.14.1
+  webview_flutter_wkwebview: ^3.27.0
   forui: ^0.27.5
   material_ui: ^1.6.0
+  package_info_plus: ^10.2.2
+  url_launcher: ^6.3.3
+  flutter_markdown_plus: ^1.0.12
 
 dev_dependencies:
   image: ^4.12.0
@@ -34,6 +41,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   forui_cli: ^0.27.0
+  webview_flutter_platform_interface: ^2.15.1
 
 flutter:
   uses-material-design: true
