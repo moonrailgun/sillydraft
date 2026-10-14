@@ -424,6 +424,17 @@ void main() {
     ]);
   });
 
+  test('a workflow without a model input sends no model', () {
+    expect(config.sentModel, 'new.safetensors');
+    final unbound = ModelConnection.fromJson({
+      ...config.raw,
+      'model': 'workflow',
+      'models': ['workflow'],
+      'comfyWorkflow': {...workflow}..remove('modelInput'),
+    });
+    expect(unbound.sentModel, isNull);
+  });
+
   test('redirects cannot receive the ComfyUI credential', () async {
     final other = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => other.close(force: true));

@@ -12,6 +12,12 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 限制仍需明确：token 预算为估算；随机宏按任务固定，`pick` 的种子不等同于 ST 聊天标识；世界书的定时、分组及自动化扩展尚未实现；浏览器脚本扩展不执行。模型参数诊断、输出处理、资源库 UI 与采纳时变量提交已接入。现有证据覆盖固定样本和本地模拟模型，不代表全部社区预设或真实模型行为等价。
 
+## ComfyUI 工作流读取
+
+ST 1.19.0 的 [`stable-diffusion.js`](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/stable-diffusion.js#L446) 按文件名读取 ST 用户目录内的工作流，再提交 API 节点图到 ComfyUI。社区“智绘姬” [`st-chatu8`](https://github.com/damoshen123/st-chatu8/blob/8b07f4554355671e0a288afa94c1ae89ddfb8b8b/index.js#L45901) 也以 API JSON 保存工作流预设，导入时明确拒绝包含 UI 节点的画布格式。
+
+SillyDraft 沿用 API 节点图执行语义，支持本地导入、粘贴，以及通过 ComfyUI `userdata` 接口按文件名读取 `workflows/` 下的 JSON。服务端目录与 ST 自身的预设目录不同；不读取 ST 插件设置、不实现智绘姬预设占位符。标准核心节点画布根据 `object_info` 的输入定义、命名控件或控件顺序转换为 API 图；参考 ComfyUI 官方 [`workflow_templates` 转换代码](https://github.com/Comfy-Org/workflow_templates/blob/main/scripts/comfyui_node_compat/workflow.py) 和[控件序列化说明](https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/docs/WIDGET_SERIALIZATION.md)。自定义前端序列化、子图、禁用/绕过节点等不支持时明确要求导出 API 格式，不猜测转换。密钥、格式、文件大小（2 MB）、节点数量（4096）分别诊断。服务端文件在新建任务前重读，再冻结到任务快照；重试不重新读取。默认沿用工作流模型，覆盖模型和 API JSON 导入收在高级设置。画面描述选择默认仅显示 `text`、`prompt`、`text_g`、`text_l` 和已有绑定；展开高级设置可选其他字符串字段，兼容自定义 API 节点。测试见 `comfy_canvas_test.dart`、`comfy_workflow_files_test.dart`、`comfy_workflow_refresh_test.dart`、`comfy_workflow_editor_test.dart`。
+
 ## 预设面板与助手对话
 
 作品菜单「预设」、助手顶部的「预设」标签和生成正文页都进入同一个预设面板，对应 ST 的“AI 回复配置”：

@@ -159,12 +159,34 @@ void main() {
       await tester.tap(find.text('ComfyUI（生图）').last);
       await tester.pumpAndSettle();
       expect(find.text('上下文 token 上限'), findsNothing);
+      expect(find.text('模型名称'), findsNothing);
+      expect(
+        find.byKey(const Key('comfy-workflow-json')).hitTestable(),
+        findsNothing,
+      );
+      await tester.ensureVisible(find.text('高级设置'));
+      await tester.tap(find.text('高级设置'));
+      await tester.pumpAndSettle();
+      for (final blank in ['', '  \n  ']) {
+        await tester.enterText(
+          find.byKey(const Key('comfy-workflow-json')),
+          blank,
+        );
+        await tester.ensureVisible(find.text('解析 JSON'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('解析 JSON'));
+        await tester.pumpAndSettle();
+        expect(find.text('请先导入工作流文件，或粘贴 API 格式的 JSON'), findsOneWidget);
+        expect(find.byKey(const Key('comfy-prompt-input')), findsNothing);
+        expect(await services.connections(), isEmpty);
+      }
       await tester.enterText(
         find.byKey(const Key('comfy-workflow-json')),
         jsonEncode(workflow['nodes']),
       );
-      await tester.ensureVisible(find.text('读取工作流'));
-      await tester.tap(find.text('读取工作流'));
+      await tester.ensureVisible(find.text('解析 JSON'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('解析 JSON'));
       await tester.pumpAndSettle();
       final binding = find.byKey(const Key('comfy-prompt-input'));
       await tester.ensureVisible(binding);
@@ -178,7 +200,8 @@ void main() {
       expect(saved.protocol, ModelProtocol.comfyUI);
       expect(saved.baseUrl, 'http://127.0.0.1:8188');
       expect(saved.comfyWorkflow!.promptInput, '6.text');
-      expect(saved.comfyWorkflow!.modelInput, '4.ckpt_name');
+      expect(saved.comfyWorkflow!.modelInput, isEmpty);
+      expect(saved.model, 'workflow');
       expect(saved.comfyWorkflow!.outputNode, '9');
       expect(await services.connectionFor('writing'), isNull);
       expect((await services.connectionFor('image'))!.id, saved.id);

@@ -382,7 +382,9 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   }
 
   ModelConnection _configuration({bool listing = false}) {
-    final selected = _selectedModels;
+    final selected = _comfy && _workflow?.modelInput.isNotEmpty != true
+        ? <String>['workflow']
+        : _selectedModels;
     if (selected.isEmpty && (listing || _cli || _comfy)) {
       selected.add(
         _cli
@@ -567,13 +569,25 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     );
   }
 
+  Future<T> _comfyRequest<T>(Future<T> Function(ComfyUIProvider) action) async {
+    final config = _configuration(listing: true);
+    final secret = _key.text.isNotEmpty
+        ? _key.text
+        : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
+    final provider = ComfyUIProvider(config: config, apiKey: secret);
+    try {
+      return await action(provider);
+    } finally {
+      provider.close();
+    }
+  }
+
   Future<void> _list() async {
     setState(() {
       _busy = true;
       _message = null;
     });
     ModelProvider? provider;
-    ComfyUIProvider? comfy;
     try {
       if (_novelAI) {
         setState(() {
@@ -594,13 +608,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         }
         return;
       }
-      final secret = _key.text.isNotEmpty
-          ? _key.text
-          : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
-      final config = _configuration(listing: true);
       if (_comfy) {
-        comfy = ComfyUIProvider(config: config, apiKey: secret);
-        final models = await comfy.listModels();
+        final models = await _comfyRequest((provider) => provider.listModels());
         if (mounted) {
           setState(() {
             _models = models;
@@ -609,6 +618,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         }
         return;
       }
+      final secret = _key.text.isNotEmpty
+          ? _key.text
+          : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
+      final config = _configuration(listing: true);
       provider = _remote
           ? RemoteModelProvider(config: config, accessToken: secret)
           : OpenAICompatibleProvider(config: config, apiKey: secret);
@@ -623,7 +636,6 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       if (mounted) setState(() => _message = e.toString());
     } finally {
       provider?.close();
-      comfy?.close();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -632,11 +644,6 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      if (_comfy &&
-          _selectedModels.length > 1 &&
-          _workflow?.modelInput.isEmpty != false) {
-        throw const FormatException('使用多个模型时，请绑定工作流的模型输入');
-      }
       if (_cli) {
         await ref.read(servicesProvider).saveConnection(_configuration());
         if (mounted) Navigator.pop(context);
@@ -763,7 +770,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
             else
               FTextFormField(
                 key: const ValueKey('url'),
-                control: FTextFieldControl.managed(controller: _url),
+                control: FTextFieldControl.managed(
+                  controller: _url,
+                  onChange: (_) => setState(() {}),
+                ),
                 label: Text(
                   _comfy
                       ? 'ComfyUI 服务地址'
@@ -823,7 +833,12 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
             const SizedBox(height: 16),
             if (_comfy) ...[
               ComfyWorkflowEditor(
+                serverUrl: _url.text.trim(),
                 initialValue: _workflow,
+                listWorkflows: () =>
+                    _comfyRequest((provider) => provider.listWorkflows()),
+                readWorkflow: (name) =>
+                    _comfyRequest((provider) => provider.readWorkflow(name)),
                 onChange: (workflow) {
                   setState(() {
                     _workflow = workflow;
@@ -841,95 +856,97 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
               ),
               const SizedBox(height: 16),
             ],
-            FTextFormField(
-              control: FTextFieldControl.managed(
-                controller: _model,
-                onChange: (_) => setState(() {}),
-              ),
-              minLines: 1,
-              maxLines: 4,
-              label: Text(
-                _cli
-                    ? '模型'
-                    : _remote
-                    ? '服务端模型配置 ID'
-                    : '模型名称',
-              ),
-              hint: _cli
-                  ? '留空使用 $_tool 的默认模型'
-                  : _remote
-                  ? '例如 writer 或 illustrator'
-                  : '服务商提供的模型 ID',
-              description: Text(
-                _comfy && _workflow?.modelInput.isNotEmpty != true
-                    ? '未绑定模型输入时沿用工作流中的模型，可留空'
-                    : '可填写多个模型，每行一个或用逗号分隔；也可从下方列表多选',
-              ),
-              validator: _cli || _comfy ? null : _required,
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: _busy || _testing != null ? null : _list,
-                  prefix: const Icon(FLucideIcons.refreshCw),
-                  // Wraps on a narrow dialog instead of overflowing.
-                  child: Flexible(
-                    child: Text(
-                      _busy
-                          ? '检查中…'
-                          : _cli
-                          ? '检查安装与登录'
-                          : _novelAI
-                          ? '选择常用模型'
-                          : '检查连接并获取模型',
-                    ),
-                  ),
+            if (!_comfy || _workflow?.modelInput.isNotEmpty == true) ...[
+              FTextFormField(
+                control: FTextFieldControl.managed(
+                  controller: _model,
+                  onChange: (_) => setState(() {}),
                 ),
-                if (_text)
+                minLines: 1,
+                maxLines: 4,
+                label: Text(
+                  _cli
+                      ? '模型'
+                      : _remote
+                      ? '服务端模型配置 ID'
+                      : '模型名称',
+                ),
+                hint: _cli
+                    ? '留空使用 $_tool 的默认模型'
+                    : _remote
+                    ? '例如 writer 或 illustrator'
+                    : '服务商提供的模型 ID',
+                description: Text(
+                  _comfy && _workflow?.modelInput.isNotEmpty != true
+                      ? '未绑定模型输入时沿用工作流中的模型，可留空'
+                      : '可填写多个模型，每行一个或用逗号分隔；也可从下方列表多选',
+                ),
+                validator: _cli || _comfy ? null : _required,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
                   FButton(
-                    key: const Key('connection-test'),
-                    variant: FButtonVariant.secondary,
+                    variant: FButtonVariant.outline,
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
-                    onPress: _busy ? null : _test,
-                    prefix: _testing == null
-                        ? const Icon(FLucideIcons.play)
-                        : const FCircularProgress(),
+                    onPress: _busy || _testing != null ? null : _list,
+                    prefix: const Icon(FLucideIcons.refreshCw),
+                    // Wraps on a narrow dialog instead of overflowing.
                     child: Flexible(
-                      child: Text(_testing == null ? '测试连接' : '停止测试'),
+                      child: Text(
+                        _busy
+                            ? '检查中…'
+                            : _cli
+                            ? '检查安装与登录'
+                            : _novelAI
+                            ? '选择常用模型'
+                            : '检查连接并获取模型',
+                      ),
                     ),
                   ),
+                  if (_text)
+                    FButton(
+                      key: const Key('connection-test'),
+                      variant: FButtonVariant.secondary,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _busy ? null : _test,
+                      prefix: _testing == null
+                          ? const Icon(FLucideIcons.play)
+                          : const FCircularProgress(),
+                      child: Flexible(
+                        child: Text(_testing == null ? '测试连接' : '停止测试'),
+                      ),
+                    ),
+                ],
+              ),
+              if (_probe != null) _probeResult(_probe!),
+              if (_message != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 12),
+                  child: Text(_message!),
+                ),
+              if (_models.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                FMultiSelect<String>.search(
+                  {for (final m in _modelOptions) m: m},
+                  // A new list gets a fresh selection.
+                  key: ObjectKey(_models),
+                  label: Text(_cli || _novelAI ? '常用模型（可多选）' : '从服务端模型列表多选'),
+                  // Model IDs carry a vendor prefix, so match anywhere.
+                  filter: (query) => _modelOptions.where(
+                    (m) => m.toLowerCase().contains(query.toLowerCase()),
+                  ),
+                  control: FMultiValueControl<String>.lifted(
+                    value: _selectedModels.toSet(),
+                    onChange: (v) => setState(() => _model.text = v.join('\n')),
+                  ),
+                ),
               ],
-            ),
-            if (_probe != null) _probeResult(_probe!),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 12),
-                child: Text(_message!),
-              ),
-            if (_models.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              FMultiSelect<String>.search(
-                {for (final m in _modelOptions) m: m},
-                // A new list gets a fresh selection.
-                key: ObjectKey(_models),
-                label: Text(_cli || _novelAI ? '常用模型（可多选）' : '从服务端模型列表多选'),
-                // Model IDs carry a vendor prefix, so match anywhere.
-                filter: (query) => _modelOptions.where(
-                  (m) => m.toLowerCase().contains(query.toLowerCase()),
-                ),
-                control: FMultiValueControl<String>.lifted(
-                  value: _selectedModels.toSet(),
-                  onChange: (v) => setState(() => _model.text = v.join('\n')),
-                ),
-              ),
             ],
             const SizedBox(height: 16),
             if (_text)

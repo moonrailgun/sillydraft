@@ -10,9 +10,15 @@ class ComfyWorkflowEditor extends StatefulWidget {
   const ComfyWorkflowEditor({
     super.key,
     this.initialValue,
+    required this.serverUrl,
+    required this.listWorkflows,
+    required this.readWorkflow,
     required this.onChange,
   });
   final ComfyWorkflow? initialValue;
+  final String serverUrl;
+  final Future<List<String>> Function() listWorkflows;
+  final Future<Map<String, dynamic>> Function(String) readWorkflow;
   final ValueChanged<ComfyWorkflow?> onChange;
   @override
   State<ComfyWorkflowEditor> createState() => _WorkflowState();
@@ -32,6 +38,25 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
       _image = widget.initialValue?.imageInput ?? '',
       _output = widget.initialValue?.outputNode ?? '';
   Object? _error;
+  bool _loading = false;
+  bool _advanced = false;
+  int _request = 0;
+  late String? _filename = widget.initialValue?.filename.isNotEmpty == true
+      ? widget.initialValue!.filename
+      : null;
+  late List<String> _files = [?_filename];
+  String? _serverMessage;
+
+  @override
+  void didUpdateWidget(covariant ComfyWorkflowEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.serverUrl != widget.serverUrl) {
+      _request++;
+      _loading = false;
+      _files = [?_filename];
+      _serverMessage = null;
+    }
+  }
 
   @override
   void dispose() {
@@ -49,6 +74,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
           modelInput: _model,
           imageInput: _image,
           outputNode: _output,
+          filename: _filename ?? '',
         );
         _error = null;
       } catch (e) {
@@ -61,17 +87,13 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
 
   void _read() {
     try {
+      if (_json.text.trim().isEmpty) {
+        throw const FormatException('请先导入工作流文件，或粘贴 API 格式的 JSON');
+      }
       final nodes = ComfyWorkflow.parseNodes(jsonDecode(_json.text));
-      final models = <String>[];
       final outputs = <String>[];
       for (final entry in nodes.entries) {
         final node = entry.value as Map<String, dynamic>;
-        for (final input in (node['inputs'] as Map).entries) {
-          if (['ckpt_name', 'unet_name'].contains(input.key) &&
-              input.value is String) {
-            models.add('${entry.key}.${input.key}');
-          }
-        }
         if (node['class_type'] == 'SaveImage' ||
             node['class_type'] == 'PreviewImage') {
           outputs.add(entry.key);
@@ -80,14 +102,14 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
       setState(() {
         _nodes = nodes;
         _prompt = _image = '';
-        _model = models.length == 1 ? models.single : '';
+        _model = '';
         _output = outputs.length == 1 ? outputs.single : '';
         _error = null;
         _changed();
       });
     } catch (e) {
       setState(() {
-        _error = e;
+        _error = e is FormatException ? e.message : e;
         _nodes = {};
         _prompt = _output = '';
         _changed();
@@ -113,9 +135,44 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
       final content = await file.readAsString();
       if (!mounted) return;
       _json.text = content;
+      _filename = null;
       _read();
     } catch (e) {
       if (mounted) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _fromServer([String? filename]) async {
+    if (_loading) return;
+    final request = ++_request;
+    bool current() => mounted && request == _request;
+    setState(() {
+      _loading = true;
+      _error = _serverMessage = null;
+    });
+    try {
+      if (filename == null) {
+        final files = await widget.listWorkflows();
+        if (!current()) return;
+        setState(() {
+          _files = {...files, ?_filename}.toList()..sort();
+          if (files.isEmpty) {
+            _serverMessage = '服务端 workflows 目录中没有 JSON 工作流，可导入本地 API 文件。';
+          }
+        });
+      } else {
+        final nodes = await widget.readWorkflow(filename);
+        if (!current()) return;
+        _json.text = const JsonEncoder.withIndent('  ').convert(nodes);
+        _filename = filename;
+        _read();
+      }
+    } catch (e) {
+      if (current()) {
+        setState(() => _error = e is FormatException ? e.message : e);
+      }
+    } finally {
+      if (current()) setState(() => _loading = false);
     }
   }
 
@@ -129,6 +186,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
     padding: const EdgeInsets.only(top: 16),
     child: FSelect<String>.rich(
       key: key,
+      enabled: !_loading,
       label: Text(label),
       hint: '请选择',
       control: FSelectControl.lifted(
@@ -152,7 +210,9 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final inputs = <String, String>{}, outputs = <String, String>{};
+    final inputs = <String, String>{},
+        promptInputs = <String, String>{},
+        outputs = <String, String>{};
     for (final entry in _nodes.entries) {
       final node = entry.value as Map<String, dynamic>;
       final title = node['_meta'] is Map ? node['_meta']['title'] : null;
@@ -160,69 +220,68 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
       outputs[entry.key] = label;
       for (final input in (node['inputs'] as Map).entries) {
         if (input.value is String) {
-          inputs['${entry.key}.${input.key}'] = '$label · ${input.key}';
+          final binding = '${entry.key}.${input.key}';
+          final inputLabel = '$label · ${input.key}';
+          inputs[binding] = inputLabel;
+          // shortcut: common prompt names; advanced mode supports custom fields.
+          if (_advanced ||
+              const {
+                'text',
+                'prompt',
+                'text_g',
+                'text_l',
+              }.contains(input.key) ||
+              binding == _prompt) {
+            promptInputs[binding] = inputLabel;
+          }
         }
       }
     }
     return FormField<ComfyWorkflow>(
       key: _field,
       initialValue: widget.initialValue,
-      validator: (value) => value == null ? '请读取 API 工作流并选择提示词和输出节点' : null,
+      validator: (value) => value == null ? '请选择工作流、画面描述输入和图片输出节点' : null,
       builder: (field) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('在 ComfyUI 中导出 API 格式工作流，再选择要替换的输入。尺寸、采样器等沿用工作流设置。'),
+          const Text('选择 ComfyUI 中保存的工作流，再指定画面描述和参考图输入。模型、尺寸和采样设置沿用工作流。'),
           const SizedBox(height: 12),
-          FTextField(
-            key: const Key('comfy-workflow-json'),
-            label: const Text('API 工作流 JSON'),
-            minLines: 3,
-            maxLines: 6,
-            control: FTextFieldControl.managed(
-              controller: _json,
-              onChange: (_) {
-                setState(() {
-                  _nodes = {};
-                  _prompt = _output = '';
-                  _error = null;
-                  _changed();
-                });
-              },
+          FButton(
+            variant: FButtonVariant.outline,
+            onPress: _loading ? null : () => _fromServer(),
+            child: Text(_loading ? '正在读取…' : '获取服务端工作流'),
+          ),
+          if (_files.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            FSelect<String>.rich(
+              key: const Key('comfy-server-workflow'),
+              enabled: !_loading,
+              label: const Text('服务端工作流（选择后读取）'),
+              hint: '选择文件名',
+              control: FSelectControl.lifted(
+                value: _filename,
+                onChange: (name) {
+                  if (name != null) _fromServer(name);
+                },
+              ),
+              format: (name) => name,
+              children: [
+                for (final name in _files)
+                  FSelectItem(value: name, title: Text(name)),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FButton(
-                variant: FButtonVariant.outline,
-                mainAxisSize: MainAxisSize.min,
-                onPress: _import,
-                child: const Text('导入工作流'),
-              ),
-              FButton(
-                variant: FButtonVariant.outline,
-                mainAxisSize: MainAxisSize.min,
-                onPress: _read,
-                child: const Text('读取工作流'),
-              ),
-            ],
-          ),
+          ],
+          if (_serverMessage != null) Text(_serverMessage!),
+          if (_filename != null) const Text('新建生图任务时自动读取此文件的最新保存内容。'),
           if (_nodes.isNotEmpty) ...[
             _select(
               key: const Key('comfy-prompt-input'),
               label: '画面描述输入',
               value: _prompt,
-              options: inputs,
+              options: promptInputs,
               onChange: (v) => _prompt = v,
             ),
-            _select(
-              label: '模型输入（可选）',
-              value: _model,
-              options: {'': '沿用工作流中的模型', ...inputs},
-              onChange: (v) => _model = v,
-            ),
+            const Text('自定义提示词字段可展开高级设置后选择。'),
             _select(
               label: '参考图输入（可选）',
               value: _image,
@@ -236,6 +295,68 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
               onChange: (v) => _output = v,
             ),
           ],
+          FAccordion(
+            control: FAccordionControl.lifted(
+              expanded: (_) => _advanced,
+              onChange: (_, expanded) => setState(() => _advanced = expanded),
+            ),
+            children: [
+              FAccordionItem(
+                title: const Text('高级设置'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 12),
+                    FTextField(
+                      key: const Key('comfy-workflow-json'),
+                      enabled: !_loading,
+                      label: const Text('API 工作流 JSON'),
+                      minLines: 3,
+                      maxLines: 6,
+                      control: FTextFieldControl.managed(
+                        controller: _json,
+                        onChange: (_) {
+                          setState(() {
+                            _filename = null;
+                            _nodes = {};
+                            _prompt = _output = '';
+                            _error = null;
+                            _changed();
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FButton(
+                          variant: FButtonVariant.outline,
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: _loading ? null : _import,
+                          child: const Text('导入工作流'),
+                        ),
+                        FButton(
+                          variant: FButtonVariant.outline,
+                          mainAxisSize: MainAxisSize.min,
+                          onPress: _loading ? null : _read,
+                          child: const Text('解析 JSON'),
+                        ),
+                      ],
+                    ),
+                    if (_nodes.isNotEmpty)
+                      _select(
+                        label: '模型输入（可选）',
+                        value: _model,
+                        options: {'': '沿用工作流中的模型', ...inputs},
+                        onChange: (v) => _model = v,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           if (_error != null || field.errorText != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),

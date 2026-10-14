@@ -135,6 +135,11 @@ final class ModelConnection extends JsonSource {
   ComfyWorkflow? get comfyWorkflow => raw['comfyWorkflow'] == null
       ? null
       : ComfyWorkflow.fromJson(raw['comfyWorkflow'] as Map<String, dynamic>);
+
+  /// [model] as requests send it: null for a ComfyUI workflow that binds no
+  /// model input, where [model] is only the settings' 'workflow' marker.
+  String? get sentModel =>
+      comfyWorkflow?.modelInput.isEmpty == true ? null : model;
   bool get supportsText => kind != ModelKind.image;
   bool get supportsImages => kind != ModelKind.text;
 

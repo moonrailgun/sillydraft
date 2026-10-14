@@ -28,6 +28,59 @@ final class ComfyUIProvider implements ImageProvider {
   final Dio _client;
   static const _maxImageBytes = 32 * 1024 * 1024;
 
+  Future<List<String>> listWorkflows() async {
+    try {
+      final data = _decode(
+        await _bytes(
+          'userdata',
+          query: {'dir': 'workflows', 'recurse': true, 'split': false},
+          limit: 2 * 1024 * 1024,
+        ),
+      );
+      if (data is! List || data.any((name) => name is! String)) {
+        throw const ProviderException('comfy_result', 'ComfyUI 返回的工作流列表无效');
+      }
+      return data.where(_workflowFile).cast<String>().toSet().toList()..sort();
+    } on DioException {
+      throw const ProviderException(
+        'comfy_connection',
+        '无法连接 ComfyUI，请检查服务地址和访问密钥',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> readWorkflow(String filename) async {
+    if (!_workflowFile(filename)) {
+      throw const FormatException('请选择 workflows 目录内的 JSON 工作流文件');
+    }
+    try {
+      final data = await _json(
+        'userdata/${Uri.encodeComponent('workflows/$filename')}',
+        limit: 2 * 1024 * 1024,
+      );
+      if (data['nodes'] is List) {
+        return ComfyWorkflow.parseCanvas(
+          data,
+          await _json('object_info', limit: 16 * 1024 * 1024),
+        );
+      }
+      return ComfyWorkflow.parseNodes(data);
+    } on DioException {
+      throw const ProviderException(
+        'comfy_connection',
+        '无法连接 ComfyUI，请检查服务地址和访问密钥',
+      );
+    }
+  }
+
+  static bool _workflowFile(Object? name) =>
+      name is String &&
+      name.toLowerCase().endsWith('.json') &&
+      // ComfyUI unquotes the already decoded route; reject ambiguous paths.
+      !name.contains(RegExp(r'%[0-9a-fA-F]{2}')) &&
+      _safeFolder(name) &&
+      name.split('/').every(_safeFile);
+
   /// Use the bound loader's choices so UNET and checkpoint workflows both work.
   Future<List<String>> listModels() async {
     final workflow = config.comfyWorkflow;
@@ -283,17 +336,23 @@ final class ComfyUIProvider implements ImageProvider {
     String method = 'GET',
     Object? data,
     CancelToken? token,
+    int limit = 4 * 1024 * 1024,
   }) async {
     final bytes = await _bytes(
       path,
       method: method,
       data: data,
       token: token,
-      limit: 4 * 1024 * 1024,
+      limit: limit,
     );
+    final json = _decode(bytes);
+    if (json is Map<String, dynamic>) return json;
+    throw const ProviderException('comfy_result', 'ComfyUI 返回的 JSON 格式无效');
+  }
+
+  static Object? _decode(Uint8List bytes) {
     try {
-      final json = jsonDecode(utf8.decode(bytes));
-      if (json is Map<String, dynamic>) return json;
+      return jsonDecode(utf8.decode(bytes));
     } on FormatException {
       // Report the protocol error without exposing server response bodies.
     }

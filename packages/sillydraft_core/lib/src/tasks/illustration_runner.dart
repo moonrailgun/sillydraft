@@ -66,7 +66,7 @@ extension _IllustrationExecution on TaskRunner {
         metadata: {
           'prompt': request.prompt,
           'revisedPrompt': output.revisedPrompt,
-          'model': connection.model,
+          'model': ?connection.sentModel,
           'connectionId': connection.id,
           'parameters': request.parameters,
           'references': input['references'],

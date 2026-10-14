@@ -1,6 +1,8 @@
 import '../model/asset.dart';
 import '../model/task.dart';
 import '../providers/image_provider.dart';
+import '../providers/comfy_workflow.dart';
+import '../providers/comfyui.dart';
 import '../providers/provider.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
@@ -9,6 +11,36 @@ final class IllustrationService {
   const IllustrationService({required this.repository, required this.runner});
   final StoryRepository repository;
   final TaskRunner runner;
+
+  /// [connection] with its ComfyUI workflow re-read from the server, so a
+  /// run uses the nodes the author last saved there.
+  Future<ModelConnection> withLatestWorkflow(ModelConnection connection) async {
+    final workflow = connection.comfyWorkflow;
+    if (connection.protocol != ModelProtocol.comfyUI ||
+        workflow == null ||
+        workflow.filename.isEmpty) {
+      return connection;
+    }
+    final factory = runner.imageProviderFactory;
+    if (factory == null) throw StateError('未配置生图执行器');
+    final provider = await factory(connection);
+    try {
+      if (provider is! ComfyUIProvider) {
+        throw const ProviderException('comfy_workflow', '此执行器无法读取 ComfyUI 工作流');
+      }
+      final nodes = await provider.readWorkflow(workflow.filename);
+      return ModelConnection.fromJson({
+        ...connection.raw,
+        'comfyWorkflow': ComfyWorkflow.fromJson({
+          ...workflow.raw,
+          'nodes': nodes,
+        }).raw,
+      });
+    } finally {
+      provider.close();
+    }
+  }
+
   Future<GenerationTask> generate({
     required String branchId,
     required ModelConnection connection,
@@ -34,6 +66,8 @@ final class IllustrationService {
       }
       references.add({'id': id, 'hash': asset.hash});
     }
+    // Freeze before creating the task; resume keeps this exact snapshot.
+    connection = await withLatestWorkflow(connection);
     return runner.start(
       branchId: branchId,
       kind: TaskKind.illustration,
