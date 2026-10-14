@@ -129,7 +129,7 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
           ),
         ),
       ),
-      title: 'SillyDraft · 胡闹草稿',
+      title: 'SillyDraft',
       debugShowCheckedModeBanner: false,
       locale: const Locale('zh', 'CN'),
       supportedLocales: const [Locale('zh', 'CN'), Locale('en')],

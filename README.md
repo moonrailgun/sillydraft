@@ -1,4 +1,4 @@
-# SillyDraft · 胡闹草稿
+# SillyDraft
 
 Flutter 编写的手机优先小说工作室，平台工程覆盖 Android、iOS、macOS、Windows 和 Linux。用 SillyTavern 角色卡和预设起步，边写故事边整理人物、世界观、关系、暗线、地图和插画。
 

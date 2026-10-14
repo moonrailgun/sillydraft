@@ -768,7 +768,9 @@ void showError(BuildContext context, Object error) {
 typedef NavDestination = ({IconData icon, String label, int badge});
 
 /// The desktop section list: each entry is one button, icon and label
-/// together, that hovers and highlights as a unit.
+/// together, that hovers and highlights as a unit. The sidebar sits on a
+/// surface one step off the page, and the last [footerCount] entries are
+/// pinned to its bottom.
 class AppSidebar extends StatelessWidget {
   const AppSidebar({
     super.key,
@@ -776,6 +778,7 @@ class AppSidebar extends StatelessWidget {
     required this.onSelect,
     required this.destinations,
     this.header,
+    this.footerCount = 0,
     this.width = 200,
   });
 
@@ -784,34 +787,71 @@ class AppSidebar extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final List<NavDestination> destinations;
   final Widget? header;
+  final int footerCount;
   final double width;
 
-  @override
-  Widget build(BuildContext context) => FSidebar(
-    style: FSidebarStyleDelta.delta(
-      constraints: BoxConstraints.tightFor(width: width),
-    ),
-    header: header,
+  Widget _group(int from, int to) => FSidebarGroup(
     children: [
-      FSidebarGroup(
-        children: [
-          for (var i = 0; i < destinations.length; i++)
-            FSidebarItem(
-              icon: Icon(destinations[i].icon),
-              label: Row(
-                children: [
-                  Expanded(child: Text(destinations[i].label)),
-                  if (destinations[i].badge > 0)
-                    FBadge(child: Text('${destinations[i].badge}')),
-                ],
-              ),
-              selected: i == selectedIndex,
-              onPress: () => onSelect(i),
-            ),
-        ],
-      ),
+      for (var i = from; i < to; i++)
+        FSidebarItem(
+          icon: Icon(destinations[i].icon),
+          label: Row(
+            children: [
+              Expanded(child: Text(destinations[i].label)),
+              if (destinations[i].badge > 0)
+                FBadge(child: Text('${destinations[i].badge}')),
+            ],
+          ),
+          selected: i == selectedIndex,
+          onPress: () => onSelect(i),
+        ),
     ],
   );
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.theme.colors;
+    // Tints over the sidebar surface, so they read in both brightnesses.
+    final tint = colors.foreground;
+    final split = destinations.length - footerCount;
+    return FSidebar(
+      style: FSidebarStyleDelta.delta(
+        constraints: BoxConstraints.tightFor(width: width),
+        decoration: DecorationDelta.boxDelta(
+          color: Color.alphaBlend(
+            tint.withValues(alpha: 0.035),
+            colors.background,
+          ),
+        ),
+        groupStyle: FSidebarGroupStyleDelta.delta(
+          padding: const EdgeInsetsDelta.value(
+            EdgeInsets.symmetric(horizontal: 10),
+          ),
+          itemStyle: FSidebarItemStyleDelta.delta(
+            padding: const EdgeInsetsGeometryDelta.value(
+              EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            ),
+            iconSpacing: 10,
+            backgroundColor: FVariants(
+              tint.withValues(alpha: 0),
+              variants: {
+                [.selected]: tint.withValues(alpha: 0.08),
+                [.hovered, .pressed]: tint.withValues(alpha: 0.04),
+              },
+            ),
+            textStyle: FVariantsDelta.delta([
+              .exact({
+                .selected,
+              }, const TextStyleDelta.delta(fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      ),
+      header: header,
+      footer: footerCount > 0 ? _group(split, destinations.length) : null,
+      children: [_group(0, split)],
+    );
+  }
 }
 
 /// The phone section bar.

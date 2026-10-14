@@ -60,6 +60,8 @@ class _HomeState extends State<HomeScreen> {
                 selectedIndex: selectedIndex,
                 onSelect: widget.onDestinationSelected,
                 destinations: _destinations,
+                header: const _Brand(),
+                footerCount: 1,
               )
             : null,
         footer: wide
@@ -82,6 +84,49 @@ class _HomeState extends State<HomeScreen> {
                 const SizedBox.shrink(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The app's mark at the top of the sidebar.
+class _Brand extends StatelessWidget {
+  const _Brand();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 16, 10),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colors.foreground,
+              borderRadius: theme.style.borderRadius.md,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                FLucideIcons.libraryBig,
+                size: 16,
+                color: theme.colors.background,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              'SillyDraft',
+              overflow: TextOverflow.ellipsis,
+              style: theme.typography.body.md.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+                color: theme.colors.foreground,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

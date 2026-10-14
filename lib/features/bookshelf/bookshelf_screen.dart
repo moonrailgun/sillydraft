@@ -239,21 +239,27 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
     return AppScaffold(
       header: FHeader(
         // Like an app bar title: legible at large text, never huge.
+        // The wide layout's sidebar already carries the app's mark.
         title: MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.34,
-          child: Row(
-            children: [
-              Icon(
-                FLucideIcons.libraryBig,
-                size: 24,
-                color: theme.colors.foreground,
-              ),
-              const SizedBox(width: 12),
-              const Flexible(
-                child: Text('SillyDraft', overflow: TextOverflow.ellipsis),
-              ),
-            ],
-          ),
+          child: MediaQuery.sizeOf(context).width >= 900
+              ? const Text('作品')
+              : Row(
+                  children: [
+                    Icon(
+                      FLucideIcons.libraryBig,
+                      size: 24,
+                      color: theme.colors.foreground,
+                    ),
+                    const SizedBox(width: 12),
+                    const Flexible(
+                      child: Text(
+                        'SillyDraft',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
         ),
         suffixes: [
           HeaderIconAction(
