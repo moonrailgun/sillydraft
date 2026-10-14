@@ -7,7 +7,7 @@ import 'reader_markup.dart';
 ///
 /// Indents are the page's: whatever whitespace starts a line in the source
 /// is left out, and with [indent] every body paragraph is indented by two
-/// full-width spaces. Paragraphs are followed by [paragraphSpacing] lines of
+/// ems. Paragraphs are followed by [paragraphSpacing] lines of
 /// space. With spacing on, blank lines in the
 /// source collapse, so books imported with blank lines between paragraphs
 /// read the same as ones without. Everything added for layout maps back to a
@@ -105,12 +105,17 @@ final class ReaderDocument {
         'checked' => '☑ ',
         'unchecked' => '☐ ',
         _ when attributes['blockquote'] == true => '│ ',
-        _ when indent && body && !blank => '　　',
         _ => '',
       };
       final marker = '${'  ' * (attributes['indent'] as int? ?? 0)}$prefix';
+      // Not two full-width spaces: a justified line drops the width of the
+      // spaces it starts with, so wrapping paragraphs lost their indent.
+      final indented = indent && body && !blank;
       offsets.addAll(
-        List.filled(marker.length, presentation.sourceOffset(lineStart)),
+        List.filled(
+          marker.length + (indented ? 1 : 0),
+          presentation.sourceOffset(lineStart),
+        ),
       );
       for (var i = lineStart; i < position; i++) {
         if (markup[i] & ProseMarkup.hidden != 0 || hiddenImages.contains(i)) {
@@ -134,6 +139,7 @@ final class ReaderDocument {
                 : null,
           ),
           children: [
+            if (indented) WidgetSpan(child: SizedBox(width: fontSize * 2)),
             if (marker.isNotEmpty) TextSpan(text: marker),
             ...line,
           ],

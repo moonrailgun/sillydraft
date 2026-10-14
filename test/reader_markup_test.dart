@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
@@ -104,6 +105,16 @@ void main() {
     expect(marked(text, ProseMarkup.hidden), isEmpty);
   });
 
+  test('an indent after a hidden tag still starts its line', () {
+    const text = '<p>　　话音落下。</p>\n<!-- 注 --> 他看穿了。';
+    final markup = ProseMarkup.parse(text, trimIndent: true);
+    final shown = String.fromCharCodes([
+      for (var i = 0; i < text.length; i++)
+        if (markup[i] & ProseMarkup.hidden == 0) text.codeUnitAt(i),
+    ]);
+    expect(shown, '话音落下。\n他看穿了。');
+  });
+
   test('the page indents every paragraph alike, whatever the source did', () {
     final content = ManuscriptContent.plainText(
       '也许是刚开学。\n　　话音落下。\n柚木凪偏了偏头。\n  他看穿了。',
@@ -116,9 +127,10 @@ void main() {
     );
     final flush = page(indent: false), indented = page(indent: true);
     expect(flush.span.toPlainText(), '也许是刚开学。\n话音落下。\n柚木凪偏了偏头。\n他看穿了。\n');
+    // The indent is a placeholder, one character in the text.
     expect(
       indented.span.toPlainText(),
-      '　　也许是刚开学。\n　　话音落下。\n　　柚木凪偏了偏头。\n　　他看穿了。\n',
+      '\uFFFC也许是刚开学。\n\uFFFC话音落下。\n\uFFFC柚木凪偏了偏头。\n\uFFFC他看穿了。\n',
     );
     final text = content.text;
     for (final doc in [flush, indented]) {
@@ -127,6 +139,47 @@ void main() {
         expect(doc.sourceOffset(shown.indexOf(word)), text.indexOf(word));
       }
     }
+  });
+
+  testWidgets('justified lines keep the indent of wrapping paragraphs', (
+    tester,
+  ) async {
+    // Justify drops the width of a line's leading spaces, so an indent made
+    // of spaces vanished from every paragraph that wraps.
+    const long = '他的眼角瞬间泛起了一层生理性的红，那是一股极度的羞耻与被看穿后的恐惧所带来的本能反应。';
+    final doc = ReaderDocument.build(
+      ManuscriptPresentation.identity(
+        ManuscriptContent.plainText('“我没有！”\n$long'),
+      ),
+      fontSize: 20,
+      indent: true,
+      image: (_) => const SizedBox(),
+    );
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 310,
+            child: Text.rich(
+              doc.span,
+              textAlign: TextAlign.justify,
+              style: const TextStyle(fontSize: 20),
+            ),
+          ),
+        ),
+      ),
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.byType(RichText),
+    );
+    final shown = doc.span.toPlainText();
+    double x(String word) => paragraph
+        .getOffsetForCaret(TextPosition(offset: shown.indexOf(word)), Rect.zero)
+        .dx;
+    expect(x('“我没有'), 40);
+    expect(x('他的眼角'), 40);
   });
 
   test('tags are hidden as ST hides them, outside code and within a line', () {

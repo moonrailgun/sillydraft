@@ -106,10 +106,11 @@ void main() {
       image: (_) => const SizedBox(),
     );
     final shown = doc.span.toPlainText();
-    // Indented once each; an indent in the source is not doubled.
-    expect(shown, startsWith('　　雾起。'));
-    expect(shown, contains('\n　　灯灭。'));
-    expect(shown, isNot(contains('　　　　灯灭')));
+    // Indented once each, by the page's placeholder; the source's own
+    // indent is not shown.
+    expect(shown, startsWith('\uFFFC雾起。'));
+    expect(shown, contains('\n\uFFFC灯灭。'));
+    expect(shown, isNot(contains('　')));
     expect(doc.sourceOffset(shown.indexOf('潮来')), content.text.indexOf('潮来'));
     expect(doc.sourceOffset(shown.indexOf('灯灭')), content.text.indexOf('灯灭'));
   });

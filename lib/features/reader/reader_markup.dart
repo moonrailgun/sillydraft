@@ -18,8 +18,9 @@ final class ProseMarkup {
 
   /// Marks up [text], leaving the [skip] ranges (HTML blocks) alone. With
   /// [trimIndent] the whitespace that starts each line outside code is
-  /// hidden too, so a page's own indent setting is the only indent: model
-  /// replies indent some paragraphs and not others.
+  /// hidden too, hidden tags before it included, so a page's own indent
+  /// setting is the only indent: model replies indent some paragraphs and
+  /// not others.
   factory ProseMarkup.parse(
     String text, {
     Iterable<({int start, int end})> skip = const [],
@@ -55,6 +56,8 @@ final class ProseMarkup {
         final unit = masked.codeUnitAt(i);
         if (unit == _newline) {
           lineStart = true;
+        } else if (flags[i] & hidden != 0) {
+          // A hidden tag: what follows it still starts the line.
         } else if (lineStart &&
             flags[i] != _code &&
             _blank.hasMatch(masked[i])) {
