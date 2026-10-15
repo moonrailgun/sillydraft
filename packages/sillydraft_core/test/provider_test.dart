@@ -45,6 +45,18 @@ void main() {
     );
   });
 
+  test('text preset context sizes stay internal like openai_max_context', () {
+    // ST text presets store the context size as `max_length` (NovelAI's
+    // own as `max_context`); SillyDraft uses the connection's instead.
+    final diagnostics = provider.validateParameters(
+      ProviderRequest(
+        completionText: 'x',
+        parameters: {'max_length': 8192, 'max_context': 7800},
+      ),
+    );
+    expect(diagnostics, isEmpty);
+  });
+
   test('continue_prefill is noted as ignored, not refused', () {
     final diagnostics = provider.validateParameters(
       ProviderRequest(parameters: {'continue_prefill': true}),

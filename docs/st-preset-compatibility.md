@@ -25,7 +25,7 @@ SillyDraft 沿用 API 节点图执行语义，支持本地导入、粘贴，以�
 - 下拉框切换本作品当前预设，选择即生效；“不使用预设”回到 SillyDraft 默认写作配置。导入 ST 预设后自动选中。
 - 面板按「采样参数」「提示词管理」「预设正则」「兼容提示」分组，按预设内容显示适用页签；预设选择、助手开关与自动保存状态保留在顶部。各页签独立滚动，提示词长列表只构建可见区域及邻近缓存的条目。
 - 预设正则：列出 `extensions.regex_scripts` 内的规则名称、用途、查找表达式与启停开关；查找表达式使用等宽字体并自动换行，仅操作开关可切换启停，点击条目正文不会更改状态；「查看正则内容」展示可选取的完整查找表达式、替换内容及其余字段，支持复制完整规则 JSON。开关只修改 `disabled`，保留规则顺序和其他字段，语义依据固定 ST 基线的[正则开关](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L653-L656)。显示规则变更后阅读器刷新已有章节，与 ST [保存规则后重载聊天](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/regex/index.js#L557-L560)一致；切换到其他分支时使用该分支规则。后续生成也使用新设置，已有任务记录和正式正文不变。
-- 采样参数：聊天补全预设显示温度、Top P/K、Min P、频率/存在/重复惩罚、最大回复与上下文长度、随机种子；文本补全预设与高级格式组合包编辑对应的 `temp`、`rep_pen`、`max_length` 等字段。未设置的参数不写入预设，交由模型默认值。
+- 采样参数：聊天补全预设显示温度、Top P/K、Min P、频率/存在/重复惩罚、最大回复与上下文长度、随机种子；文本补全预设与高级格式组合包编辑对应的 `temp`、`rep_pen` 等字段，最大回复长度为 `genamt`、上下文长度为 `max_length`（ST 保存文本补全预设时的字段）。未设置的参数不写入预设，交由模型默认值。
 - 提示词管理：开关、拖动或箭头排序、编辑、新增与删除自定义条目；ST 内置条目和动态标记只能关闭，不能删除。
 - 面板调整自动保存到当前分支，不修改预设库原件或其他分支；“恢复预设”清除本分支调整。“存入预设库…”创建并选中新资源，也可导出当前配置的 JSON（移除已识别凭据）。
 
@@ -134,6 +134,8 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 **MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一章记录执行本章正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。
 
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
+
+**回复长度与上下文长度按 ST 的预设字段读取。** 聊天补全预设的回复长度是 `openai_max_tokens`。文本补全预设按 ST 保存的格式：回复长度是 `genamt`，`max_length` 是上下文长度（ST 保存时写入、载入时读回）；NovelAI 自带的预设没有 `genamt`，此时 `max_length` 是回复长度、`max_context` 是上下文长度。回复长度作为请求的最大输出 token 发送，预设未设置时用连接的最大输出 token。上下文长度一律取模型连接的「上下文 token 上限」：预设中的 `openai_max_context`、`max_length`、`max_context` 都不发送、也不参与写作前的预算检查；ST 不从预设读取的 `truncation_length` 同样不用。[保存字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/preset-manager.js#L744-L747)、[载入字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/script.js#L8121-L8136)、[NovelAI 预设](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/nai-settings.js#L177-L186)
 
 不支持的参数显示为未生效。模型能力不足导致关键语义无法实现时，用户可以换连接或明确采用兼容降级；不默默转成另一种采样行为。
 

@@ -41,6 +41,8 @@ final class OpenAICompatibleProvider implements ModelProvider {
   };
   static const _internal = {
     'openai_max_context',
+    'max_length',
+    'max_context',
     'max_context_length',
     'truncation_length',
     'streaming',

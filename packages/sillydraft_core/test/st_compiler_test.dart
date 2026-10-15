@@ -378,6 +378,37 @@ void main() {
     },
   );
 
+  test('text completion presets read the response length from genamt', () {
+    // ST 1.19.0 preset-manager.js L744-747 saves the response length as
+    // `genamt` and the context size as `max_length`; script.js
+    // `setGenerationParamsFromPreset` L8121-8135 reads them back. NovelAI's
+    // own presets (no `genamt`) keep it in `max_length`, the context in
+    // `max_context` (nai-settings.js `loadNovelPreset` L177-183).
+    PresetInput text(Map<String, dynamic> parameters) => PresetInput(
+      preset: PresetImporter().decode({
+        'context': {'story_string': '{{system}}'},
+        'sysprompt': {'content': 'system'},
+        'preset': {'temp': 0.8, ...parameters},
+      }),
+      branchId: 'main',
+      throughPosition: 10,
+      brief: 'brief',
+      clock: DateTime.utc(2026, 10, 13),
+      randomSeed: 42,
+    );
+    final saved = PromptCompiler().compile(
+      text({'genamt': 350, 'max_length': 8192}),
+    );
+    expect(saved.parameters['max_tokens'], 350);
+    // The context size is the connection's, as for `openai_max_context`.
+    expect(
+      PromptCompiler().compile(text({'max_length': 8192})).parameters,
+      isNot(contains('max_tokens')),
+    );
+    final novel = text({'max_length': 150, 'max_context': 7800});
+    expect(PromptCompiler().compile(novel).parameters['max_tokens'], 150);
+  });
+
   test('unsupported macros and template helpers prevent silent compatibility claims', () {
     final result = PromptCompiler().compile(
       input(chat([p('main', '{{extensionMagic::x}}')])),

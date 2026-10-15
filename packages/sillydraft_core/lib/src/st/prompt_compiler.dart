@@ -551,10 +551,21 @@ List<PromptMessage> _inject(
 }
 
 Map<String, dynamic> _parameters(Map<String, dynamic> parameters) {
-  const aliases = {
+  // ST 1.19.0 text presets: preset-manager.js L744-747 saves the response
+  // length as `genamt` and the context size as `max_length`, which script.js
+  // `setGenerationParamsFromPreset` (L8121-8136) reads back. NovelAI's own
+  // presets have no `genamt`: `max_length` is the response length and
+  // `max_context` the context size (nai-settings.js `loadNovelPreset`
+  // L178-185). Context sizes stay unsent: requests use the connection's
+  // context window, as for `openai_max_context`.
+  final novel =
+      !parameters.containsKey('genamt') &&
+      parameters.containsKey('max_context');
+  final aliases = {
     'temp': 'temperature',
     'openai_max_tokens': 'max_tokens',
-    'max_length': 'max_tokens',
+    'genamt': 'max_tokens',
+    if (novel) 'max_length': 'max_tokens',
     'rep_pen': 'repetition_penalty',
     'freq_pen': 'frequency_penalty',
     'presence_pen': 'presence_penalty',

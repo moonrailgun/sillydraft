@@ -539,6 +539,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a text preset edits genamt as its response length', (
+    tester,
+  ) async {
+    // ST saves a text preset's response length as `genamt` and its context
+    // size as `max_length` (preset-manager.js L744-747).
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final branch = (await repo.createNovel(title: '雾港')).activeBranchId;
+    final original = await services.library.import(
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'temp': 0.8,
+            'top_p': 0.9,
+            'top_k': 40,
+            'rep_pen': 1.1,
+            'genamt': 350,
+            'max_length': 8192,
+          }),
+        ),
+      ),
+      filename: 'text.json',
+      kind: ResourceKind.preset,
+    );
+    await repo.setSetting('writing/$branch', {'presetId': original.id});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(PresetScreen(branchId: branch)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (w) => w is FTextFormField && (w.label as Text?)?.data == label,
+    );
+    expect(
+      find.descendant(of: field('上下文长度（token）'), matching: find.text('8192')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.descendant(
+        of: field('最大回复长度（token）'),
+        matching: find.byType(EditableText),
+      ),
+      '500',
+    );
+    await tester.pumpAndSettle();
+    final setting = (await repo.getSetting('writing/$branch'))!;
+    final saved = (setting['presetOverrides'] as Map)[original.id] as Map;
+    expect(saved['genamt'], 500);
+    expect(saved['max_length'], 8192);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a preset\'s detail page previews its samplers and prompts', (
     tester,
   ) async {

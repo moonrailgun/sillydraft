@@ -50,9 +50,11 @@ const _textSamplers = <_Sampler>[
   ('freq_pen', '频率惩罚', -2, 2, false),
   ('presence_pen', '存在惩罚', -2, 2, false),
 ];
+// ST 1.19.0 saves a text preset's response length as `genamt` and its
+// context size as `max_length` (preset-manager.js L744-747).
 const _textLimits = <_Sampler>[
-  ('max_length', '最大回复长度（token）', 1, 0, true),
-  ('truncation_length', '上下文长度（token）', 1, 0, true),
+  ('genamt', '最大回复长度（token）', 1, 0, true),
+  ('max_length', '上下文长度（token）', 1, 0, true),
   ('rep_pen_range', '重复惩罚范围', 0, 0, true),
   ('seed', '随机种子（-1 为随机）', -1, 0, true),
 ];
