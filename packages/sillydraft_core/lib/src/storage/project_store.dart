@@ -552,9 +552,17 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       'toId',
       'cardId',
       'backgroundAssetId',
+      'outfit',
+      'state',
     ]);
-    boolFields(data, ['directed', 'worldBookOnly']);
+    boolFields(data, ['directed', 'worldBookOnly', 'user']);
     ref(data['cardId'], resources);
+    if (data['images'] case final Object images) {
+      if (images is! List || images.length > maxCharacterImages) invalid();
+      for (final id in images) {
+        ref(id, assets, nullable: false);
+      }
+    }
     if (row['kind'] == 'relationship') {
       for (final key in ['fromId', 'toId']) {
         if (!entities.containsKey('${row['branch_id']}/${data[key]}')) {

@@ -355,4 +355,72 @@ void main() {
       LoreCertainty.plan,
     );
   });
+
+  test('character portraits must be this novel\'s own images', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final novel = await repo.createNovel(title: '雾港');
+    final other = await repo.createNovel(title: '别处');
+    PreparedAsset prepared(String digit) => PreparedAsset(
+      hash: digit * 64,
+      thumbnailHash: 'f' * 64,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+    );
+    final own = await repo.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '林岚',
+      prepared: prepared('a'),
+    );
+    final foreign = await repo.storeAsset(
+      branchId: other.activeBranchId,
+      name: '外人',
+      prepared: prepared('b'),
+    );
+    final lin = await repo.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '摆渡人',
+      data: {
+        'images': [own.id],
+      },
+    );
+    expect(lin.data['images'], [own.id]);
+    await expectLater(
+      repo.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.character,
+        name: '外人',
+        content: '借来的图',
+        data: {
+          'images': [foreign.id],
+        },
+      ),
+      throwsA(isA<StoryNotFound>()),
+    );
+    await expectLater(
+      repo.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.world,
+        name: '渡口',
+        content: '地点',
+        data: {
+          'images': [own.id],
+        },
+      ),
+      throwsFormatException,
+    );
+    await expectLater(
+      repo.saveLoreEntry(
+        branchId: novel.activeBranchId,
+        kind: LoreKind.character,
+        name: '太多',
+        content: '九张图',
+        data: {'images': List.filled(9, own.id)},
+      ),
+      throwsFormatException,
+    );
+  });
 }

@@ -14,6 +14,9 @@ enum LoreKind {
 
 enum LoreCertainty { fact, plan, inference }
 
+/// Portraits a character entry may keep, as many as a persona's images.
+const maxCharacterImages = 8;
+
 final class LoreEntry extends JsonSource {
   LoreEntry({
     required this.id,

@@ -199,6 +199,20 @@ extension LoreOperations on StoryRepository {
     Map<String, dynamic> data,
     String? throughChapterId,
   ) async {
+    if (data['images'] case final Object images) {
+      if (kind != LoreKind.character ||
+          images is! List ||
+          images.length > maxCharacterImages ||
+          images.any((id) => id is! String)) {
+        throw const FormatException('只有人物可以有形象图，最多 8 张');
+      }
+      final novel = (await getBranch(branchId)).novelId;
+      for (final id in images.cast<String>()) {
+        if ((await getAsset(id)).novelId != novel) {
+          throw const StoryNotFound('本作品的人物形象图');
+        }
+      }
+    }
     if (kind == LoreKind.relationship) {
       for (final key in ['fromId', 'toId']) {
         if (data[key] is! String) throw const FormatException('关系需要两个端点');

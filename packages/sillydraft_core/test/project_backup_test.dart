@@ -67,6 +67,17 @@ void main() {
         null,
       ),
       ('lore_versions', 'data_json', {'appearance': <dynamic>[]}, null),
+      ('lore_versions', 'data_json', {'outfit': 1}, null),
+      ('lore_versions', 'data_json', {'user': 'yes'}, null),
+      ('lore_versions', 'data_json', {'images': 'portrait'}, null),
+      (
+        'lore_versions',
+        'data_json',
+        {
+          'images': ['missing'],
+        },
+        null,
+      ),
       ('variable_revisions', 'local_json', {'name': 42}, null),
       ('branch_variables', 'global_json', {'state': <dynamic>[]}, null),
       (

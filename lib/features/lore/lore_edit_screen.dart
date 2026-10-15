@@ -5,6 +5,9 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../illustrations/asset_image.dart';
+import '../illustrations/illustration_detail.dart';
+import '../illustrations/illustration_gallery.dart';
 import 'lore_providers.dart';
 import '../resources/resource_library_screen.dart';
 
@@ -36,6 +39,17 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       _time = TextEditingController(
         text: widget.entry?.data['storyTime'] as String?,
       );
+  late final _outfit = TextEditingController(
+        text: widget.entry?.data['outfit'] as String?,
+      ),
+      _state = TextEditingController(
+        text: widget.entry?.data['state'] as String?,
+      );
+  late final List<String> _images = [
+    ...(widget.entry?.data['images'] as List? ?? const []).cast<String>(),
+  ];
+  late final bool _user = widget.entry?.data['user'] == true;
+  bool get _full => _images.length >= maxCharacterImages;
   late LoreKind _kind = widget.entry?.kind ?? widget.kind;
   late LoreCertainty _certainty = widget.entry?.certainty ?? LoreCertainty.fact;
   late String? _chapterId = widget.atChapterId ?? widget.entry?.atChapterId,
@@ -46,7 +60,15 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
   bool _busy = false, _rechecked = false;
   @override
   void dispose() {
-    for (final c in [_name, _content, _appearance, _goal, _time]) {
+    for (final c in [
+      _name,
+      _content,
+      _appearance,
+      _goal,
+      _time,
+      _outfit,
+      _state,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -82,8 +104,13 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
         data: {
           ...?widget.entry?.data,
           'status': _status,
-          if (_kind == LoreKind.character) 'appearance': _appearance.text,
-          if (_kind == LoreKind.character) 'goal': _goal.text,
+          if (_kind == LoreKind.character) ...{
+            'appearance': _appearance.text,
+            'goal': _goal.text,
+            'outfit': _outfit.text,
+            'state': _state.text,
+            'images': _images,
+          },
           if (_kind == LoreKind.event || _kind == LoreKind.foreshadow)
             'storyTime': _time.text,
           if (_kind == LoreKind.relationship) ...{
@@ -100,6 +127,214 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Adds what [pick] returns to the portraits, up to the limit.
+  Future<void> _addImages(Future<List<String>> Function() pick) async {
+    setState(() => _busy = true);
+    try {
+      final ids = await pick();
+      if (mounted) {
+        setState(
+          () => _images.addAll(
+            ids
+                .where((id) => !_images.contains(id))
+                .take(maxCharacterImages - _images.length),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickImage() => _addImages(() async {
+    final asset = await Navigator.push<StoryAsset>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => IllustrationGallery(
+          branchId: widget.branchId,
+          picker: true,
+          purpose: AssetPurpose.reference,
+        ),
+      ),
+    );
+    return [?asset?.id];
+  });
+
+  /// Drafts a prompt from the looks, lets the author adjust it, then draws
+  /// with the image engine, the first portrait as reference when it takes one.
+  Future<void> _generateImage() => _addImages(() async {
+    final services = ref.read(servicesProvider);
+    final painter = await services.connectionFor('image');
+    if (painter == null) throw const FormatException('请先在设置中配置插画模型');
+    final writer =
+        await services.connectionFor('analysis') ??
+        await services.connectionFor('writing');
+    if (writer == null) throw const FormatException('请先在设置中配置资料整理模型');
+    final drafted = await services.personas.imagePrompt(
+      writer,
+      Persona(
+        id: '',
+        name: _name.text,
+        appearance: _appearance.text,
+        outfit: _outfit.text,
+      ),
+      painter,
+    );
+    if (!mounted) return const [];
+    final prompt = await askText(
+      context,
+      title: '形象图提示词',
+      initial: drafted,
+      label: '提示词',
+      maxLines: 6,
+    );
+    if (prompt == null) return const [];
+    final task = await services.illustrations.generate(
+      branchId: widget.branchId,
+      connection: painter,
+      name: '${_name.text.trim()} · 形象图',
+      request: IllustrationService.requestFrom(
+        painter,
+        prompt,
+        await services.illustrations.savedDefaults(painter),
+      ),
+      referenceAssetIds: [
+        if (_images.isNotEmpty && referenceLimit(painter) > 0) _images.first,
+      ],
+      purpose: AssetPurpose.reference,
+    );
+    final done = await services.runner.wait(task.id);
+    if (done.result['assetId'] case final String id) return [id];
+    throw FormatException(done.error.isEmpty ? '形象图没有生成' : done.error);
+  });
+
+  /// The protagonist's portraits from the persona this branch binds.
+  Future<void> _importPersona() => _addImages(() async {
+    final services = ref.read(servicesProvider), library = services.assets;
+    if (library == null) throw const FormatException('本地图片目录尚未配置');
+    final persona = await services.repository.personaFor(
+      await services.repository.getSetting('writing/${widget.branchId}') ??
+          const {},
+    );
+    // Only what will be kept is imported, so no orphan assets are left.
+    final have = {
+      for (final id in _images) (await services.repository.getAsset(id)).hash,
+    };
+    return [
+      for (final image
+          in persona.images
+              .where((i) => !have.contains(i.hash))
+              .take(maxCharacterImages - _images.length))
+        (await library.importImage(
+          branchId: widget.branchId,
+          name: '${persona.name} · 人设图',
+          bytes: await library.readHash(image.hash),
+          purpose: AssetPurpose.reference,
+        )).id,
+    ];
+  });
+
+  Widget _portraits() {
+    final theme = context.theme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '形象图 · ${_images.length}/$maxCharacterImages',
+          style: theme.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '助手生成插图时会把形象图作为参考图，让人物前后一致。',
+          style: theme.typography.body.xs.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
+        ),
+        if (_images.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 115,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final id in _images)
+                  Padding(
+                    key: Key('character-image-$id'),
+                    padding: const EdgeInsets.only(right: 10),
+                    child: SizedBox(
+                      width: 100,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: GestureDetector(
+                              onTap: () => showIllustrationDetail(
+                                context,
+                                assetId: id,
+                                branchId: widget.branchId,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: theme.style.borderRadius.md,
+                                child: AssetImageView(
+                                  assetId: id,
+                                  thumbnail: true,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: IconAction(
+                              tooltip: '移除形象图',
+                              icon: FLucideIcons.x,
+                              variant: FButtonVariant.secondary,
+                              onPress: () => setState(() => _images.remove(id)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FButton(
+              variant: FButtonVariant.outline,
+              mainAxisSize: MainAxisSize.min,
+              onPress: _busy || _full ? null : _pickImage,
+              prefix: const Icon(FLucideIcons.imagePlus),
+              child: const Text('选择或导入'),
+            ),
+            FButton(
+              variant: FButtonVariant.outline,
+              mainAxisSize: MainAxisSize.min,
+              onPress: _busy || _full ? null : _generateImage,
+              prefix: const Icon(FLucideIcons.sparkles),
+              child: const Text('生成形象图'),
+            ),
+            if (_user)
+              FButton(
+                variant: FButtonVariant.outline,
+                mainAxisSize: MainAxisSize.min,
+                onPress: _busy || _full ? null : _importPersona,
+                prefix: const Icon(FLucideIcons.user),
+                child: const Text('从人设导入'),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -286,6 +521,24 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
                 maxLines: 3,
                 label: const Text('动机与目标'),
               ),
+              const SizedBox(height: 16),
+              FTextField(
+                control: FTextFieldControl.managed(controller: _outfit),
+                minLines: 1,
+                maxLines: 3,
+                label: const Text('服饰'),
+              ),
+              const SizedBox(height: 16),
+              FTextField(
+                key: const Key('character-state'),
+                control: FTextFieldControl.managed(controller: _state),
+                minLines: 1,
+                maxLines: 3,
+                label: const Text('当前状态'),
+                hint: '伤势、情绪、处境',
+              ),
+              const SizedBox(height: 16),
+              _portraits(),
               const SizedBox(height: 16),
             ],
             if (_kind == LoreKind.event || _kind == LoreKind.foreshadow) ...[

@@ -1,12 +1,17 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart' hide ImageProvider;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/theme.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/lore/lore_screen.dart';
-import 'package:sillydraft/features/lore/lore_edit_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+
+import 'package:sillydraft/features/lore/lore_edit_screen.dart';
 
 import 'support/finders.dart';
 import 'support/host.dart';
@@ -20,6 +25,56 @@ Widget _app(Widget home) => MaterialApp(
   ),
   home: home,
 );
+
+Uint8List _png() =>
+    Uint8List.fromList(img.encodePng(img.Image(width: 16, height: 16)));
+
+class _Reply implements ModelProvider {
+  _Reply(this.config, this.text);
+  @override
+  final ModelConnection config;
+  final String text;
+  @override
+  Stream<ProviderEvent> generate(
+    ProviderRequest request, {
+    GenerationCancellation? cancellation,
+  }) async* {
+    yield TextDelta(text);
+    yield const GenerationFinished('stop');
+  }
+
+  @override
+  Future<List<String>> listModels() async => [config.model];
+  @override
+  List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) =>
+      [];
+  @override
+  void close() {}
+}
+
+class _Painter implements ImageProvider {
+  _Painter(this.config);
+  @override
+  final ModelConnection config;
+  @override
+  Future<GeneratedImage> generate(
+    ImageRequest request, {
+    List<ImageReference> references = const [],
+    GenerationCancellation? cancellation,
+  }) async => GeneratedImage(bytes: _png());
+  @override
+  void close() {}
+}
+
+/// Lets real I/O (isolates, files) and frames progress together.
+Future<void> _settle(WidgetTester tester, [int rounds = 30]) async {
+  for (var i = 0; i < rounds; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+    );
+    await tester.pump(const Duration(milliseconds: 40));
+  }
+}
 
 Future<void> _openEditor(
   WidgetTester tester,
@@ -49,6 +104,13 @@ Future<void> _openEditor(
   await tester.tap(find.text('打开'));
   await tester.pumpAndSettle();
 }
+
+Finder get _portraitThumbs => find.byWidgetPredicate(
+  (w) =>
+      w is Padding &&
+      w.key is ValueKey &&
+      '${(w.key! as ValueKey).value}'.startsWith('character-image-'),
+);
 
 void main() {
   testWidgets(
@@ -110,6 +172,87 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  testWidgets('a character keeps its outfit, state and chosen portraits', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    PreparedAsset prepared(String digit) => PreparedAsset(
+      hash: digit * 64,
+      thumbnailHash: 'f' * 64,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+    );
+    final first = await repo.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '林岚一',
+      prepared: prepared('a'),
+    );
+    final second = await repo.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '林岚二',
+      prepared: prepared('b'),
+    );
+    final lin = await repo.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '摆渡人',
+      data: {
+        'outfit': '蓑衣',
+        'images': [first.id, second.id],
+      },
+    );
+    // Saving pops the page, so it is pushed over a host page.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(
+          Builder(
+            builder: (context) => FButton(
+              onPress: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => LoreEditScreen(
+                    branchId: novel.activeBranchId,
+                    entry: lin,
+                  ),
+                ),
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    expect(find.text('蓑衣'), findsOneWidget);
+    expect(find.byKey(Key('character-image-${first.id}')), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('移除形象图').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('character-state')), '右手擦伤');
+    await tester.ensureVisible(find.text('保存资料'));
+    await tester.tap(find.text('保存资料'));
+    await tester.pumpAndSettle();
+    final saved = await repo.getLoreEntry(
+      branchId: novel.activeBranchId,
+      id: lin.id,
+    );
+    expect(saved.data['images'], [second.id]);
+    expect(saved.data['outfit'], '蓑衣');
+    expect(saved.data['state'], '右手擦伤');
+  });
 
   testWidgets('the author\'s edit makes a sidecar note theirs', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
@@ -150,5 +293,117 @@ void main() {
     final saved = await repo.getLoreEntry(branchId: branch, id: lin.id);
     expect(saved.content, '摆渡人，左撇子');
     expect(saved.provenance, {'type': 'manual'});
+  });
+
+  testWidgets('importing the persona portraits twice adds them once', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('sillydraft-lore-persona-'),
+    ))!;
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+      dataDirectory: dir,
+    );
+    addTearDown(() async {
+      await services.close();
+      await dir.delete(recursive: true);
+    });
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final branch = novel.activeBranchId;
+    final prepared = (await tester.runAsync(
+      () => services.assets!.prepare(_png()),
+    ))!;
+    await repo.savePersona(
+      Persona(id: 'linzhou', name: '林舟', images: [PersonaImage.of(prepared)]),
+    );
+    await repo.setSetting('writing/$branch', {'personaId': 'linzhou'});
+    final user = await repo.saveLoreEntry(
+      branchId: branch,
+      kind: LoreKind.character,
+      name: '林舟',
+      content: '主角',
+      data: {'user': true},
+    );
+    await _openEditor(tester, services, branch, user);
+    await tester.ensureVisible(find.text('从人设导入'));
+    await tester.tap(find.text('从人设导入'));
+    await _settle(tester);
+    expect(_portraitThumbs, findsOneWidget);
+    await tester.tap(find.text('从人设导入'));
+    await _settle(tester);
+    expect(_portraitThumbs, findsOneWidget);
+    final assets = await repo.listAssets(novel.id, includeArchived: true);
+    expect(assets.where((a) => a.hash == prepared.hash), hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a character portrait is drafted, confirmed and generated', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('sillydraft-lore-image-'),
+    ))!;
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+      dataDirectory: dir,
+      modelProviderFactory: (c) async => _Reply(c, '{"prompt":"短发少女，蓑衣"}'),
+      imageProviderFactory: (c) async => _Painter(c),
+    );
+    addTearDown(() async {
+      await services.close();
+      await dir.delete(recursive: true);
+    });
+    await services.saveConnection(
+      ModelConnection(
+        id: 'text',
+        name: '文本',
+        baseUrl: 'http://localhost:1/v1',
+        model: 'fixture-text',
+        kind: ModelKind.text,
+      ),
+    );
+    await services.saveConnection(
+      ModelConnection(
+        id: 'image',
+        name: '生图',
+        baseUrl: 'http://localhost:1/v1',
+        model: 'fixture-image',
+        kind: ModelKind.image,
+      ),
+    );
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final branch = novel.activeBranchId;
+    final lin = await repo.saveLoreEntry(
+      branchId: branch,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '摆渡人',
+      data: {'appearance': '短发少女', 'outfit': '蓑衣'},
+    );
+    await _openEditor(tester, services, branch, lin);
+    await tester.ensureVisible(find.text('生成形象图'));
+    await tester.tap(find.text('生成形象图'));
+    await _settle(tester, 10);
+    expect(find.text('形象图提示词'), findsOneWidget);
+    expect(find.text('短发少女，蓑衣'), findsOneWidget);
+    await tester.tap(find.text('保存').last);
+    await _settle(tester);
+    expect(_portraitThumbs, findsOneWidget);
+    final made = (await repo.listAssets(novel.id)).single;
+    expect(made.purpose, AssetPurpose.reference);
+    await tester.pumpWidget(const SizedBox());
   });
 }
