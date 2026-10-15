@@ -203,4 +203,61 @@ void main() {
     expect(find.text('获取服务端工作流'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('reference inputs are chosen in order and can be removed', (
+    tester,
+  ) async {
+    ComfyWorkflow? saved;
+    final initial = ComfyWorkflow.fromJson({
+      ...workflow,
+      'nodes': <String, dynamic>{
+        ...workflow['nodes'] as Map<String, dynamic>,
+        '10': {
+          'class_type': 'LoadImage',
+          'inputs': {'image': 'a.png'},
+        },
+        '11': {
+          'class_type': 'LoadImage',
+          'inputs': {'image': 'b.png'},
+        },
+      },
+    });
+    await tester.pumpWidget(
+      testHost(
+        SingleChildScrollView(
+          child: Form(
+            child: ComfyWorkflowEditor(
+              initialValue: initial,
+              edit: true,
+              serverUrl: 'http://localhost:8188',
+              listWorkflows: () async => [],
+              readWorkflow: (_) async => initial.nodes,
+              onChange: (value) => saved = value,
+            ),
+          ),
+        ),
+      ),
+    );
+    Future<void> add(String label) async {
+      final select = find.byKey(const Key('comfy-edit-image-input'));
+      await tester.ensureVisible(select);
+      await tester.tap(select);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).last);
+      await tester.pumpAndSettle();
+    }
+
+    await add('10 · LoadImage · image');
+    await add('11 · LoadImage · image');
+    expect(saved!.imageInputs, ['10.image', '11.image']);
+    await tester.tap(find.bySemanticsLabel('移除参考图输入').first);
+    await tester.pumpAndSettle();
+    expect(saved!.imageInputs, ['11.image']);
+    // The edit workflow keeps its own model: no model input to bind.
+    expect(saved!.modelInput, isEmpty);
+    await tester.ensureVisible(find.text('高级设置'));
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('模型输入（可选）'), findsNothing);
+  });
 }

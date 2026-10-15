@@ -384,6 +384,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late bool _allowInsecure = widget.connection?.allowInsecureHttp ?? false;
   late ModelKind _kind = widget.connection?.kind ?? ModelKind.text;
   late ComfyWorkflow? _workflow = widget.connection?.comfyWorkflow;
+  late ComfyWorkflow? _editWorkflow = widget.connection?.comfyEditWorkflow;
+  late bool _showEdit = _editWorkflow != null;
   bool get _comfy => _protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _protocol == ModelProtocol.novelAI;
   bool get _text => !_comfy && !_novelAI && _kind != ModelKind.image;
@@ -450,6 +452,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
           ? ModelKind.text
           : _kind,
       comfyWorkflow: _comfy ? _workflow : null,
+      comfyEditWorkflow: _comfy && _showEdit ? _editWorkflow : null,
       contextWindow: int.parse(_context.text),
       maxOutputTokens: int.parse(_output.text),
       outputTokenParameter: _tokenParameter,
@@ -893,6 +896,44 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              if (_showEdit) ...[
+                Text(
+                  '图生图工作流（可选）',
+                  style: context.theme.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ComfyWorkflowEditor(
+                  edit: true,
+                  serverUrl: _url.text.trim(),
+                  initialValue: _editWorkflow,
+                  listWorkflows: () =>
+                      _comfyRequest((provider) => provider.listWorkflows()),
+                  readWorkflow: (name) =>
+                      _comfyRequest((provider) => provider.readWorkflow(name)),
+                  onChange: (workflow) =>
+                      setState(() => _editWorkflow = workflow),
+                ),
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => setState(() {
+                    _showEdit = false;
+                    _editWorkflow = null;
+                  }),
+                  child: const Text('移除图生图工作流'),
+                ),
+              ] else
+                FButton(
+                  key: const Key('comfy-add-edit-workflow'),
+                  variant: FButtonVariant.outline,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => setState(() => _showEdit = true),
+                  prefix: const Icon(FLucideIcons.images),
+                  child: const Text('添加图生图工作流（参考图生图）'),
+                ),
               const SizedBox(height: 16),
             ],
             if (!_comfy || _workflow?.modelInput.isNotEmpty == true) ...[

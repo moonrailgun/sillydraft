@@ -1367,12 +1367,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
 }
 
 /// The image engine as the author set it up: the connection, the ComfyUI
-/// workflow file, and the model only when it is actually sent.
-String imageEngineLabel(ModelConnection connection) {
-  final workflow = connection.comfyWorkflow;
+/// workflow file ([workflow] when a run used another), and the model only
+/// when it is actually sent.
+String imageEngineLabel(ModelConnection connection, {String? workflow}) {
+  final file = workflow ?? connection.comfyWorkflow?.filename ?? '';
   return [
     connection.name,
-    if (workflow != null && workflow.filename.isNotEmpty) workflow.filename,
+    if (file.isNotEmpty) file,
     ?connection.sentModel,
   ].join(' · ');
 }

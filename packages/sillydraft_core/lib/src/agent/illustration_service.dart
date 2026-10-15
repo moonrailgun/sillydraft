@@ -1,8 +1,8 @@
 import '../model/asset.dart';
 import '../model/task.dart';
 import '../providers/image_provider.dart';
-import '../providers/comfy_workflow.dart';
 import '../providers/comfyui.dart';
+import '../providers/comfy_workflow.dart';
 import '../providers/provider.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
@@ -50,10 +50,12 @@ final class IllustrationService {
   /// [connection] with its ComfyUI workflow re-read from the server, so a
   /// run uses the nodes the author last saved there.
   Future<ModelConnection> withLatestWorkflow(ModelConnection connection) async {
-    final workflow = connection.comfyWorkflow;
+    final saved = {
+      'comfyWorkflow': connection.comfyWorkflow,
+      'comfyEditWorkflow': connection.comfyEditWorkflow,
+    };
     if (connection.protocol != ModelProtocol.comfyUI ||
-        workflow == null ||
-        workflow.filename.isEmpty) {
+        saved.values.every((w) => w == null || w.filename.isEmpty)) {
       return connection;
     }
     final factory = runner.imageProviderFactory;
@@ -63,13 +65,14 @@ final class IllustrationService {
       if (provider is! ComfyUIProvider) {
         throw const ProviderException('comfy_workflow', '此执行器无法读取 ComfyUI 工作流');
       }
-      final nodes = await provider.readWorkflow(workflow.filename);
       return ModelConnection.fromJson({
         ...connection.raw,
-        'comfyWorkflow': ComfyWorkflow.fromJson({
-          ...workflow.raw,
-          'nodes': nodes,
-        }).raw,
+        for (final MapEntry(:key, value: workflow) in saved.entries)
+          if (workflow != null && workflow.filename.isNotEmpty)
+            key: ComfyWorkflow.fromJson({
+              ...workflow.raw,
+              'nodes': await provider.readWorkflow(workflow.filename),
+            }).raw,
       });
     } finally {
       provider.close();

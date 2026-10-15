@@ -14,12 +14,17 @@ class ComfyWorkflowEditor extends StatefulWidget {
     required this.listWorkflows,
     required this.readWorkflow,
     required this.onChange,
+    this.edit = false,
   });
   final ComfyWorkflow? initialValue;
   final String serverUrl;
   final Future<List<String>> Function() listWorkflows;
   final Future<Map<String, dynamic>> Function(String) readWorkflow;
   final ValueChanged<ComfyWorkflow?> onChange;
+
+  /// The image-to-image workflow: at least one reference input, and nothing
+  /// to choose is no workflow at all.
+  final bool edit;
   @override
   State<ComfyWorkflowEditor> createState() => _WorkflowState();
 }
@@ -35,8 +40,12 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
   late Map<String, dynamic> _nodes = widget.initialValue?.nodes ?? {};
   late String _prompt = widget.initialValue?.promptInput ?? '',
       _model = widget.initialValue?.modelInput ?? '',
-      _image = widget.initialValue?.imageInput ?? '',
       _output = widget.initialValue?.outputNode ?? '';
+  late List<String> _images = [...?widget.initialValue?.imageInputs];
+
+  /// Keys apart for the two editors on one settings page.
+  Key _key(String name) =>
+      Key(widget.edit ? 'comfy-edit-$name' : 'comfy-$name');
   Object? _error;
   bool _loading = false;
   bool _advanced = false;
@@ -71,8 +80,9 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
         value = ComfyWorkflow(
           nodes: _nodes,
           promptInput: _prompt,
-          modelInput: _model,
-          imageInput: _image,
+          // The edit workflow keeps the model saved in it.
+          modelInput: widget.edit ? '' : _model,
+          imageInputs: _images,
           outputNode: _output,
           filename: _filename ?? '',
         );
@@ -101,7 +111,8 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
       }
       setState(() {
         _nodes = nodes;
-        _prompt = _image = '';
+        _prompt = '';
+        _images = [];
         _model = '';
         _output = outputs.length == 1 ? outputs.single : '';
         _error = null;
@@ -240,11 +251,23 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
     return FormField<ComfyWorkflow>(
       key: _field,
       initialValue: widget.initialValue,
-      validator: (value) => value == null ? '请选择工作流、画面描述输入和图片输出节点' : null,
+      validator: (value) => widget.edit
+          ? (_nodes.isNotEmpty && value == null
+                ? '请选择画面描述输入和图片输出节点'
+                : value != null && value.imageInputs.isEmpty
+                ? '图生图工作流须绑定至少一个参考图输入'
+                : null)
+          : value == null
+          ? '请选择工作流、画面描述输入和图片输出节点'
+          : null,
       builder: (field) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('选择 ComfyUI 中保存的工作流，再指定画面描述和参考图输入。模型、尺寸和采样设置沿用工作流。'),
+          Text(
+            widget.edit
+                ? '选择用于参考图生图的 ComfyUI 工作流，绑定画面描述和一到多个参考图输入。带参考图的插图会改用此工作流，参考图按顺序填入。'
+                : '选择 ComfyUI 中保存的工作流，再指定画面描述和参考图输入。模型、尺寸和采样设置沿用工作流。',
+          ),
           const SizedBox(height: 12),
           FButton(
             variant: FButtonVariant.outline,
@@ -254,7 +277,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
           if (_files.isNotEmpty) ...[
             const SizedBox(height: 12),
             FSelect<String>.rich(
-              key: const Key('comfy-server-workflow'),
+              key: _key('server-workflow'),
               enabled: !_loading,
               label: const Text('服务端工作流（选择后读取）'),
               hint: '选择文件名',
@@ -275,18 +298,51 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
           if (_filename != null) const Text('新建生图任务时自动读取此文件的最新保存内容。'),
           if (_nodes.isNotEmpty) ...[
             _select(
-              key: const Key('comfy-prompt-input'),
+              key: _key('prompt-input'),
               label: '画面描述输入',
               value: _prompt,
               options: promptInputs,
               onChange: (v) => _prompt = v,
             ),
             const Text('自定义提示词字段可展开高级设置后选择。'),
+            for (final (i, binding) in _images.indexed)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '参考图输入 ${i + 1}：${inputs[binding] ?? binding}',
+                      ),
+                    ),
+                    IconAction(
+                      tooltip: '移除参考图输入',
+                      icon: FLucideIcons.x,
+                      onPress: () => setState(() {
+                        _images = [..._images]..removeAt(i);
+                        _changed();
+                      }),
+                    ),
+                  ],
+                ),
+              ),
             _select(
-              label: '参考图输入（可选）',
-              value: _image,
-              options: {'': '不使用参考图', ...inputs},
-              onChange: (v) => _image = v,
+              key: _key('image-input'),
+              label: _images.isNotEmpty
+                  ? '再添加一个参考图输入'
+                  : widget.edit
+                  ? '参考图输入'
+                  : '参考图输入（可选）',
+              value: '',
+              options: {
+                '': '请选择',
+                for (final e in inputs.entries)
+                  if (!_images.contains(e.key) && e.key != _prompt)
+                    e.key: e.value,
+              },
+              onChange: (v) {
+                if (v.isNotEmpty) _images = [..._images, v];
+              },
             ),
             _select(
               label: '图片输出节点',
@@ -308,7 +364,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
                   children: [
                     const SizedBox(height: 12),
                     FTextField(
-                      key: const Key('comfy-workflow-json'),
+                      key: _key('workflow-json'),
                       enabled: !_loading,
                       label: const Text('API 工作流 JSON'),
                       minLines: 3,
@@ -320,6 +376,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
                             _filename = null;
                             _nodes = {};
                             _prompt = _output = '';
+                            _images = [];
                             _error = null;
                             _changed();
                           });
@@ -345,7 +402,7 @@ class _WorkflowState extends State<ComfyWorkflowEditor> {
                         ),
                       ],
                     ),
-                    if (_nodes.isNotEmpty)
+                    if (_nodes.isNotEmpty && !widget.edit)
                       _select(
                         label: '模型输入（可选）',
                         value: _model,

@@ -32,6 +32,7 @@ final class ModelConnection extends JsonSource {
     List<String>? models,
     ModelKind? kind,
     ComfyWorkflow? comfyWorkflow,
+    ComfyWorkflow? comfyEditWorkflow,
     ModelProtocol protocol = ModelProtocol.openAICompatible,
     String outputTokenParameter = 'max_tokens',
     List<String> extraParameters = const [],
@@ -47,6 +48,8 @@ final class ModelConnection extends JsonSource {
          'models': ?models,
          if (kind != null) 'kind': kind.name,
          if (comfyWorkflow != null) 'comfyWorkflow': comfyWorkflow.raw,
+         if (comfyEditWorkflow != null)
+           'comfyEditWorkflow': comfyEditWorkflow.raw,
          'protocol': protocol.name,
          'outputTokenParameter': outputTokenParameter,
          'extraParameters': extraParameters,
@@ -63,6 +66,9 @@ final class ModelConnection extends JsonSource {
             models.any((m) => m.trim().isEmpty || m != m.trim()) ||
             models.toSet().length != models.length)) {
       throw const FormatException('模型列表须包含当前模型，且不能有空白或重复项');
+    }
+    if (comfyEditWorkflow != null && comfyEditWorkflow.imageInputs.isEmpty) {
+      throw const FormatException('图生图工作流须绑定至少一个参考图输入');
     }
     if (protocol.isLocalCli) {
       // Local tools have no endpoint; an explicit command must be a path, not
@@ -110,6 +116,11 @@ final class ModelConnection extends JsonSource {
         : ComfyWorkflow.fromJson(
             jsonObject(map['comfyWorkflow'], 'ComfyUI 工作流'),
           ),
+    comfyEditWorkflow: map['comfyEditWorkflow'] == null
+        ? null
+        : ComfyWorkflow.fromJson(
+            jsonObject(map['comfyEditWorkflow'], 'ComfyUI 图生图工作流'),
+          ),
     protocol: ModelProtocol.values.byName(
       map['protocol'] as String? ?? 'openAICompatible',
     ),
@@ -135,6 +146,11 @@ final class ModelConnection extends JsonSource {
   ComfyWorkflow? get comfyWorkflow => raw['comfyWorkflow'] == null
       ? null
       : ComfyWorkflow.fromJson(raw['comfyWorkflow'] as Map<String, dynamic>);
+  ComfyWorkflow? get comfyEditWorkflow => raw['comfyEditWorkflow'] == null
+      ? null
+      : ComfyWorkflow.fromJson(
+          raw['comfyEditWorkflow'] as Map<String, dynamic>,
+        );
 
   /// [model] as requests send it: null for a ComfyUI workflow that binds no
   /// model input, where [model] is only the settings' 'workflow' marker.
@@ -283,4 +299,21 @@ abstract interface class ModelProvider {
   Future<List<String>> listModels();
   List<CompatibilityDiagnostic> validateParameters(ProviderRequest request);
   void close();
+}
+
+/// How many reference images an image request on [connection] may carry. A
+/// remote runner's own engine decides there, so it is not limited here.
+/// References on ComfyUI run the edit workflow when there is one.
+int referenceLimit(ModelConnection connection) {
+  switch (connection.protocol) {
+    case ModelProtocol.novelAI:
+      return 0;
+    case ModelProtocol.comfyUI:
+      return (connection.comfyEditWorkflow ?? connection.comfyWorkflow)
+              ?.imageInputs
+              .length ??
+          0;
+    default:
+      return 16;
+  }
 }

@@ -9,13 +9,13 @@ final class ComfyWorkflow extends JsonSource {
     required String promptInput,
     required String outputNode,
     String modelInput = '',
-    String imageInput = '',
+    List<String> imageInputs = const [],
     String filename = '',
   }) : super({
          'nodes': nodes,
          'promptInput': promptInput,
          'modelInput': modelInput,
-         'imageInput': imageInput,
+         'imageInputs': imageInputs,
          'outputNode': outputNode,
          if (filename.isNotEmpty) 'filename': filename,
        }) {
@@ -23,28 +23,38 @@ final class ComfyWorkflow extends JsonSource {
     if (promptInput.isEmpty || !nodes.containsKey(outputNode)) {
       throw const FormatException('请选择工作流的提示词输入和图片输出节点');
     }
-    for (final binding in [promptInput, modelInput, imageInput]) {
-      if (binding.isEmpty) continue;
+    if (imageInputs.any((b) => b.isEmpty)) {
+      throw const FormatException('参考图输入不能为空');
+    }
+    final bindings = [
+      promptInput,
+      modelInput,
+      ...imageInputs,
+    ].where((b) => b.isNotEmpty).toList();
+    for (final binding in bindings) {
       final (node, input) = splitInput(binding);
       if (nodes[node]?['inputs']?[input] is! String) {
         throw FormatException('工作流输入 $binding 不存在或不是文本字段');
       }
     }
-    final bindings = [
-      promptInput,
-      modelInput,
-      imageInput,
-    ].where((b) => b.isNotEmpty);
     if (bindings.toSet().length != bindings.length) {
-      throw const FormatException('提示词、模型和参考图须绑定不同的输入');
+      throw const FormatException('提示词、模型和各个参考图须绑定不同的输入');
     }
   }
 
+  /// Reads both the image input list and the single `imageInput` that
+  /// connections saved before it.
   factory ComfyWorkflow.fromJson(Map<String, dynamic> json) => ComfyWorkflow(
     nodes: jsonObject(json['nodes'], '工作流'),
     promptInput: stringField(json, 'promptInput'),
     modelInput: stringField(json, 'modelInput'),
-    imageInput: stringField(json, 'imageInput'),
+    imageInputs: json['imageInputs'] != null
+        ? stringList(json['imageInputs'], 'imageInputs')
+        : [
+            if (stringField(json, 'imageInput') case final single
+                when single.isNotEmpty)
+              single,
+          ],
     outputNode: stringField(json, 'outputNode'),
     filename: stringField(json, 'filename'),
   );
@@ -263,7 +273,7 @@ final class ComfyWorkflow extends JsonSource {
   Map<String, dynamic> get nodes => raw['nodes'] as Map<String, dynamic>;
   String get promptInput => raw['promptInput'] as String;
   String get modelInput => raw['modelInput'] as String;
-  String get imageInput => raw['imageInput'] as String;
+  List<String> get imageInputs => (raw['imageInputs'] as List).cast<String>();
   String get outputNode => raw['outputNode'] as String;
   String get filename => raw['filename'] as String? ?? '';
 

@@ -138,7 +138,10 @@ class IllustrationDetail extends ConsumerWidget {
         ? null
         : ref.watch(taskProvider(asset.taskId!)).value;
     if (task?.input['connection'] case final Map<String, dynamic> raw) {
-      return imageEngineLabel(ModelConnection.fromJson(raw));
+      return imageEngineLabel(
+        ModelConnection.fromJson(raw),
+        workflow: asset.metadata['workflow'] as String?,
+      );
     }
     return asset.metadata['model'] as String?;
   }

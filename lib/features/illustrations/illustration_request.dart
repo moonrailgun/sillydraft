@@ -47,14 +47,9 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   Object? _error;
   bool get _comfy => _connection?.protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _connection?.protocol == ModelProtocol.novelAI;
-  int get _referenceLimit => _novelAI
-      ? 0
-      : _comfy
-      ? 1
-      : 16;
-  bool get _canReference =>
-      !_novelAI &&
-      (!_comfy || _connection?.comfyWorkflow?.imageInput.isNotEmpty == true);
+  int get _referenceLimit =>
+      _connection == null ? 0 : referenceLimit(_connection!);
+  bool get _canReference => _referenceLimit > 0;
   @override
   void initState() {
     super.initState();
@@ -149,7 +144,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
               ? 'NovelAI 连接目前仅支持文生图，请移除参考图'
               : _canReference
               ? '当前模型最多使用 $_referenceLimit 张参考图'
-              : '请先在 ComfyUI 工作流中绑定参考图输入',
+              : '请先在 ComfyUI 模型设置中添加图生图工作流',
         );
       }
       final extras = jsonDecode(_parameters.text);
@@ -443,7 +438,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                   ),
                 ),
                 if (!_canReference && !_novelAI)
-                  const Text('此工作流未绑定参考图输入，可在模型设置中配置。'),
+                  const Text('此连接未配置图生图工作流，可在模型设置中添加。'),
                 if (_references.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),

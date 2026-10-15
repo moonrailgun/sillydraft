@@ -142,14 +142,21 @@ final class ComfyUIProvider implements ImageProvider {
 
     try {
       check();
-      final workflow = config.comfyWorkflow;
+      // References need the edit workflow when there is one; the text
+      // workflow's own image inputs still serve when there is not. The edit
+      // workflow keeps the model saved in it: the connection's models are
+      // the text workflow's.
+      final edit = references.isEmpty ? null : config.comfyEditWorkflow;
+      final workflow = edit ?? config.comfyWorkflow;
       if (config.protocol != ModelProtocol.comfyUI || workflow == null) {
         throw const ProviderException(
           'comfy_workflow',
           '请先导入并绑定 ComfyUI API 工作流',
         );
       }
-      if (config.models.length > 1 && workflow.modelInput.isEmpty) {
+      if (edit == null &&
+          config.models.length > 1 &&
+          workflow.modelInput.isEmpty) {
         throw const ProviderException('comfy_workflow', '使用多个模型时，请绑定工作流的模型输入');
       }
       if (request.parameters.keys.any((key) => key != 'seed')) {
@@ -166,16 +173,17 @@ final class ComfyUIProvider implements ImageProvider {
           'seed 须为 0 到 9007199254740991 的整数',
         );
       }
-      if (references.length > 1 ||
-          (references.isNotEmpty && workflow.imageInput.isEmpty)) {
-        throw const ProviderException(
+      if (references.length > workflow.imageInputs.length) {
+        throw ProviderException(
           'comfy_reference',
-          'ComfyUI 支持一张参考图，请先绑定工作流的图片输入',
+          workflow.imageInputs.isEmpty
+              ? '请先在模型设置中添加图生图工作流，或为工作流绑定参考图输入'
+              : '此工作流最多使用 ${workflow.imageInputs.length} 张参考图',
         );
       }
       final nodes = workflow.nodes;
       workflow.setInput(nodes, workflow.promptInput, request.prompt);
-      if (workflow.modelInput.isNotEmpty) {
+      if (edit == null && workflow.modelInput.isNotEmpty) {
         workflow.setInput(nodes, workflow.modelInput, config.model);
       }
       for (final node in nodes.values) {
@@ -184,8 +192,8 @@ final class ComfyUIProvider implements ImageProvider {
           if (inputs[key] is int) inputs[key] = seed;
         }
       }
-      if (references.isNotEmpty) {
-        final reference = references.single;
+      final uploaded = <String>[];
+      for (final reference in references) {
         final bytes = reference.bytes;
         final extension = const {
           'image/png': 'png',
@@ -200,7 +208,7 @@ final class ComfyUIProvider implements ImageProvider {
             '参考图须为 32 MB 以内的 PNG、JPEG、WebP',
           );
         }
-        final uploaded = await _json(
+        final file = await _json(
           'upload/image',
           method: 'POST',
           token: token,
@@ -214,20 +222,27 @@ final class ComfyUIProvider implements ImageProvider {
             ),
           }),
         );
-        final name = uploaded['name'], folder = uploaded['subfolder'] ?? '';
+        final name = file['name'], folder = file['subfolder'] ?? '';
         if (!_safeFile(name) ||
             !_safeFolder(folder) ||
-            uploaded['type'] != 'input') {
+            file['type'] != 'input') {
           throw const ProviderException(
             'comfy_reference',
             'ComfyUI 返回了无效的参考图路径',
           );
         }
-        workflow.setInput(
-          nodes,
-          workflow.imageInput,
-          folder == '' ? name as String : '$folder/$name',
-        );
+        uploaded.add(folder == '' ? name as String : '$folder/$name');
+      }
+      // Inputs past the last reference repeat it, so a sample image saved in
+      // the workflow never slips into the picture.
+      if (uploaded.isNotEmpty) {
+        for (final (i, binding) in workflow.imageInputs.indexed) {
+          workflow.setInput(
+            nodes,
+            binding,
+            uploaded[i < uploaded.length ? i : uploaded.length - 1],
+          );
+        }
       }
       check();
       final queued = await _json(

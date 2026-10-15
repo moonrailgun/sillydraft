@@ -60,6 +60,9 @@ extension _IllustrationExecution on TaskRunner {
         throw ProviderException('image_data', e.message);
       }
       cancel.check();
+      final used =
+          (references.isEmpty ? null : connection.comfyEditWorkflow) ??
+          connection.comfyWorkflow;
       await repository.completeIllustrationTask(
         taskId: task.id,
         prepared: prepared,
@@ -67,6 +70,8 @@ extension _IllustrationExecution on TaskRunner {
           'prompt': request.prompt,
           'revisedPrompt': output.revisedPrompt,
           'model': ?connection.sentModel,
+          if (used != null && used.filename.isNotEmpty)
+            'workflow': used.filename,
           'connectionId': connection.id,
           'parameters': request.parameters,
           'references': input['references'],
