@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 
+import 'theme.dart';
+
 export 'package:forui/forui.dart';
 
 /// Shared UI building blocks on top of forui.
@@ -582,6 +584,8 @@ class AppDialog extends StatelessWidget {
     final animation = context
         .dependOnInheritedWidgetOfExactType<_DialogAnimation>()
         ?.animation;
+    // Phones trade side padding for line width.
+    final side = EdgeInsets.symmetric(horizontal: touchPlatform ? 16 : 24);
     return FDialog(
       animation: animation,
       constraints: BoxConstraints(minWidth: 280, maxWidth: maxWidth),
@@ -594,7 +598,7 @@ class AppDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: side,
               child: DefaultTextStyle.merge(
                 style: style.titleTextStyle,
                 child: title,
@@ -604,7 +608,7 @@ class AppDialog extends StatelessWidget {
               const SizedBox(height: 10),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: side,
                   child: DefaultTextStyle.merge(
                     style: style.bodyTextStyle,
                     child: body!,
@@ -615,7 +619,7 @@ class AppDialog extends StatelessWidget {
             if (actions.isNotEmpty) ...[
               const SizedBox(height: 20),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: side,
                 child: Wrap(
                   alignment: WrapAlignment.end,
                   spacing: 8,

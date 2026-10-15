@@ -50,6 +50,13 @@ FThemeData appTheme(Brightness brightness) =>
         typography: FTypography(display: face, body: face),
         debugLabel: 'SillyDraft ${brightness.name}',
       ).copyWith(
+        // forui's 40px side inset leaves phone dialogs narrow; wide screens
+        // are unaffected since dialogs cap their own width.
+        dialogStyle: .delta(
+          insetPadding: .value(
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+          ),
+        ),
         switchStyle: .delta(
           trackColor: .delta([
             .base(offTrack),
