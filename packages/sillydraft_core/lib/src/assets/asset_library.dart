@@ -13,16 +13,34 @@ import '../st/card_importer.dart';
 import '../model/resource.dart';
 import '../st/resource_library.dart';
 
+/// Where a remote library's files live. This device keeps a copy of each
+/// file it reads or writes; the desktop keeps the library's own.
+abstract interface class AssetMirror {
+  /// `<hash>.png` or `<hash>.jpg`.
+  Future<Uint8List> download(String name);
+  Future<void> upload(String name, Uint8List bytes);
+}
+
 final class AssetLibrary {
-  AssetLibrary({required this.repository, required this.directory});
+  AssetLibrary({
+    required this.repository,
+    required this.directory,
+    this.mirror,
+  });
   final StoryRepository repository;
   final Directory directory;
+
+  /// Set for a remote library: [directory] is then only a cache.
+  final AssetMirror? mirror;
   static const maxBytes = 32 * 1024 * 1024;
   static const maxPixels = 16 * 1024 * 1024;
 
   /// Run at startup, before any import or generation can prepare new files.
   /// The age guard retains writes left by another recently running process.
   Future<int> pruneOrphans() async {
+    // ponytail: the cache of a remote library is never trimmed; add an LRU
+    // when phones run short of space. The desktop prunes the library itself.
+    if (mirror != null) return 0;
     if (!await directory.exists()) return 0;
     final referenced = await repository.assetFileNames();
     final cutoff = DateTime.now().subtract(const Duration(days: 1));
@@ -174,7 +192,7 @@ final class AssetLibrary {
     return File(p.join(directory.path, '$hash.$extension'));
   }
 
-  Future<void> _writeFile(
+  Future<void> _storeLocal(
     String hash,
     String extension,
     Uint8List bytes,
@@ -200,12 +218,42 @@ final class AssetLibrary {
     }
   }
 
-  /// A stored file by content hash, as persona images refer to theirs.
+  Future<void> _writeFile(
+    String hash,
+    String extension,
+    Uint8List bytes,
+  ) async {
+    await _storeLocal(hash, extension, bytes);
+    await mirror?.upload('$hash.$extension', bytes);
+  }
+
+  /// [hash].[extension] on this device, fetched from the mirror first when
+  /// only the desktop has it.
+  Future<File> _local(String hash, String extension) async {
+    final target = _path(hash, extension);
+    final mirror = this.mirror;
+    if (mirror == null || await target.exists()) return target;
+    final bytes = await mirror.download('$hash.$extension');
+    if (sha256.convert(bytes).toString() != hash) {
+      throw const FormatException('图片文件校验失败');
+    }
+    await _storeLocal(hash, extension, bytes);
+    return target;
+  }
+
+  /// A stored file by content hash, fetched first for a remote library.
+  Future<File> fileForHash(String hash, {bool thumbnail = false}) =>
+      _local(hash, thumbnail ? 'jpg' : 'png');
+
+  /// The local path of a file by content hash; [fileForHash] also fetches.
   File hashFile(String hash, {bool thumbnail = false}) =>
       _path(hash, thumbnail ? 'jpg' : 'png');
 
   Future<Uint8List> readHash(String hash, {bool thumbnail = false}) async {
-    final bytes = await hashFile(hash, thumbnail: thumbnail).readAsBytes();
+    final bytes = await (await fileForHash(
+      hash,
+      thumbnail: thumbnail,
+    )).readAsBytes();
     if (sha256.convert(bytes).toString() != hash) {
       throw const FormatException('图片文件已损坏');
     }
@@ -214,7 +262,7 @@ final class AssetLibrary {
 
   Future<File> file(String assetId, {bool thumbnail = false}) async {
     final asset = await repository.getAsset(assetId);
-    final target = _path(
+    final target = await _local(
       thumbnail ? asset.thumbnailHash : asset.hash,
       thumbnail ? 'jpg' : 'png',
     );

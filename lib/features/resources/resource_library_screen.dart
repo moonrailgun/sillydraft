@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
+import '../remote/share_screen.dart';
 import '../../app/widgets.dart';
 import '../personas/persona_list_screen.dart';
 import 'writing_profile.dart';
@@ -410,6 +411,19 @@ class ResourceDetailScreen extends ConsumerWidget {
                   onPress: () => _export(context, resource),
                   prefix: const Icon(FLucideIcons.share),
                   child: const Text('导出 JSON'),
+                ),
+                FButton(
+                  variant: FButtonVariant.outline,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => shareByQr(
+                    context,
+                    () => resourceShare(
+                      ref.read(servicesProvider).library,
+                      resource.id,
+                    ),
+                  ),
+                  prefix: const Icon(FLucideIcons.qrCode),
+                  child: const Text('扫码分享'),
                 ),
                 FButton(
                   variant: FButtonVariant.ghost,

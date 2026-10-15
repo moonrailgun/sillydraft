@@ -4,7 +4,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../../app/library_host.dart';
 import '../../app/services.dart';
+import '../remote/library_switcher.dart';
+import '../remote/share_screen.dart';
 import '../../app/sample.dart';
 import '../../app/widgets.dart';
 import '../editor/workspace_screen.dart';
@@ -239,10 +242,13 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
     return AppScaffold(
       header: FHeader(
         // Like an app bar title: legible at large text, never huge.
-        // The wide layout's sidebar already carries the app's mark.
+        // The wide layout's sidebar already carries the app's mark; phones
+        // and tablets switch libraries here at any width.
         title: MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.34,
-          child: MediaQuery.sizeOf(context).width >= 900
+          child: isPhone
+              ? const LibrarySwitcher()
+              : MediaQuery.sizeOf(context).width >= 900
               ? const Text('作品')
               : Row(
                   children: [
@@ -295,6 +301,17 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                   ),
                 ),
                 icon: FLucideIcons.cloudSync,
+              ),
+              if (isPhone)
+                menuEntry(
+                  '扫码',
+                  () => scanLink(context, ref),
+                  icon: FLucideIcons.scanLine,
+                ),
+              menuEntry(
+                '粘贴链接',
+                () => pasteLink(context, ref),
+                icon: FLucideIcons.clipboardPaste,
               ),
             ],
           ),

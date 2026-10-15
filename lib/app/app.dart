@@ -11,24 +11,51 @@ import 'package:material_ui/material_ui.dart' as mui;
 
 import '../features/bookshelf/novel_start.dart';
 import '../features/bookshelf/search_screen.dart';
+import '../features/remote/library_switcher.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/resources/resource_library_screen.dart';
 import '../features/update/update_prompt.dart';
 import 'desktop_commands.dart';
 import 'devtool_trim.dart';
 import 'home_screen.dart';
+import 'library_host.dart';
 import 'services.dart';
 import 'theme.dart';
 import 'widgets.dart' show showError;
 
-class SillyDraftApp extends StatelessWidget {
-  const SillyDraftApp({super.key, required this.services});
+class SillyDraftApp extends StatefulWidget {
+  const SillyDraftApp({super.key, required this.services, this.openLocal});
   final AppServices services;
+
+  /// Reopens this device's library after a desktop's; tests pass their own.
+  final Future<AppServices> Function()? openLocal;
+
   @override
-  Widget build(BuildContext context) => ProviderScope(
-    observers: [if (kDebugMode) DevtoolHistoryTrim()],
-    overrides: [servicesProvider.overrideWithValue(services)],
-    child: const _App(),
+  State<SillyDraftApp> createState() => _SillyDraftAppState();
+}
+
+class _SillyDraftAppState extends State<SillyDraftApp> {
+  late final _host = LibraryHost(widget.services, openLocal: widget.openLocal);
+
+  @override
+  void dispose() {
+    _host.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _host,
+    // A new scope per library: every provider and screen starts over.
+    builder: (context, _) => ProviderScope(
+      key: ObjectKey(_host.services),
+      observers: [if (kDebugMode) DevtoolHistoryTrim()],
+      overrides: [
+        servicesProvider.overrideWithValue(_host.services),
+        libraryHostProvider.overrideWithValue(_host),
+      ],
+      child: const _App(),
+    ),
   );
 }
 
@@ -131,7 +158,10 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
           child: FToaster(
             child: FTooltipGroup(
               child: Overlay.wrap(
-                child: DesktopCommands(invoke: _command, child: child!),
+                child: RemoteFrame(
+                  navigator: _navigator,
+                  child: DesktopCommands(invoke: _command, child: child!),
+                ),
               ),
             ),
           ),

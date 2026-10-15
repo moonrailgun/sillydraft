@@ -253,4 +253,65 @@ void main() {
       s.revisionId,
     );
   });
+
+  group('mirror', () {
+    late Directory root;
+    late StoryRepository repository;
+    late _Mirror mirror;
+    final png = Uint8List.fromList(
+      img.encodePng(img.Image(width: 8, height: 8)),
+    );
+    setUp(() async {
+      root = await Directory.systemTemp.createTemp('sd-mirror');
+      repository = StoryRepository.memory();
+      mirror = _Mirror();
+    });
+    tearDown(() async {
+      await repository.close();
+      await root.delete(recursive: true);
+    });
+    AssetLibrary device(String name) => AssetLibrary(
+      repository: repository,
+      directory: Directory('${root.path}/$name'),
+      mirror: mirror,
+    );
+
+    test('uploads what it prepares and fetches what it lacks', () async {
+      final prepared = await device('phone').prepare(png);
+      expect(
+        mirror.files.keys,
+        containsAll(['${prepared.hash}.png', '${prepared.thumbnailHash}.jpg']),
+      );
+      final other = device('other');
+      expect(
+        await other.readHash(prepared.hash),
+        mirror.files['${prepared.hash}.png'],
+      );
+      final thumb = await other.fileForHash(
+        prepared.thumbnailHash,
+        thumbnail: true,
+      );
+      expect(thumb.existsSync(), isTrue);
+      expect(await other.pruneOrphans(), 0);
+    });
+
+    test('refuses a download that does not match its hash', () async {
+      final prepared = await device('phone').prepare(png);
+      mirror.files['${prepared.hash}.png'] = Uint8List.fromList([1, 2, 3]);
+      await expectLater(
+        device('other').readHash(prepared.hash),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+}
+
+final class _Mirror implements AssetMirror {
+  final files = <String, Uint8List>{};
+  @override
+  Future<Uint8List> download(String name) async =>
+      files[name] ?? (throw const FormatException('missing'));
+  @override
+  Future<void> upload(String name, Uint8List bytes) async =>
+      files[name] = bytes;
 }

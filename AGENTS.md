@@ -48,7 +48,7 @@ macOS 在 `macos/Runner/Info.plist` 里设置了 `FLTEnableImpeller=false`（绕
 三个 Dart 包：
 
 - `lib/`：Flutter 界面（Riverpod、forui、flutter_quill）。`lib/app/services.dart` 组装仓库、模型连接和密钥；功能按 `lib/features/<领域>/` 划分。
-- `packages/sillydraft_core/`：纯 Dart，不依赖 Flutter。存储、版本与分支、ST 导入与编译、模型协议、任务、MVU、HTML 块、迁移导出都在这里。能放在核心的逻辑放核心，用 `dart test` 测。
+- `packages/sillydraft_core/`：纯 Dart，不依赖 Flutter。存储、版本与分支、ST 导入与编译、模型协议、任务、MVU、HTML 块、迁移导出都在这里。能放在核心的逻辑放核心，用 `dart test` 测。远程作品库与扫码传输在 `src/remote/`：桌面的 `RemoteHost` 经 drift 远程协议共享数据库，手机的 `RemoteSession` 断线重连时仓库对象不变。
 - `server/`：可选的个人远程执行器。只接收客户端冻结好的模型请求，ST 编译和输出处理仍在客户端。
 
 ### 存储与版本

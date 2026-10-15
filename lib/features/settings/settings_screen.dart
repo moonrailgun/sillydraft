@@ -5,9 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../../app/library_host.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../lore/sidecar.dart';
+import '../remote/hosting_screen.dart';
+import '../remote/library_switcher.dart';
+import '../remote/share_screen.dart';
 import '../skills/skills_screen.dart';
 import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
@@ -18,6 +22,17 @@ final connectionsProvider = FutureProvider<List<ModelConnection>>((ref) {
   return ref.watch(servicesProvider).connections();
 });
 
+/// [connection] with its saved key; never an address a phone wrote.
+Future<SharePayload> _shareConnection(
+  AppServices services,
+  ModelConnection connection,
+) async {
+  if (!await services.endpointTrusted(connection)) {
+    throw StateError(AppServices.movedEndpoint);
+  }
+  return connectionShare(connection, await services.savedKey(connection));
+}
+
 /// A long text in a tile's subtitle: wraps instead of being cut to one line.
 Text _wrapped(String text) =>
     Text(text, overflow: TextOverflow.visible, softWrap: true);
@@ -26,6 +41,7 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final remote = ref.watch(servicesProvider).remote;
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
@@ -49,6 +65,25 @@ class SettingsScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              if (remote != null) ...[
+                FTileGroup(
+                  children: [
+                    FTile(
+                      key: const Key('settings-remote'),
+                      prefix: const Icon(FLucideIcons.monitor),
+                      title: Text('正在使用桌面：${remote.hello.name}'),
+                      subtitle: _wrapped('作品、资料和模型都来自这台桌面电脑'),
+                      suffix: FButton(
+                        variant: FButtonVariant.outline,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: () => switchLibrary(context, ref, null),
+                        child: const Text('切回本机'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
               Text(
                 '让工具适合你的写作方式',
                 style: theme.typography.body.xl2.copyWith(
@@ -108,22 +143,25 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  FButton(
-                    variant: FButtonVariant.ghost,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: () => showAppDialog<void>(
-                      context: context,
-                      builder: (_) => const ConnectionDialog(),
+                  if (remote == null)
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => showAppDialog<void>(
+                        context: context,
+                        builder: (_) => const ConnectionDialog(),
+                      ),
+                      prefix: const Icon(FLucideIcons.plus),
+                      child: const Text('添加连接'),
                     ),
-                    prefix: const Icon(FLucideIcons.plus),
-                    child: const Text('添加连接'),
-                  ),
                 ],
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  '一个连接可保存多个模型。支持 OpenAI 兼容接口、ComfyUI 与 NovelAI 生图、SillyDraft 远程执行器，以及桌面端的本地订阅（Claude Code、Codex）。密钥以明文保存在本机的密钥文件里，不进入作品备份和同步。',
+                  remote == null
+                      ? '一个连接可保存多个模型。支持 OpenAI 兼容接口、ComfyUI 与 NovelAI 生图、SillyDraft 远程执行器，以及桌面端的本地订阅（Claude Code、Codex）。密钥以明文保存在本机的密钥文件里，不进入作品备份和同步。'
+                      : '连接在桌面管理：地址与密钥只保存在桌面电脑里。这里可以为各任务选择连接。',
                   style: theme.typography.body.sm.copyWith(
                     color: theme.colors.mutedForeground,
                   ),
@@ -157,15 +195,35 @@ class SettingsScreen extends ConsumerWidget {
                                     ? '${protocolLabels[connection.protocol]} · ${connection.model == 'default' ? '默认模型' : connection.model}\n${connection.command.isEmpty ? '自动查找命令' : connection.command}'
                                     : '${modelKindLabels[connection.kind]} · ${connection.models.join('、')}\n${connection.baseUrl}',
                               ),
-                              suffix: IconAction(
-                                icon: FLucideIcons.pencil,
-                                tooltip: '编辑连接',
-                                onPress: () => showAppDialog<void>(
-                                  context: context,
-                                  builder: (_) =>
-                                      ConnectionDialog(connection: connection),
-                                ),
-                              ),
+                              suffix: remote == null
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconAction(
+                                          icon: FLucideIcons.qrCode,
+                                          tooltip: '扫码分享',
+                                          onPress: () => shareByQr(
+                                            context,
+                                            () => _shareConnection(
+                                              ref.read(servicesProvider),
+                                              connection,
+                                            ),
+                                            containsKey: true,
+                                          ),
+                                        ),
+                                        IconAction(
+                                          icon: FLucideIcons.pencil,
+                                          tooltip: '编辑连接',
+                                          onPress: () => showAppDialog<void>(
+                                            context: context,
+                                            builder: (_) => ConnectionDialog(
+                                              connection: connection,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : null,
                             ),
                         ],
                       ),
@@ -225,6 +283,20 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (!isPhone && remote == null)
+                    FTile(
+                      key: const Key('settings-hosting'),
+                      prefix: const Icon(FLucideIcons.smartphone),
+                      title: const Text('手机连接'),
+                      subtitle: _wrapped('让手机扫码使用这台电脑的作品库和模型'),
+                      suffix: const Icon(FLucideIcons.chevronRight),
+                      onPress: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const HostingScreen(),
+                        ),
+                      ),
+                    ),
                 ],
               ),
               if (updates) ...[
@@ -388,6 +460,13 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
   bool _busy = false, _obscure = true;
+
+  /// The loaded connection no longer matches what this device saved.
+  bool _moved = false;
+
+  /// A local command a phone may have written runs only once saved here.
+  static const _commandMoved = '命令在本机之外被改动过，请核对后保存';
+  bool get _unsavedCommand => _moved && _cli;
   late ModelProtocol _protocol =
       widget.connection?.protocol ?? ModelProtocol.openAICompatible;
   late bool _allowInsecure = widget.connection?.allowInsecureHttp ?? false;
@@ -413,6 +492,21 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       .toSet()
       .toList();
   Set<String> get _modelOptions => {..._models, ..._selectedModels};
+  @override
+  void initState() {
+    super.initState();
+    if (widget.connection case final connection?) {
+      ref
+          .read(servicesProvider)
+          .endpointTrusted(connection)
+          // A record that cannot be read is no proof either.
+          .catchError((Object _) => false)
+          .then((trusted) {
+            if (mounted && !trusted) setState(() => _moved = true);
+          });
+    }
+  }
+
   @override
   void dispose() {
     _testing?.cancel();
@@ -532,6 +626,15 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     final running = _testing;
     if (running != null) return running.cancel();
     if (!_form.currentState!.validate()) return;
+    if (_unsavedCommand) {
+      return setState(
+        () => _probe = const ConnectionProbeResult(
+          ok: false,
+          elapsed: Duration.zero,
+          error: _commandMoved,
+        ),
+      );
+    }
     final cancel = GenerationCancellation();
     setState(() {
       _testing = cancel;
@@ -624,7 +727,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
     final config = _configuration(listing: true);
     final secret = _key.text.isNotEmpty
         ? _key.text
-        : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
+        : await ref.read(servicesProvider).savedKey(config);
     final provider = ComfyUIProvider(config: config, apiKey: secret);
     try {
       return await action(provider);
@@ -634,6 +737,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   }
 
   Future<void> _list() async {
+    if (_unsavedCommand) return setState(() => _message = _commandMoved);
     setState(() {
       _busy = true;
       _message = null;
@@ -669,10 +773,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         }
         return;
       }
+      final config = _configuration(listing: true);
       final secret = _key.text.isNotEmpty
           ? _key.text
-          : await ref.read(servicesProvider).secrets.read('model/$_id') ?? '';
-      final config = _configuration(listing: true);
+          : await ref.read(servicesProvider).savedKey(config);
       provider = _remote
           ? RemoteModelProvider(config: config, accessToken: secret)
           : OpenAICompatibleProvider(config: config, apiKey: secret);
@@ -693,6 +797,17 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
+    if (_unsavedCommand) {
+      final command = _command.text.trim();
+      final confirmed = await confirmAction(
+        context,
+        title: '确认使用此命令？',
+        message:
+            '保存后，本机的生成任务会运行这个命令：\n${command.isEmpty ? '自动查找 $_tool' : command}',
+        confirmLabel: '保存',
+      );
+      if (!confirmed || !mounted) return;
+    }
     setState(() => _busy = true);
     try {
       if (_cli) {
@@ -756,6 +871,18 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_moved) ...[
+              FAlert(
+                variant: FAlertVariant.destructive,
+                icon: const Icon(FLucideIcons.circleAlert),
+                title: Text(
+                  _cli
+                      ? '此连接的命令在本机之外被改动过，可能来自已配对的手机。请核对命令后保存。'
+                      : '此连接的地址或命令在本机之外被改动过，可能来自已配对的手机。请核对后重新输入密钥并保存。',
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             FSelect<ModelProtocol>(
               label: const Text('连接方式'),
               enabled: !_busy && _testing == null,

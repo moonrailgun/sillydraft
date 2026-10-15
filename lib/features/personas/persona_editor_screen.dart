@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
+import '../remote/share_screen.dart';
 import '../../app/widgets.dart';
+import '../illustrations/asset_image.dart';
 
 /// Edits one persona; a null [personaId] starts a new one.
 class PersonaEditorScreen extends ConsumerStatefulWidget {
@@ -240,6 +242,20 @@ class _PersonaEditorState extends ConsumerState<PersonaEditorScreen> {
     return PageScaffold(
       title: widget.personaId == null ? '新建人设' : '编辑人设',
       actions: [
+        if (_id.isNotEmpty)
+          HeaderIconAction(
+            tooltip: '扫码分享',
+            icon: FLucideIcons.qrCode,
+            onPress: () => shareByQr(context, () async {
+              final services = ref.read(servicesProvider);
+              final saved = (await services.repository.listPersonas())
+                  .firstWhere((p) => p.id == _id);
+              return personaShare(
+                saved,
+                services.assets ?? (throw StateError('本地资源目录尚未就绪')),
+              );
+            }),
+          ),
         if (_id.isNotEmpty && _id != Persona.meId)
           HeaderIconAction(
             tooltip: '删除人设',
@@ -292,16 +308,13 @@ class _PersonaEditorState extends ConsumerState<PersonaEditorScreen> {
                             borderRadius: BorderRadius.circular(8),
                             child: library == null
                                 ? missing()
-                                : Image.file(
-                                    library.hashFile(
-                                      image.thumbnailHash,
-                                      thumbnail: true,
-                                    ),
+                                : HashImageView(
+                                    hash: image.thumbnailHash,
+                                    thumbnail: true,
                                     width: 96,
                                     height: 96,
                                     fit: BoxFit.cover,
-                                    semanticLabel: '参考图',
-                                    errorBuilder: (_, _, _) => missing(),
+                                    label: '参考图',
                                   ),
                           ),
                           Positioned(

@@ -23,6 +23,15 @@ enum ModelProtocol {
   bool get isLocalCli => this == claudeCode || this == codexCli;
 }
 
+/// The [ModelConnection.raw] fields that say where its key goes or which
+/// tool it runs: a desktop's keys follow only these as it saved them.
+const connectionEndpointKeys = [
+  'protocol',
+  'baseUrl',
+  'command',
+  'allowInsecureHttp',
+];
+
 final class ModelConnection extends JsonSource {
   ModelConnection({
     required String id,

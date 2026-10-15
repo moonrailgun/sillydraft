@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +40,154 @@ Future<AppServices> openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('a connection moved outside this device keeps its key back', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await services.close();
+    });
+    ModelConnection at(String baseUrl) =>
+        ModelConnection(id: 'c1', name: '我的模型', baseUrl: baseUrl, model: 'm');
+    await services.saveConnection(
+      at('https://api.example.com/v1'),
+      apiKey: 'sk-test',
+    );
+    // What a paired phone can do over the shared database.
+    await services.repository.setSetting('connections', {
+      'items': [at('https://attacker.example/v1').raw],
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(const SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(findAction('编辑连接'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('此连接的地址或命令在本机之外被改动过，可能来自已配对的手机。请核对后重新输入密钥并保存。'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('检查连接并获取模型'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('连接地址已在本机之外改动，请重新输入密钥'), findsOneWidget);
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    expect(await services.secrets.read('endpoint/c1'), contains('api.example'));
+  });
+
+  testWidgets('a trust check that fails still warns', (tester) async {
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: _Unreadable(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await services.close();
+    });
+    await services.repository.setSetting('connections', {
+      'items': [
+        ModelConnection(
+          id: 'c1',
+          name: '我的模型',
+          baseUrl: 'https://api.example.com/v1',
+          model: 'm',
+        ).raw,
+      ],
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(const SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(findAction('编辑连接'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('此连接的地址或命令在本机之外被改动过，可能来自已配对的手机。请核对后重新输入密钥并保存。'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a local command moved outside this device runs only once '
+      'confirmed', (tester) async {
+    tester.view.physicalSize = const Size(1000, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await services.close();
+    });
+    ModelConnection cli(String command) => ModelConnection(
+      id: 'cli',
+      name: 'Claude Code',
+      baseUrl: '',
+      model: 'sonnet',
+      protocol: ModelProtocol.claudeCode,
+      command: command,
+    );
+    await services.saveConnection(cli('/usr/local/bin/claude'));
+    // What a paired phone can do over the shared database; never run here.
+    await services.repository.setSetting('connections', {
+      'items': [cli('/nonexistent/sd-test/claude').raw],
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(const SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(findAction('编辑连接'));
+    await tester.pumpAndSettle();
+    expect(find.text('此连接的命令在本机之外被改动过，可能来自已配对的手机。请核对命令后保存。'), findsOneWidget);
+    await tester.tap(find.text('检查安装与登录'));
+    await tester.pumpAndSettle();
+    expect(find.text('命令在本机之外被改动过，请核对后保存'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('connection-test')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('connection-test-result')),
+        matching: find.text('命令在本机之外被改动过，请核对后保存'),
+      ),
+      findsOneWidget,
+    );
+    Future<void> save() async {
+      await tester.ensureVisible(find.text('保存连接'));
+      await tester.tap(find.text('保存连接'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认使用此命令？'), findsOneWidget);
+      expect(
+        find.text('保存后，本机的生成任务会运行这个命令：\n/nonexistent/sd-test/claude'),
+        findsOneWidget,
+      );
+    }
+
+    await save();
+    await tester.tap(find.text('取消').last);
+    await tester.pumpAndSettle();
+    expect(await services.secrets.read('endpoint/cli'), contains('/usr/local'));
+    await save();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(await services.secrets.read('endpoint/cli'), contains('sd-test'));
+  });
+
   testWidgets('NovelAI connection saves image models and its access token', (
     tester,
   ) async {
@@ -207,4 +356,15 @@ void main() {
       expect((await services.connectionFor('image'))!.id, saved.id);
     },
   );
+}
+
+/// Refuses every read, as a locked secrets file would.
+final class _Unreadable implements SecretStore {
+  @override
+  Future<String?> read(String key) async =>
+      throw const FileSystemException('密钥文件暂时无法读取');
+  @override
+  Future<void> write(String key, String value) async {}
+  @override
+  Future<void> delete(String key) async {}
 }

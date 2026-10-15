@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
+import '../remote/share_screen.dart';
 import '../../app/widgets.dart';
 import 'skill_providers.dart';
 
@@ -225,6 +226,12 @@ class SkillDetailScreen extends ConsumerWidget {
               () => _export(context),
               icon: FLucideIcons.download,
             ),
+            if (!skill.builtIn)
+              menuEntry(
+                '扫码分享',
+                () => shareByQr(context, () async => skillShare(skill)),
+                icon: FLucideIcons.qrCode,
+              ),
             if (!skill.builtIn)
               menuEntry(
                 '删除技能',

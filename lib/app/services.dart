@@ -8,6 +8,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import 'hosting.dart';
+
 abstract interface class SecretStore {
   Future<String?> read(String key);
   Future<void> write(String key, String value);
@@ -193,7 +195,8 @@ final class AppServices {
     this.updateEndpoint,
     ProviderFactory? modelProviderFactory,
     ImageProviderFactory? imageProviderFactory,
-  }) : _modelProviderFactory = modelProviderFactory {
+  }) : remote = null,
+       _modelProviderFactory = modelProviderFactory {
     assets = dataDirectory == null
         ? null
         : AssetLibrary(
@@ -206,19 +209,57 @@ final class AppServices {
       imageProviderFactory: imageProviderFactory ?? imageProvider,
       assetLibrary: assets,
     );
+    library = ResourceLibrary(repository: repository, keyProvider: resourceKey);
+    _wire();
+  }
+
+  /// A paired desktop's library over [session]: its database, tasks, files
+  /// and models. [secrets] stays this device's own; files are cached under
+  /// [cache].
+  AppServices.remote(
+    RemoteSession session, {
+    required this.secrets,
+    required Directory cache,
+    this.updateEndpoint,
+  }) : repository = session.repository,
+       remote = session,
+       dataDirectory = null,
+       _modelProviderFactory = null {
+    assets = AssetLibrary(
+      repository: repository,
+      directory: Directory('${cache.path}/assets'),
+      mirror: HttpAssetMirror(session),
+    );
+    runner = RemoteTaskControl(
+      session,
+      providerFactory: provider,
+      imageProviderFactory: imageProvider,
+      assetLibrary: assets,
+    );
+    library = ResourceLibrary(
+      repository: repository,
+      keyProvider: () async => session.hello.resourceKey,
+    );
+    _wire();
+  }
+
+  void _wire() {
     writing = WritingService(repository: repository, runner: runner);
     sidecar = SidecarAgent(repository: repository, runner: runner);
     editor = EditorAgent(repository: repository, runner: runner);
     illustrations = IllustrationService(repository: repository, runner: runner);
     personas = PersonaService(repository: repository, runner: runner);
-    library = ResourceLibrary(
-      repository: repository,
-      keyProvider: _resourceKey,
-    );
   }
+
   final StoryRepository repository;
   final SecretStore secrets;
   final Directory? dataDirectory;
+
+  /// The desktop this library belongs to; null for this device's own.
+  final RemoteSession? remote;
+
+  /// Sharing this library with phones, and handing out share codes.
+  late final hosting = LibraryHosting(this);
 
   /// Where update checks ask for the latest release; null turns them off
   /// (tests, and iOS, which has no published package).
@@ -242,7 +283,7 @@ final class AppServices {
     assets: assets ?? (throw StateError('本地资源目录尚未就绪')),
   );
   Future<List<int>>? _keyFuture;
-  Future<List<int>> _resourceKey() => _keyFuture ??= _loadResourceKey();
+  Future<List<int>> resourceKey() => _keyFuture ??= _loadResourceKey();
   Future<List<int>> _loadResourceKey() async {
     try {
       final existing = await secrets.read('resources/aes256');
@@ -285,6 +326,8 @@ final class AppServices {
       updateEndpoint: checkUpdates && !Platform.isIOS ? latestReleaseUrl : null,
     );
     await services.runner.recoverInterrupted();
+    // A desktop shares its library again when the author left it on.
+    if (desktopPlatform) unawaited(services.hosting.restore());
     try {
       await services.repository.migrateLegacyPersonas();
     } catch (e) {
@@ -310,6 +353,7 @@ final class AppServices {
     ModelConnection connection, {
     String? secret,
   }) async {
+    if (remote != null) throw StateError('连接在桌面管理');
     if (!connection.supportsText) {
       throw const FormatException('此连接仅支持生图，请选择文本模型');
     }
@@ -318,13 +362,17 @@ final class AppServices {
     if (connection.protocol.isLocalCli) {
       return LocalCliProvider(config: connection);
     }
-    final key = secret ?? await secrets.read('model/${connection.id}') ?? '';
+    final key = secret ?? await savedKey(connection);
     return connection.protocol == ModelProtocol.sillyDraftRunner
         ? RemoteModelProvider(config: connection, accessToken: key)
         : OpenAICompatibleProvider(config: connection, apiKey: key);
   }
 
   Future<ModelProvider> provider(ModelConnection connection) async {
+    if (remote case final session?) {
+      return DesktopModelProvider(session, connection);
+    }
+    await _checkEndpoint(connection);
     if (connection.protocol.isLocalCli) {
       return LocalCliProvider(config: connection);
     }
@@ -351,6 +399,10 @@ final class AppServices {
     if (!connection.supportsImages) {
       throw const FormatException('此连接仅支持文本，请选择生图模型');
     }
+    if (remote case final session?) {
+      return DesktopImageProvider(session, connection);
+    }
+    await _checkEndpoint(connection);
     final key = await secrets.read('model/${connection.id}') ?? '';
     if (connection.protocol == ModelProtocol.comfyUI) {
       return ComfyUIProvider(config: connection, apiKey: key);
@@ -364,10 +416,71 @@ final class AppServices {
     return OpenAIImageProvider(config: connection, apiKey: key);
   }
 
+  /// Set once this library was first shared: from then on a connection
+  /// without an endpoint record was not saved here. Kept outside the
+  /// `endpoint/<id>` namespace, which connection ids from phones reach.
+  static const _bound = 'remote/endpoints-bound';
+
+  /// Refuses [connection] when it points somewhere other than where this
+  /// device saved it: paired phones can rewrite the shared `connections`
+  /// setting, not this device's secrets file, and keys and local tools go
+  /// only to endpoints the author saved here. Connections saved before
+  /// endpoints were recorded pass until the library is first shared.
+  Future<void> _checkEndpoint(ModelConnection connection) async {
+    if (!await endpointTrusted(connection)) {
+      throw StateError('连接地址与本机保存的不一致，已拒绝使用密钥');
+    }
+  }
+
+  /// Whether [connection] points where this device saved it (see
+  /// [_checkEndpoint]), so its saved key may go there.
+  Future<bool> endpointTrusted(ModelConnection connection) async {
+    final saved = await secrets.read('endpoint/${connection.id}');
+    if (saved == null) return await secrets.read(_bound) == null;
+    final endpoint = jsonDecode(saved) as Map<String, dynamic>;
+    return connectionEndpointKeys.every(
+      (k) => endpoint[k] == connection.raw[k],
+    );
+  }
+
+  /// Why the settings editor holds a saved key back.
+  static const movedEndpoint = '连接地址已在本机之外改动，请重新输入密钥';
+
+  /// The key saved for [connection], for the settings editor and its share
+  /// code: refused while [connection] points elsewhere than where the key
+  /// was saved, as after a phone rewrote it. No saved key is no secret.
+  Future<String> savedKey(ModelConnection connection) async {
+    final key = await secrets.read('model/${connection.id}');
+    if (key == null || key.isEmpty) return '';
+    if (!await endpointTrusted(connection)) throw StateError(movedEndpoint);
+    return key;
+  }
+
+  Future<void> _bindEndpoint(ModelConnection connection) => secrets.write(
+    'endpoint/${connection.id}',
+    jsonEncode({for (final k in connectionEndpointKeys) k: connection.raw[k]}),
+  );
+
+  /// Records every saved connection's endpoint before this library is first
+  /// shared, when nothing but this device can have written them. Later
+  /// shares skip it, so a connection a phone added stays refused.
+  Future<void> bindSavedEndpoints() async {
+    if (await secrets.read(_bound) != null) return;
+    for (final connection in await connections()) {
+      if (await secrets.read('endpoint/${connection.id}') == null) {
+        await _bindEndpoint(connection);
+      }
+    }
+    await secrets.write(_bound, 'true');
+  }
+
+  /// A phone's list leaves out the desktop's local subscriptions, which
+  /// run only there (see [RemoteHost]).
   Future<List<ModelConnection>> connections() async {
     final setting = await repository.getSetting('connections');
     return (setting?['items'] as List? ?? [])
         .map((v) => ModelConnection.fromJson(v as Map<String, dynamic>))
+        .where((c) => remote == null || !c.protocol.isLocalCli)
         .toList();
   }
 
@@ -375,7 +488,14 @@ final class AppServices {
     ModelConnection connection, {
     String? apiKey,
   }) async {
+    if (remote != null) throw StateError('连接在桌面管理');
+    // The key follows a new address only when typed again: the form may
+    // hold an address a phone wrote. savedKey refuses for us.
+    if (apiKey == null && !connection.protocol.isLocalCli) {
+      await savedKey(connection);
+    }
     if (apiKey != null) await secrets.write('model/${connection.id}', apiKey);
+    await _bindEndpoint(connection);
     final list = await connections();
     list.removeWhere((c) => c.id == connection.id);
     list.add(connection);
@@ -385,12 +505,14 @@ final class AppServices {
   }
 
   Future<void> removeConnection(String id) async {
+    if (remote != null) throw StateError('连接在桌面管理');
     final list = await connections();
     list.removeWhere((c) => c.id == id);
     await repository.setSetting('connections', {
       'items': list.map((c) => c.raw).toList(),
     });
     await secrets.delete('model/$id');
+    await secrets.delete('endpoint/$id');
   }
 
   Future<ModelConnection?> connectionFor(String role) async {
@@ -416,10 +538,21 @@ final class AppServices {
     }
   }
 
-  Future<void> close() async {
-    await flushDrafts();
-    await runner.close();
-    await repository.close();
+  /// Shuts this library down, saving open drafts first unless
+  /// [flushDrafts] is false. Drafts that cannot be saved still let it shut
+  /// down, and their error follows.
+  Future<void> close({bool flushDrafts = true}) async {
+    try {
+      if (flushDrafts) await this.flushDrafts();
+    } finally {
+      await hosting.stop();
+      await runner.close();
+      if (remote case final session?) {
+        await session.close();
+      } else {
+        await repository.close();
+      }
+    }
   }
 }
 
@@ -482,6 +615,9 @@ bool connectionServes(ModelConnection connection, String role) =>
       _ => connection.supportsText,
     };
 
-/// Local subscriptions run an installed command-line tool: desktop only.
-bool get localCliAvailable =>
+/// macOS, Windows or Linux: hosts a library for phones and runs local CLIs.
+bool get desktopPlatform =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+/// Local subscriptions run an installed command-line tool: desktop only.
+bool get localCliAvailable => desktopPlatform;

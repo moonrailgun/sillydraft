@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+// drift 2.35.2 is pinned by the lock file; both ends ship the same build.
+// ignore: experimental_member_use
+import 'package:drift/remote.dart';
 import 'package:uuid/uuid.dart';
 
 import '../model/chapter_title.dart';
@@ -21,6 +24,7 @@ import '../st/preset_importer.dart';
 import '../st/macro_engine.dart';
 import '../st/world_book.dart';
 import '../mvu/mvu_service.dart';
+import '../remote/sql_guard.dart';
 import 'database.dart';
 import '../transfer/project_snapshot.dart';
 import '../transfer/manuscript_import.dart';
@@ -50,10 +54,16 @@ final class StoryRepository {
   factory StoryRepository.open(String path) =>
       StoryRepository._(StoryDatabase.open(path));
 
+  /// A library another device serves: [executor] reaches a database that
+  /// device opened and migrated. This side never migrates it.
+  factory StoryRepository.connect(QueryExecutor executor) =>
+      StoryRepository._(StoryDatabase(executor));
+
   final StoryDatabase _db;
 
   /// Each write, as whether it touched only generation tasks.
   final _changes = StreamController<bool>.broadcast();
+  final _local = StreamController<bool>.broadcast();
   final _displayCache = <String, ({String key, DisplayContext context})>{};
 
   /// Listed task inputs by task id: an input never changes once the task is
@@ -69,11 +79,29 @@ final class StoryRepository {
   Stream<void> get contentChanges =>
       _changes.stream.where((tasksOnly) => !tasksOnly);
 
+  /// This repository's own committed writes, as whether they touched only
+  /// generation tasks: what a remote link forwards to other devices.
+  Stream<bool> get localWrites => _local.stream;
+
+  /// A write another device committed to the same database.
+  void notifyExternal(bool tasksOnly) {
+    if (!_closed) _changes.add(tasksOnly);
+  }
+
+  /// Serves this repository's database to remote devices, refusing SQL that
+  /// reaches past it. Shutting the server down leaves the database open;
+  /// [close] closes it.
+  DriftServer remoteServer() => DriftServer(
+    _db.executor.interceptWith(RemoteSqlGuard()),
+    closeConnectionAfterShutdown: false,
+  );
+
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
     await _db.close();
     await _changes.close();
+    await _local.close();
   }
 
   Future<T> _write<T>(
@@ -83,6 +111,7 @@ final class StoryRepository {
     if (_closed) throw StateError('资料库已关闭。');
     final result = await _db.transaction(action);
     _changes.add(tasksOnly);
+    _local.add(tasksOnly);
     return result;
   }
 
