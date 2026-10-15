@@ -25,7 +25,7 @@ extension CardStartOperations on StoryRepository {
     try {
       await MvuService(
         this,
-        clock: () => openingClock ?? DateTime.now().toUtc(),
+        clock: () => openingClock ?? DateTime.now(),
       ).ensureInitialized(novel.activeBranchId);
     } catch (_) {
       // The novel exists already; the variable manager reports the state
@@ -57,15 +57,12 @@ extension CardStartOperations on StoryRepository {
       throw const FormatException('备用开场不存在');
     }
     final macros = MacroEngine(
-      values: {
-        'char': card.name,
-        'user': persona.name,
-        'description': card.description,
-        'personality': card.personality,
-        'scenario': card.scenario,
-        'persona': persona.prompt,
-      },
-      clock: openingClock ?? DateTime.now().toUtc(),
+      env: MacroEnv.of(
+        card: card.raw,
+        user: persona.name,
+        persona: persona.prompt,
+      ),
+      clock: openingClock ?? DateTime.now(),
       seed: 0,
     );
     final rendered = macros.render(card.greetings[greetingIndex]);

@@ -52,6 +52,7 @@ final class WorldBookEntry extends JsonSource {
     required this.secondaryKeys,
     required this.content,
     required this.comment,
+    required this.outletName,
     required this.enabled,
     required this.constant,
     required this.selective,
@@ -70,6 +71,10 @@ final class WorldBookEntry extends JsonSource {
     required this.ignoreBudget,
   });
   final String id, content, comment;
+
+  /// The outlet a position-7 entry fills (ST `outletName`; a card's book
+  /// has `extensions.outlet_name`, world-info.js `convertCharacterBook`).
+  final String outletName;
   final List<String> keys, secondaryKeys;
   final bool enabled,
       constant,
@@ -102,6 +107,10 @@ final class WorldBookEntry extends JsonSource {
       ),
       content: stringField(raw, 'content'),
       comment: stringField(raw, 'comment', fallback: stringField(raw, 'name')),
+      outletName: switch ((raw['outletName'], ext['outlet_name'])) {
+        (final String name, _) || (_, final String name) => name,
+        _ => '',
+      },
       enabled: raw['enabled'] != false && raw['disable'] != true,
       constant: raw['constant'] == true,
       selective: raw['selective'] == true,
@@ -111,11 +120,11 @@ final class WorldBookEntry extends JsonSource {
         raw.containsKey('insertion_order') ? 'insertion_order' : 'order',
         100,
       ),
+      // A card's book: `extensions.position` wins over `before_char` and
+      // `after_char` (world-info.js `convertCharacterBook`).
       position: position is int
           ? position
-          : position == 'after_char'
-          ? 1
-          : intField(ext, 'position', 0),
+          : intField(ext, 'position', position == 'after_char' ? 1 : 0),
       depth: intField(merged, 'depth', 4),
       role: intField(merged, 'role', 0),
       caseSensitive:

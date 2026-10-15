@@ -93,4 +93,41 @@ void main() {
     );
     expect(engine.diagnostics, isEmpty);
   });
+
+  test('roll follows ST droll formulas with the task seed', () {
+    int roll(String source) => int.parse(_engine().render(source));
+    for (var i = 0; i < 20; i++) {
+      expect(roll('{{roll 6}}'), inInclusiveRange(1, 6));
+    }
+    expect(roll('{{roll 1999999}}'), inInclusiveRange(1, 1999999));
+    expect(roll('{{roll::3d6+4}}'), inInclusiveRange(7, 22));
+    expect(roll('{{roll 2D4-1}}'), inInclusiveRange(1, 7));
+    expect(roll('{{roll d1}}'), 1);
+    expect(_engine().render('{{roll 6}}'), _engine().render('{{roll 6}}'));
+    for (final formula in ['0', '1d0', '1d6+', 'abc', '1000001d6']) {
+      final engine = _engine();
+      expect(engine.render('[{{roll $formula}}]'), '[]');
+      expect(engine.diagnostics.single.severity, DiagnosticSeverity.warning);
+    }
+    expect(roll('{{roll 20000d6}}'), inInclusiveRange(20000, 120000));
+  });
+
+  test('arguments follow the ST 1.19.0 macro grammar', () {
+    for (final source in ['{{roll: 6}}', '{{roll:6}}', '{{roll :: 6}}']) {
+      final engine = _engine();
+      expect(int.parse(engine.render(source)), inInclusiveRange(1, 6));
+      expect(engine.diagnostics, isEmpty);
+    }
+    // Whitespace or one colon opens a single argument that keeps `::`.
+    expect(_engine().render('{{reverse ab::c}}'), 'c::ba');
+    expect(_engine().render('{{reverse:ab::c}}'), 'c::ba');
+    // `::` arguments are trimmed like the CST walker's token ranges.
+    final engine = _engine();
+    expect(engine.render('{{setvar:: x :: 1 }}{{getvar::x}}'), '1');
+    // random/pick split one argument on `::`, else on unescaped commas.
+    for (var i = 0; i < 20; i++) {
+      expect(_engine().render('{{random: a :: b}}'), isIn(['a', 'b']));
+      expect(_engine().render(r'{{random a\,b, c}}'), isIn(['a,b', 'c']));
+    }
+  });
 }

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
@@ -109,6 +111,10 @@ void main() {
     expect(request, contains('早期人物'));
     expect(request, isNot(contains('未来秘密答案')));
     expect((draft.input['variableResult'] as Map)['local'], {'phase': '早期阶段'});
+    // The macro clock is kept as a UTC instant plus local time's offset.
+    final clock = DateTime.parse(draft.input['clock'] as String);
+    expect(clock.isUtc, isTrue);
+    expect(draft.input['utcOffset'], clock.toLocal().timeZoneOffset.inMinutes);
   });
 
   test(
@@ -213,6 +219,115 @@ void main() {
       );
     },
   );
+
+  test('output regex reads the env the prompt was compiled with', () async {
+    final card = CardImporter().decode(
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'spec': 'chara_card_v2',
+            'data': {'name': '道渊', 'personality': ' 冷静{{user}} '},
+          }),
+        ),
+      ),
+      'card.json',
+    );
+    final task = await service.generate(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      connection: connection,
+      brief: '写下一段',
+      append: true,
+      card: card,
+      userName: '阿雨',
+      persona: '服饰：道袍',
+      globalRegex: [
+        {
+          'findRegex': '/新正文/g',
+          'replaceString': '{{persona}}|{{personality}}|{{char}}|{{model}}',
+          'placement': [2],
+        },
+      ],
+    );
+    expect((task.input['macroEnv'] as Map)['persona'], '服饰：道袍');
+    expect((await runner.wait(task.id)).status, TaskStatus.completed);
+    final proposal = (await repository.listProposals(novel.activeBranchId))
+        .single;
+    expect(proposal.content.text, '原文\n\n服饰：道袍|冷静阿雨|道渊|fiction-model\n');
+  });
+
+  test('output regex reads the chat the prompt was compiled with', () async {
+    final task = await service.generate(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      connection: connection,
+      brief: '写下一段',
+      append: true,
+      globalRegex: [
+        {
+          'findRegex': '/新正文/g',
+          'replaceString':
+              '{{lastMessageId}}|{{allChatRange}}|{{lastCharMessage}}|'
+              '{{lastSwipeId}}|{{firstIncludedMessageId}}|'
+              '{{lastGenerationType}}',
+          'placement': [2],
+        },
+      ],
+    );
+    // The chapter, then the brief; the reply is not in the chat yet, as in
+    // ST's `cleanUpMessage`.
+    expect((task.input['chatMacros'] as Map)['lastmessageid'], '1');
+    expect((await runner.wait(task.id)).status, TaskStatus.completed);
+    final proposal = (await repository.listProposals(novel.activeBranchId))
+        .single;
+    expect(proposal.content.text, '原文\n\n1|0-1|原文\n||0|normal\n');
+  });
+
+  test('output regex reads the request\'s token limits and outlets', () async {
+    final task = await service.generate(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      connection: ModelConnection(
+        id: 'local',
+        name: 'Test',
+        baseUrl: 'http://localhost:1234/v1',
+        model: 'fiction-model',
+        contextWindow: 16000,
+        maxOutputTokens: 1000,
+      ),
+      brief: '写下一段',
+      append: true,
+      worldBooks: [
+        ScopedWorldBook(
+          WorldBook.fromJson({
+            'entries': [
+              {
+                'constant': true,
+                'content': '出口',
+                'position': 7,
+                'outletName': 'x',
+              },
+            ],
+          }),
+        ),
+      ],
+      globalRegex: [
+        {
+          'findRegex': '/新正文/g',
+          'replaceString':
+              '{{maxPrompt}}|{{maxContext}}|{{maxResponse}}|'
+              '{{outlet::x}}|[{{input}}]',
+          'placement': [2],
+        },
+      ],
+    );
+    expect((task.input['macroEnv'] as Map)['maxContext'], 16000);
+    expect(task.input['outlets'], {'x': '出口'});
+    expect((await runner.wait(task.id)).status, TaskStatus.completed);
+    final proposal = (await repository.listProposals(novel.activeBranchId))
+        .single;
+    expect(proposal.content.text, '原文\n\n15000|16000|1000|出口|[]\n');
+  });
 
   test(
     'stream failure saves partial output and explicit retry uses a new task ID',

@@ -1,10 +1,12 @@
+import '../st/macro_engine.dart';
+
 /// What a branch needs to show manuscripts the way its bound card expects:
 /// the display regex rules, macro values, card greetings and metadata an
 /// HTML block may read. Built once per writing profile and cached.
 final class DisplayContext {
   const DisplayContext({
     this.rules = const [],
-    this.macroValues = const {},
+    this.env = const MacroEnv(user: '我'),
     this.greetings = const [],
     this.greetingIndex = 0,
     this.cardId,
@@ -67,14 +69,11 @@ final class DisplayContext {
     final helper = extensions['tavern_helper'];
     return DisplayContext(
       rules: [...rules, ...regexRulesOf(extensions)],
-      macroValues: {
-        'user': userName.isEmpty ? '我' : userName,
-        'persona': persona,
-        'char': text('name'),
-        'description': text('description'),
-        'personality': text('personality'),
-        'scenario': text('scenario'),
-      },
+      env: MacroEnv.of(
+        card: raw,
+        user: userName.isEmpty ? '我' : userName,
+        persona: persona,
+      ),
       greetings: greetings,
       greetingIndex: greetings.isEmpty
           ? 0
@@ -114,8 +113,9 @@ final class DisplayContext {
   /// Regex rules in SillyTavern order: global, preset, then card.
   final List<Map<String, dynamic>> rules;
 
-  /// `char`, `user`, `persona`, `description`, `personality`, `scenario`.
-  final Map<String, String> macroValues;
+  /// What the env macros read. No request is made here, so `{{model}}` is
+  /// empty, and examples are formatted as for a chat completion.
+  final MacroEnv env;
 
   /// Raw card greetings: the first message, then the alternates.
   final List<String> greetings;
@@ -133,6 +133,8 @@ final class DisplayContext {
   final List<({String name, bool enabled, String info})> helperScripts;
 
   bool get hasCard => cardId != null;
-  String get userName => macroValues['user'] ?? '我';
-  String get charName => macroValues['char'] ?? '';
+  String get userName => env.user;
+
+  /// The card's name; empty without a card.
+  String get charName => card['name'] is String ? card['name'] as String : '';
 }

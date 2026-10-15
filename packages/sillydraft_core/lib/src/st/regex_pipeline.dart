@@ -48,7 +48,7 @@ final class RegexPipeline {
         if (mode == 1 || mode == 2) {
           pattern = macros.render(
             pattern,
-            transform: mode == 2 ? RegExp.escape : null,
+            transform: mode == 2 ? _escape : null,
           );
         }
         final parsed = parseJavascriptRegex(pattern);
@@ -105,6 +105,23 @@ final class RegexPipeline {
     return output;
   }
 }
+
+/// ST 1.19.0 (06bde939fb1e9c4c8d8641d810f0a916b5bce127) regex/engine.js
+/// `sanitizeRegexMacro`, the macro post-processing of find mode ESCAPED.
+/// Unlike [RegExp.escape] it writes control characters as escapes and
+/// escapes `/`, which shows when a nested macro is escaped twice.
+String _escape(String text) => text.replaceAllMapped(
+  RegExp(r'[\n\r\t\v\f\0.^$*+?{}[\]\\/|()]'),
+  (m) => switch (m[0]!) {
+    '\n' => r'\n',
+    '\r' => r'\r',
+    '\t' => r'\t',
+    '\v' => r'\v',
+    '\f' => r'\f',
+    '\u0000' => r'\0',
+    final c => '\\$c',
+  },
+);
 
 ({RegExp regex, bool global}) parseJavascriptRegex(String value) {
   var pattern = value, flags = '';

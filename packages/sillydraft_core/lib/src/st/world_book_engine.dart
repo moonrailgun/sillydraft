@@ -136,7 +136,6 @@ final class WorldBookEngine {
             'cooldown',
             'delay',
             'group',
-            'outletName',
             'automationId',
             'delayUntilRecursion',
             'triggers',
@@ -158,7 +157,8 @@ final class WorldBookEngine {
               );
             }
           }
-          if (![0, 1, 4].contains(entry.position)) {
+          // 7: an outlet, read by `{{outlet::name}}` (PromptCompiler).
+          if (![0, 1, 4, 7].contains(entry.position)) {
             diagnostics.add(
               CompatibilityDiagnostic(
                 'world_book_position',

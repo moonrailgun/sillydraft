@@ -14,10 +14,9 @@ import 'mvu_schema.dart';
 /// record from the one before it.
 final class MvuService {
   MvuService(this.repository, {DateTime Function()? clock})
-    : _clock = clock ?? _utcNow;
+    : _clock = clock ?? DateTime.now;
   final StoryRepository repository;
   final DateTime Function() _clock;
-  static DateTime _utcNow() => DateTime.now().toUtc();
 
   /// Writing-profile key: `true`/`false` to force schema checks on or off;
   /// absent means on unless the card brings its own `registerMvuSchema`
@@ -122,7 +121,7 @@ final class MvuService {
 
   Future<MacroEngine> _macros(String branchId) async {
     final context = await repository.displayContext(branchId);
-    return MacroEngine(values: context.macroValues, clock: _clock(), seed: 0);
+    return MacroEngine(env: context.env, clock: _clock(), seed: 0);
   }
 
   /// Whether structural checks apply, from the writing profile's

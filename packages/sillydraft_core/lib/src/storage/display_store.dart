@@ -46,7 +46,7 @@ extension DisplayOperations on StoryRepository {
     if (raw == null) {
       return DisplayContext(
         rules: rules,
-        macroValues: {'user': persona.name, 'persona': persona.prompt},
+        env: MacroEnv.of(user: persona.name, persona: persona.prompt),
       );
     }
     final index = profile['greetingIndex'];
@@ -94,8 +94,8 @@ extension DisplayOperations on StoryRepository {
       revision.content,
       rules: context.rules,
       macros: MacroEngine(
-        values: context.macroValues,
-        clock: DateTime.now().toUtc(),
+        env: context.env,
+        clock: DateTime.now(),
         seed: 0,
         local: variables.local,
         global: variables.global,

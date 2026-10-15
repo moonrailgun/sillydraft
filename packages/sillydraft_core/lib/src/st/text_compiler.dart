@@ -207,12 +207,12 @@ _compileText(
     if (sequence.isEmpty) sequence = stringField(instruct, 'output_sequence');
     if (instruct['macro'] == true) {
       sequence = macros.render(
-        sequence.replaceAll('{{name}}', macros.values['char']!),
+        sequence.replaceAll('{{name}}', macros.env.char),
       );
     }
     final includeNames = instruct['names_behavior'] == 'always';
     var tail = includeNames
-        ? '$separator$sequence$separator${macros.values['char']}:'
+        ? '$separator$sequence$separator${macros.env.char}:'
         : '$separator$sequence';
     if (wrap) tail = tail.trimRight();
     out.write('$tail${includeNames ? '' : separator}');
@@ -263,9 +263,9 @@ String _formatTextMessage(
 }) {
   if (instruct.isEmpty) {
     final name = message.role == 'user'
-        ? macros.values['user']
+        ? macros.env.user
         : message.role == 'assistant'
-        ? macros.values['char']
+        ? macros.env.char
         : 'System';
     return '$name: ${message.content}\n';
   }
@@ -289,9 +289,9 @@ String _formatTextMessage(
   var suffix = stringField(instruct, '${type}_suffix');
   final wrap = instruct['wrap'] == true;
   final name = message.role == 'user'
-      ? macros.values['user']!
+      ? macros.env.user
       : message.role == 'assistant'
-      ? macros.values['char']!
+      ? macros.env.char
       : 'System';
   if (instruct['macro'] == true) {
     prefix = macros.render(prefix.replaceAll('{{name}}', name));

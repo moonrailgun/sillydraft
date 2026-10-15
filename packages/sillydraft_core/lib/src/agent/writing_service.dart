@@ -228,36 +228,40 @@ final class WritingService {
       ],
     });
     final selectedPreset = preset ?? defaultWritingPreset();
-    final clock = DateTime.now().toUtc();
+    // Local time, as ST's browser uses; the task keeps its UTC offset so the
+    // output and display stages render the same time later.
+    final clock = DateTime.now();
     final seed = Random.secure().nextInt(1 << 31);
-    final result = PromptCompiler().compile(
-      PresetInput(
-        preset: selectedPreset,
-        branchId: branchId,
-        throughPosition: position,
-        brief: '$loreContext\n\n作者的本次写作要求：\n$brief',
-        clock: clock,
-        randomSeed: seed,
-        card: card,
-        userName: userName,
-        persona: persona,
-        worldBooks: worldBooks,
-        globalRegex: globalRegex,
-        selectedOrderId: selectedOrderId,
-        localVariables: localVariables,
-        globalVariables: variables.global,
-        history: [
-          for (final (i, s) in story.chapters.indexed)
-            ContextChapter(
-              branchId: branchId,
-              position: i,
-              chapterId: s.id,
-              revisionId: s.revisionId,
-              content: s.content.text,
-            ),
-        ],
-      ),
+    final presetInput = PresetInput(
+      preset: selectedPreset,
+      branchId: branchId,
+      throughPosition: position,
+      brief: '$loreContext\n\n作者的本次写作要求：\n$brief',
+      clock: clock,
+      randomSeed: seed,
+      card: card,
+      userName: userName,
+      persona: persona,
+      model: connection.model,
+      contextWindow: connection.contextWindow,
+      maxOutputTokens: connection.maxOutputTokens,
+      worldBooks: worldBooks,
+      globalRegex: globalRegex,
+      selectedOrderId: selectedOrderId,
+      localVariables: localVariables,
+      globalVariables: variables.global,
+      history: [
+        for (final (i, s) in story.chapters.indexed)
+          ContextChapter(
+            branchId: branchId,
+            position: i,
+            chapterId: s.id,
+            revisionId: s.revisionId,
+            content: s.content.text,
+          ),
+      ],
     );
+    final result = PromptCompiler().compile(presetInput);
     final compiled = CompiledPrompt(
       messages: result.messages,
       completionText: result.completionText,
@@ -315,7 +319,8 @@ final class WritingService {
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
         'selectedOrderId': ?selectedOrderId,
         'originalContent': chapter.content.toJson(),
-        'clock': clock.toIso8601String(),
+        'clock': clock.toUtc().toIso8601String(),
+        'utcOffset': clock.timeZoneOffset.inMinutes,
         'seed': seed,
         'presetHash': sha256
             .convert(utf8.encode(jsonEncode(selectedPreset.exportJson())))
@@ -332,12 +337,11 @@ final class WritingService {
           'local': compiled.localVariables,
           'global': compiled.globalVariables,
         },
-        'macroValues': {
-          'char': card?.name ?? '旁白',
-          'user': userName,
-          'scenario': card?.scenario ?? '',
-          'description': card?.description ?? '',
-        },
+        // The output and display stages read the env the prompt used, its
+        // chat and its outlets.
+        'macroEnv': presetInput.env.toJson(),
+        'chatMacros': result.chatValues,
+        'outlets': result.outlets,
         'outputRegex': [
           ...globalRegex,
           ...rules(selectedPreset.raw['extensions']),

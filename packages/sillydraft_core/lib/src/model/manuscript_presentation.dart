@@ -27,12 +27,10 @@ final class ManuscriptPresentation {
     return ManuscriptPresentation.fromRules(
       content,
       rules: rules,
-      macros: MacroEngine(
-        values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
+      macros: task.macros(
         local: (variables['local'] as Map? ?? {}).cast<String, String>(),
         global: (variables['global'] as Map? ?? {}).cast<String, String>(),
-        clock: DateTime.parse(input['clock'] as String),
-        seed: input['seed'] as int,
+        message: content.text,
       ),
     );
   }

@@ -12,9 +12,18 @@ import 'world_book_engine.dart';
 part 'text_compiler.dart';
 
 final class PromptMessage {
-  const PromptMessage(this.role, this.content, {this.source = '', this.name});
+  const PromptMessage(
+    this.role,
+    this.content, {
+    this.source = '',
+    this.name,
+    this.sentAt,
+  });
   final String role, content, source;
   final String? name;
+
+  /// When a chat message was sent (ST `send_date`); not sent to the model.
+  final DateTime? sentAt;
   Map<String, dynamic> toJson() => {
     'role': role,
     'content': content,
@@ -47,6 +56,10 @@ final class PresetInput {
     this.card,
     this.userName = '我',
     this.persona = '',
+    String model = '',
+    bool? isMobile,
+    int? contextWindow,
+    int? maxOutputTokens,
     this.generationType = 'normal',
     this.selectedOrderId,
     List<ContextChapter> history = const [],
@@ -55,7 +68,25 @@ final class PresetInput {
     Map<String, String> globalVariables = const {},
     List<Map<String, dynamic>> globalRegex = const [],
     List<PromptMessage>? conversation,
-  }) : history = List.unmodifiable(history),
+  }) : env = MacroEnv.of(
+         card: card?.raw,
+         user: userName,
+         persona: persona,
+         preset: preset,
+         model: model,
+         isMobile: isMobile,
+         // The request's limits, as WritingService checks them: the
+         // connection's context window, and the response length the
+         // preset asks for, else the connection's.
+         maxContext: contextWindow,
+         maxResponse: switch (_parameters(
+           preset.parts['preset']?.parameters ?? preset.parameters,
+         )['max_tokens']) {
+           final num tokens => tokens,
+           _ => maxOutputTokens,
+         },
+       ),
+       history = List.unmodifiable(history),
        conversation = conversation == null
            ? null
            : List.unmodifiable(conversation),
@@ -69,6 +100,11 @@ final class PresetInput {
   final int? selectedOrderId;
   final DateTime clock;
   final CharacterCard? card;
+
+  /// What the env macros read, the model the request goes to and its token
+  /// limits included; a writing task stores it for its output and display
+  /// stages.
+  final MacroEnv env;
   final List<ContextChapter> history;
 
   /// A chat to use as `chatHistory` instead of story chapters and [brief], for
@@ -91,19 +127,31 @@ final class CompiledPrompt {
     required List<CompatibilityDiagnostic> diagnostics,
     required Map<String, String> localVariables,
     required Map<String, String> globalVariables,
+    Map<String, String> chatValues = const {},
+    Map<String, String> outlets = const {},
   }) : messages = List.unmodifiable(messages),
        parameters = Map.unmodifiable(parameters),
        stopStrings = List.unmodifiable(stopStrings),
        trace = List.unmodifiable(trace),
        diagnostics = List.unmodifiable(diagnostics),
        localVariables = Map.unmodifiable(localVariables),
-       globalVariables = Map.unmodifiable(globalVariables);
+       globalVariables = Map.unmodifiable(globalVariables),
+       chatValues = Map.unmodifiable(chatValues),
+       outlets = Map.unmodifiable(outlets);
   final List<PromptMessage> messages;
   final String? completionText;
   final Map<String, dynamic> parameters;
   final List<String> stopStrings, trace;
   final List<CompatibilityDiagnostic> diagnostics;
   final Map<String, String> localVariables, globalVariables;
+
+  /// The chat macros once the prompt is built, what the request's output
+  /// stage reads (a writing task keeps them as `chatMacros`).
+  final Map<String, String> chatValues;
+
+  /// The world info outlets the prompt filled, what the request's output
+  /// and display stages read (a writing task keeps them as `outlets`).
+  final Map<String, String> outlets;
   bool get canRun =>
       !diagnostics.any((d) => d.severity == DiagnosticSeverity.error);
   int get estimatedTokens =>
@@ -125,13 +173,26 @@ final class CompiledPrompt {
 }
 
 final class PromptCompiler {
+  /// ST 1.19.0 time-macros.js `getTimeSinceLastMessage`: going back from
+  /// the latest message and skipping system ones, the first user message
+  /// before it. Story chapters are all model messages, so a story has none.
+  static DateTime? _idleSince(List<PromptMessage>? conversation) {
+    var takeNext = false;
+    for (final message in (conversation ?? const []).reversed) {
+      if (message.role == 'system') continue;
+      if (message.role == 'user' && takeNext) return message.sentAt;
+      takeNext = true;
+    }
+    return null;
+  }
+
   CompiledPrompt compile(PresetInput input) {
     final diagnostics = [...input.preset.diagnostics];
     final trace = <String>[
       'branch:${input.branchId}:through:${input.throughPosition}',
     ];
     // MVU's status-bar placeholder is display only: it never reaches the
-    // model, neither through history nor through {{lastMessage}}.
+    // model, neither through history nor through {{lastCharMessage}}.
     final filtered =
         input.history
             .where(
@@ -155,37 +216,25 @@ final class PromptCompiler {
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
     final card = input.card;
+    final conversation = input.conversation;
+    // ST's `chat` as stored: the chapters through the target, without MVU's
+    // placeholder, then the brief once sent; or the editing conversation,
+    // whose latest user message is the input as typed (its attached chapter
+    // is prompt text, as ST keeps attachments out of `mes`).
+    final chat = <PromptMessage>[
+      if (conversation != null)
+        for (final (i, m) in conversation.indexed)
+          i == conversation.length - 1 && m.role == 'user'
+              ? PromptMessage('user', input.brief)
+              : m
+      else
+        for (final c in filtered) PromptMessage('assistant', c.content),
+    ];
     final macros = MacroEngine(
-      values: {
-        'char': card?.name ?? '旁白',
-        'user': input.userName,
-        'charname': card?.name ?? '旁白',
-        'description': card?.description ?? '',
-        'personality': card?.personality ?? '',
-        'scenario': card?.scenario ?? '',
-        'persona': input.persona,
-        'mesexamples': card?.examples ?? '',
-        'input': input.brief,
-        'lastmessage':
-            input.conversation?.lastOrNull?.content ??
-            filtered.lastOrNull?.content ??
-            '',
-        'lastusermessage': input.brief,
-        'lastcharmessage':
-            (input.conversation == null
-                ? filtered.lastOrNull?.content
-                : input.conversation!
-                      .lastWhere(
-                        (m) => m.role == 'assistant',
-                        orElse: () => const PromptMessage('assistant', ''),
-                      )
-                      .content) ??
-            '',
-        'charprompt': card?.systemPrompt ?? '',
-        'charjailbreak': card?.postHistoryInstructions ?? '',
-        'original': '',
-      },
+      env: input.env,
+      values: _chatValues(chat, input.generationType),
       clock: input.clock,
+      idleSince: _idleSince(conversation),
       seed: input.randomSeed,
       local: input.localVariables,
       global: input.globalVariables,
@@ -195,8 +244,24 @@ final class PromptCompiler {
       preset: _rules(input.preset.raw['extensions']),
       card: _rules(card?.extensions),
     );
+    // App-created editing instructions are the current user message. Editor
+    // conversation, task logs, and unaccepted proposals are never an input here.
+    String? sent;
+    if (conversation == null &&
+        (input.generationType != 'continue' || input.brief.isNotEmpty)) {
+      // script.js `sendMessageAsUser`: the user input regex runs before the
+      // message joins the chat, which keeps the result.
+      sent = regex.apply(
+        input.brief,
+        placement: 1,
+        stage: RegexStage.general,
+        macros: macros,
+        depth: 0,
+      );
+      chat.add(PromptMessage('user', sent));
+      macros.values.addAll(_chatValues(chat, input.generationType));
+    }
     final history = <PromptMessage>[];
-    final conversation = input.conversation;
     if (conversation != null) {
       trace.add('chat_history:conversation:${conversation.length}');
       for (final (i, message) in conversation.indexed) {
@@ -234,22 +299,12 @@ final class PromptCompiler {
         ),
       );
     }
-    // App-created editing instructions are the current user message. Editor
-    // conversation, task logs, and unaccepted proposals are never an input here.
-    if (conversation == null &&
-        (input.generationType != 'continue' || input.brief.isNotEmpty)) {
-      final original = regex.apply(
-        input.brief,
-        placement: 1,
-        stage: RegexStage.general,
-        macros: macros,
-        depth: 0,
-      );
+    if (sent != null) {
       history.add(
         PromptMessage(
           'user',
           regex.apply(
-            original,
+            sent,
             placement: 1,
             stage: RegexStage.prompt,
             macros: macros,
@@ -284,11 +339,36 @@ final class PromptCompiler {
         stage: RegexStage.prompt,
         macros: macros,
       ),
-      'charDescription': card?.description ?? '',
-      'charPersonality': card?.personality ?? '',
-      'scenario': card?.scenario ?? '',
+      // ST 1.19.0 script.js `Generate` takes these from
+      // `getCharacterCardFields()`, the values of the env macros; the prompt
+      // builders resolve their macros once more.
+      'charDescription': macros.render('{{charDescription}}'),
+      'charPersonality': macros.render('{{charPersonality}}'),
+      'scenario': macros.render('{{charScenario}}'),
       'personaDescription': input.persona,
     };
+    // script.js `Generate` L4664-4679: once world info is scanned and the
+    // card fields above are read, `{{outlet::name}}` gives the outlet
+    // entries of this request (world-info.js L5203-5258: highest order
+    // first, each through the world info regex, empty ones left out); before
+    // that, the previous request's, which SillyDraft does not keep, so none
+    // (as on a chat's first request).
+    final outlets = <String, List<String>>{};
+    for (final activated in world.entries.reversed) {
+      final name = activated.entry.outletName;
+      if (activated.entry.position != 7 || name.isEmpty) continue;
+      final content = regex.apply(
+        activated.content,
+        placement: 5,
+        stage: RegexStage.prompt,
+        macros: macros,
+      );
+      if (content.isNotEmpty) (outlets[name] ??= []).add(content);
+    }
+    macros.outlets.addAll({
+      for (final MapEntry(:key, :value) in outlets.entries)
+        key: value.join('\n'),
+    });
     var messages = <PromptMessage>[];
     String? text;
     final stops = <String>[];
@@ -299,7 +379,10 @@ final class PromptCompiler {
         'charPersonality': 'personality_format',
         'scenario': 'scenario_format',
       }.entries) {
-        if (markers[entry.key]!.isNotEmpty && raw[entry.value] is String) {
+        // openai.js `preparePromptsForChatCompletion`: a non-empty format.
+        if (markers[entry.key]!.isNotEmpty &&
+            raw[entry.value] is String &&
+            (raw[entry.value] as String).isNotEmpty) {
           markers[entry.key] = raw[entry.value] as String;
         }
       }
@@ -354,21 +437,23 @@ final class PromptCompiler {
             ),
           );
         }
-        final override = prompt.identifier == 'main'
-            ? card?.systemPrompt
-            : prompt.identifier == 'jailbreak'
-            ? card?.postHistoryInstructions
-            : null;
-        if (!prompt.forbidOverrides &&
-            override != null &&
-            override.isNotEmpty) {
-          content = override.replaceAll(
-            RegExp(r'\{\{original\}\}', caseSensitive: false),
-            content,
-          );
-          trace.add('card_override:${prompt.identifier}');
-        }
         content = macros.render(content);
+        // openai.js `preparePromptsForChatCompletion`: the card's main
+        // prompt or post-history override (its env value, non-empty)
+        // replaces the resolved prompt and is resolved again with that as
+        // `original`.
+        final override = switch (prompt.identifier) {
+          'main' => '{{charPrompt}}',
+          'jailbreak' => '{{charInstruction}}',
+          _ => null,
+        };
+        if (override != null && !prompt.forbidOverrides) {
+          final text = macros.render(override);
+          if (text.isNotEmpty) {
+            content = macros.render(text, original: content);
+            trace.add('card_override:${prompt.identifier}');
+          }
+        }
         if (content.isEmpty) continue;
         final message = PromptMessage(
           prompt.role,
@@ -495,7 +580,59 @@ final class PromptCompiler {
       diagnostics: diagnostics,
       localVariables: macros.local,
       globalVariables: macros.global,
+      chatValues: {
+        ..._chatValues(chat, input.generationType),
+        'firstincludedmessageid': firstIncluded(
+          chat.length,
+          text == null ? [for (final m in messages) m.role] : null,
+          input.generationType,
+        ),
+      },
+      outlets: macros.outlets,
     );
+  }
+
+  /// ST 1.19.0 (06bde939…) chat-macros.js over [chat], and state-macros.js
+  /// `lastGenerationType` ([type] started this request). No message is a
+  /// swipe in progress; an assistant message has one swipe, as every ST
+  /// reply (script.js `saveReply`), the others none. The reader shows a chat
+  /// from its first message (`firstDisplayedMessageId`). What the previous
+  /// request had in context (`chat_metadata.lastInContextMessageId`) is not
+  /// kept, so `firstIncludedMessageId` is empty, as before a chat's first
+  /// request.
+  static Map<String, String> _chatValues(
+    List<PromptMessage> chat,
+    String type,
+  ) {
+    String last(bool Function(PromptMessage m) test) =>
+        chat.lastWhere(test, orElse: () => const PromptMessage('', '')).content;
+    final id = chat.isEmpty ? '' : '${chat.length - 1}';
+    final swipes = chat.lastOrNull?.role == 'assistant' ? '1' : '';
+    return {
+      'lastmessageid': id,
+      'lastmessage': chat.lastOrNull?.content ?? '',
+      'lastusermessage': last((m) => m.role == 'user'),
+      'lastcharmessage': last((m) => m.role != 'user' && m.role != 'system'),
+      'allchatrange': chat.isEmpty ? '' : '0-$id',
+      'lastswipeid': swipes,
+      'currentswipeid': swipes,
+      'firstincludedmessageid': '',
+      'firstdisplayedmessageid': chat.isEmpty ? '' : '0',
+      'lastgenerationtype': type,
+    };
+  }
+
+  /// script.js `setInContextMessages`, run once a prompt is built: the id
+  /// of the first of [chat] messages in it, from how many it holds — a
+  /// chat completion's user and assistant messages ([roles]; openai.js
+  /// `openai_messages_count`), else all of them, as SillyDraft never drops
+  /// history.
+  static String firstIncluded(int chat, List<String>? roles, String type) {
+    var count = roles == null
+        ? chat
+        : roles.where(const {'user', 'assistant', 'tool'}.contains).length;
+    if (const {'swipe', 'regenerate', 'continue'}.contains(type)) count++;
+    return '${(chat - count).clamp(0, chat)}';
   }
 }
 
@@ -580,7 +717,7 @@ List<PromptMessage> _examples(
 ) {
   if (text.trim().isEmpty) return [];
   final rendered = macros.render(text);
-  final user = macros.values['user']!, character = macros.values['char']!;
+  final user = macros.env.user, character = macros.env.char;
   final pattern = RegExp(
     '^(?:${RegExp.escape(user)}|${RegExp.escape(character)}):',
     multiLine: true,

@@ -704,14 +704,14 @@ _.set('主角.好感度', 33, 40);//初见
       );
     });
 
-    test('{{lastMessage}} never carries the placeholder', () async {
+    test('{{lastCharMessage}} never carries the placeholder', () async {
       final preset = PresetImporter().decode({
         'name': 'last',
         'prompts': [
           {
             'identifier': 'main',
             'role': 'system',
-            'content': '上一幕：{{lastMessage}}',
+            'content': '上一幕：{{lastCharMessage}}',
           },
           {'identifier': 'chatHistory', 'role': 'system', 'marker': true},
         ],

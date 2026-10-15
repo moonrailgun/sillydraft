@@ -283,6 +283,9 @@ const _snapshotKeys = [
   'originalContent',
   'writingContext',
   'mvu',
+  'macroEnv',
+  'chatMacros',
+  'outlets',
 ];
 const _taskColumns =
     'id, branch_id, kind, status, chapter_id, base_revision_id, '

@@ -30,7 +30,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   String _pov = '第三人称';
   bool _edited = false, _busy = false;
   Object? _error;
-  DateTime _openingClock = DateTime.now().toUtc();
+  DateTime _openingClock = DateTime.now();
 
   /// Card rules and metadata the HTML preview reads.
   DisplayContext _display = DisplayContext.empty;
@@ -96,22 +96,20 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
     }
   }
 
-  Map<String, String> _macroValues(CharacterCard card) => {
-    'char': card.name,
-    'user': _persona.name,
-    'description': card.description,
-    'personality': card.personality,
-    'scenario': card.scenario,
-    'persona': _persona.prompt,
-  };
-
-  MacroEngine _macros(CharacterCard card) =>
-      MacroEngine(values: _macroValues(card), clock: _openingClock, seed: 0);
+  MacroEngine _macros(CharacterCard card) => MacroEngine(
+    env: MacroEnv.of(
+      card: card.raw,
+      user: _persona.name,
+      persona: _persona.prompt,
+    ),
+    clock: _openingClock,
+    seed: 0,
+  );
 
   void _refreshOpening() {
     final card = _card;
     if (card == null) return;
-    _openingClock = DateTime.now().toUtc();
+    _openingClock = DateTime.now();
     final macros = _macros(card);
     _setOpening(macros.render(card.greetings[_greeting]));
     _edited = false;

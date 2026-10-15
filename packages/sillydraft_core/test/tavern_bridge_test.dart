@@ -93,21 +93,21 @@ void main() {
           'personaId': xin.id,
         });
         final updated = await repo.displayContext(branch);
-        expect(updated.macroValues['user'], '新主角');
+        expect(updated.env.user, '新主角');
         expect(updated.cardId, 'card');
-        expect(original.macroValues['user'], '玖神');
+        expect(original.env.user, '玖神');
 
         // Editing the bound persona leaves the profile as it was.
         await repo.savePersona(xin.copyWith(name: '改名', outfit: '道袍'));
         final renamed = await repo.displayContext(branch);
-        expect(renamed.macroValues['user'], '改名');
-        expect(renamed.macroValues['persona'], '服饰：道袍');
+        expect(renamed.env.user, '改名');
+        expect(renamed.env.persona, '服饰：道袍');
 
         await repo.removeSetting('writing/$branch');
         final cleared = await repo.displayContext(branch);
         expect(cleared.rules, isEmpty);
         expect(cleared.cardId, isNull);
-        expect(cleared.macroValues['user'], '我');
+        expect(cleared.env.user, '我');
       },
     );
 
@@ -119,8 +119,8 @@ void main() {
         final context = await repo.displayContext(novel.activeBranchId);
         expect(context.cardId, 'card');
         expect(context.rules.single['scriptName'], '开局创造人物');
-        expect(context.macroValues['char'], '道渊');
-        expect(context.macroValues['user'], '玖神');
+        expect(context.env.char, '道渊');
+        expect(context.env.user, '玖神');
         expect(context.greetings, [_opening, '[重塑仙缘]']);
         expect(context.helperScripts.single.name, 'MVU');
         expect(context.card['name'], '道渊');
@@ -544,7 +544,7 @@ void main() {
         greetings: ['开场一', '开场二'],
         greetingIndex: 0,
         context: const DisplayContext(
-          macroValues: {'char': '道渊', 'user': '玖神'},
+          env: MacroEnv(user: '玖神', char: '道渊'),
         ),
         onGreetingChanged: changes.add,
       );

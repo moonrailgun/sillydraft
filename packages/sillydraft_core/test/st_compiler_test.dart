@@ -387,7 +387,7 @@ void main() {
     PresetInput text(Map<String, dynamic> parameters) => PresetInput(
       preset: PresetImporter().decode({
         'context': {'story_string': '{{system}}'},
-        'sysprompt': {'content': 'system'},
+        'sysprompt': {'content': '{{maxResponse}}|{{maxContext}}'},
         'preset': {'temp': 0.8, ...parameters},
       }),
       branchId: 'main',
@@ -395,17 +395,22 @@ void main() {
       brief: 'brief',
       clock: DateTime.utc(2026, 10, 13),
       randomSeed: 42,
+      contextWindow: 16000,
+      maxOutputTokens: 2048,
     );
     final saved = PromptCompiler().compile(
       text({'genamt': 350, 'max_length': 8192}),
     );
     expect(saved.parameters['max_tokens'], 350);
+    expect(saved.completionText, startsWith('350|16000'));
     // The context size is the connection's, as for `openai_max_context`.
     expect(
       PromptCompiler().compile(text({'max_length': 8192})).parameters,
       isNot(contains('max_tokens')),
     );
+    expect(text({'max_length': 8192}).env.maxResponse, 2048);
     final novel = text({'max_length': 150, 'max_context': 7800});
+    expect(novel.env.maxResponse, 150);
     expect(PromptCompiler().compile(novel).parameters['max_tokens'], 150);
   });
 

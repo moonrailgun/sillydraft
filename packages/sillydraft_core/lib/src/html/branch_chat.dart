@@ -23,9 +23,7 @@ final class BranchChatBackend implements TavernChatBackend {
     required this.branchId,
     required this.context,
     DateTime Function()? clock,
-  }) : _clock = clock ?? _utcNow;
-
-  static DateTime _utcNow() => DateTime.now().toUtc();
+  }) : _clock = clock ?? DateTime.now;
 
   final StoryRepository repository;
   final String branchId;
@@ -39,7 +37,7 @@ final class BranchChatBackend implements TavernChatBackend {
     Map<String, String> local = const {},
     Map<String, String> global = const {},
   }) => MacroEngine(
-    values: context.macroValues,
+    env: context.env,
     clock: _clock(),
     seed: 0,
     local: local,
@@ -496,8 +494,8 @@ final class PreviewChatBackend implements TavernChatBackend {
   }
 
   MacroEngine _macros() => MacroEngine(
-    values: context.macroValues,
-    clock: DateTime.now().toUtc(),
+    env: context.env,
+    clock: DateTime.now(),
     seed: 0,
     local: encodeVariables(chatVariables),
     global: encodeVariables(globalVariables),

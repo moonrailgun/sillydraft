@@ -136,12 +136,17 @@ final class EditorAgent {
     final chat = [
       for (final m in messages)
         if (['user', 'assistant'].contains(m.role) && m.content.isNotEmpty)
-          PromptMessage(m.role, switch (m.raw['attachment']) {
-            {'title': final String title, 'text': final String text} =>
-              '<chapter title="${title.replaceAll('"', '&quot;')}">\n'
-                  '$text\n</chapter>\n\n${m.content}',
-            _ => m.content,
-          }, source: 'agent-message:${m.id}'),
+          PromptMessage(
+            m.role,
+            switch (m.raw['attachment']) {
+              {'title': final String title, 'text': final String text} =>
+                '<chapter title="${title.replaceAll('"', '&quot;')}">\n'
+                    '$text\n</chapter>\n\n${m.content}',
+              _ => m.content,
+            },
+            source: 'agent-message:${m.id}',
+            sentAt: m.createdAt,
+          ),
     ];
     var request = ProviderRequest(
       messages: [
@@ -168,11 +173,14 @@ final class EditorAgent {
           branchId: branchId,
           throughPosition: cutoff,
           brief: message.trim(),
-          clock: DateTime.now().toUtc(),
+          clock: DateTime.now(),
           randomSeed: Random.secure().nextInt(1 << 31),
           card: card,
           userName: userName,
           persona: persona,
+          model: connection.model,
+          contextWindow: connection.contextWindow,
+          maxOutputTokens: connection.maxOutputTokens,
           selectedOrderId: selectedOrderId,
           worldBooks: worldBooks,
           globalRegex: globalRegex,

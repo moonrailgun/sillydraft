@@ -17,7 +17,6 @@ import '../providers/remote_provider.dart';
 import '../st/import_types.dart';
 import '../st/card_importer.dart';
 import '../st/preset_importer.dart';
-import '../st/macro_engine.dart';
 import '../st/regex_pipeline.dart';
 import '../st/world_book_engine.dart';
 import '../st/world_book.dart';
@@ -509,11 +508,7 @@ ManuscriptContent _withoutMvuMarkup(ManuscriptContent content) {
   final input = task.input;
   final base = jsonObject(jsonObject(input['mvu'], 'mvu')['base'], 'mvu.base');
   final data = MvuData.fromJson(base);
-  final macro = MacroEngine(
-    values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
-    clock: DateTime.parse(input['clock'] as String),
-    seed: input['seed'] as int,
-  );
+  final macro = task.macros(message: chapterText);
   final result = MvuUpdater.apply(chapterText, data, substitute: macro.render);
   final local = (variables['local'] as Map? ?? {}).cast<String, String>();
   return (
@@ -533,10 +528,7 @@ ManuscriptContent _withoutMvuMarkup(ManuscriptContent content) {
 _processOutput(GenerationTask task, String text) {
   final input = task.input;
   final variables = input['variableResult'] as Map<String, dynamic>? ?? {};
-  final macro = MacroEngine(
-    values: (input['macroValues'] as Map? ?? {}).cast<String, String>(),
-    clock: DateTime.parse(input['clock'] as String),
-    seed: input['seed'] as int,
+  final macro = task.macros(
     local: (variables['local'] as Map? ?? {}).cast<String, String>(),
     global: (variables['global'] as Map? ?? {}).cast<String, String>(),
   );
