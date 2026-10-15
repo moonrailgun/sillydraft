@@ -130,6 +130,65 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
     }
   }
 
+  /// Picks a character with portraits and adds the first one not chosen yet.
+  Future<void> _characterReference() async {
+    try {
+      final characters = [
+        for (final entry
+            in await ref
+                .read(repositoryProvider)
+                .listLore(
+                  widget.branchId,
+                  throughChapterId: _chapterId,
+                  kind: LoreKind.character,
+                ))
+          if ((entry.data['images'] as List? ?? const []).isNotEmpty) entry,
+      ];
+      if (!mounted) return;
+      if (characters.isEmpty) {
+        toast(context, '还没有带形象图的人物，可在资料页的人物条目里添加。');
+        return;
+      }
+      final picked = await showAppSheet<LoreEntry>(
+        context: context,
+        title: '选择人物形象图',
+        builder: (context) => ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [
+            for (final character in characters)
+              FItem(
+                key: Key('character-reference-${character.id}'),
+                prefix: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: AssetImageView(
+                    assetId: (character.data['images'] as List).first as String,
+                    thumbnail: true,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                title: Text(character.name),
+                onPress: () => Navigator.pop(context, character),
+              ),
+          ],
+        ),
+      );
+      if (picked == null || !mounted) return;
+      final next = (picked.data['images'] as List)
+          .cast<String>()
+          .where((id) => !_references.contains(id))
+          .firstOrNull;
+      if (next == null) {
+        toast(context, '这个人物的形象图都已添加');
+      } else {
+        setState(() => _references.add(next));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _generate() async {
     if (_connection == null) return;
     setState(() {
@@ -424,18 +483,34 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                   ),
                 ],
                 const SizedBox(height: 8),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: FButton(
-                    variant: FButtonVariant.outline,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress:
-                        !_canReference || _references.length >= _referenceLimit
-                        ? null
-                        : _reference,
-                    prefix: const Icon(FLucideIcons.imagePlus),
-                    child: const Text('选择或导入参考图'),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FButton(
+                      variant: FButtonVariant.outline,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress:
+                          !_canReference ||
+                              _references.length >= _referenceLimit
+                          ? null
+                          : _reference,
+                      prefix: const Icon(FLucideIcons.imagePlus),
+                      child: const Text('选择或导入参考图'),
+                    ),
+                    FButton(
+                      key: const Key('pick-character-reference'),
+                      variant: FButtonVariant.outline,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress:
+                          !_canReference ||
+                              _references.length >= _referenceLimit
+                          ? null
+                          : _characterReference,
+                      prefix: const Icon(FLucideIcons.user),
+                      child: const Text('选择人物形象图'),
+                    ),
+                  ],
                 ),
                 if (!_canReference && !_novelAI)
                   const Text('此连接未配置图生图工作流，可在模型设置中添加。'),

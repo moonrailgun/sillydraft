@@ -362,4 +362,77 @@ void main() {
     expect(find.text('风中交叠的手'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('a character\'s portrait can be picked as a reference', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    await services.saveConnection(
+      ModelConnection(
+        id: 'img',
+        name: '生图',
+        baseUrl: 'http://localhost:1/v1',
+        model: 'painter',
+        kind: ModelKind.image,
+      ),
+    );
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final portrait = await repo.storeAsset(
+      branchId: novel.activeBranchId,
+      name: '林岚',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 1,
+        height: 1,
+        byteLength: 1,
+      ),
+      purpose: AssetPurpose.reference,
+    );
+    final lin = await repo.saveLoreEntry(
+      branchId: novel.activeBranchId,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '摆渡人',
+      data: {
+        'images': [portrait.id],
+      },
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(
+          IllustrationRequestScreen(branchId: novel.activeBranchId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('pick-character-reference')),
+    );
+    await tester.tap(find.byKey(const Key('pick-character-reference')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('character-reference-${lin.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('参考图片 · 1/16'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('pick-character-reference')),
+    );
+    await tester.tap(find.byKey(const Key('pick-character-reference')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('character-reference-${lin.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('参考图片 · 1/16'), findsOneWidget);
+    expect(find.text('这个人物的形象图都已添加'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
