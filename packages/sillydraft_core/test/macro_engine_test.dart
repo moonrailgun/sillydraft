@@ -1475,6 +1475,60 @@ void main() {
     });
   });
 
+  test('text completion system prompts follow ST Generate', () {
+    final preset = PresetImporter().decode({
+      'preset': {'temp': 1},
+      'context': {
+        'story_string': '{{#if system}}{{system}}\n{{/if}}',
+        'chat_start': '',
+      },
+      'sysprompt': {
+        'content': '模板{{char}}{{description}}',
+        'post_history': '后{{personality}}',
+      },
+    });
+    String compile(Map<String, dynamic> data) => PromptCompiler()
+        .compile(
+          PresetInput(
+            preset: preset,
+            branchId: 'main',
+            throughPosition: 1,
+            brief: 'x',
+            clock: DateTime.utc(2026),
+            randomSeed: 1,
+            userName: '阿雨',
+            card: CardImporter().decode(
+              Uint8List.fromList(
+                utf8.encode(
+                  jsonEncode({
+                    'name': '道渊',
+                    'description': '描述',
+                    'personality': '性格',
+                    ...data,
+                  }),
+                ),
+              ),
+              'card.json',
+            ),
+          ),
+        )
+        .completionText!;
+    // Without card overrides the template text is resolved without card
+    // fields (script.js `baseChatReplace`).
+    // The post-history instructions follow the brief as an unnamed user
+    // message (L4748-4765).
+    expect(compile({}), '模板道渊\n阿雨: x\n后\n道渊:');
+    // The card's text gets the template's as `original`, once and as
+    // written; the story string resolves what it brought in.
+    expect(
+      compile({
+        'system_prompt': '{{original}}|{{original}}',
+        'post_history_instructions': '{{original}}+',
+      }),
+      '模板道渊描述|\n阿雨: x\n后{{personality}}+\n道渊:',
+    );
+  });
+
   test('the compiler offers only macros ST 1.19.0 registers', () {
     final preset = PresetImporter().decode({
       'prompts': [
@@ -1813,6 +1867,294 @@ void main() {
         result.diagnostics.where((d) => d.code.startsWith('world_book')),
         isEmpty,
       );
+    });
+  });
+
+  group('instruct macros', () {
+    // ST 1.19.0 instruct-macros.js reads power_user.instruct, .sysprompt
+    // and .context: here the text preset's templates.
+    final bundle = PresetImporter().decode({
+      'preset': {'temp': 1},
+      'instruct': {
+        'input_sequence': '<in {{user}}>',
+        'output_sequence': '<out {{name}}>',
+        'first_output_sequence': '',
+        'last_output_sequence': '<last-out>',
+        'first_input_sequence': '<first-in>',
+        'last_input_sequence': '',
+        'input_suffix': '</in>',
+        'output_suffix': '</out>',
+        'system_sequence': '<sys>',
+        'system_suffix': '</sys>',
+        'last_system_sequence': '<last-sys>',
+        'story_string_prefix': '<story>',
+        'story_string_suffix': '</story>',
+        'stop_sequence': '<stop>',
+        'user_alignment_message': '继续',
+      },
+      'context': {'example_separator': '***{{char}}', 'chat_start': '<开始>'},
+      'sysprompt': {'content': '写{{char}}的回复'},
+    });
+    (String, String) run(
+      String source, {
+      ImportedPreset? preset,
+      String system = '',
+    }) {
+      final engine = MacroEngine(
+        env: MacroEnv.of(
+          card: {
+            'name': '道渊',
+            'description': '[{{systemPrompt}}]',
+            'system_prompt': system,
+          },
+          user: '阿雨',
+          preset: preset,
+        ),
+        clock: DateTime.utc(2026),
+        seed: 1,
+      );
+      final text = engine.render(source);
+      return (text, engine.diagnostics.map((d) => d.code).join(','));
+    }
+
+    const instruct =
+        '{{instructStoryStringPrefix}}|{{instructStoryStringSuffix}}|'
+        '{{instructUserPrefix}}|{{instructInput}}|{{instructUserSuffix}}|'
+        '{{instructAssistantPrefix}}|{{instructOutput}}|'
+        '{{instructAssistantSuffix}}|{{instructSeparator}}|'
+        '{{instructSystemPrefix}}|{{instructSystemSuffix}}|'
+        '{{instructFirstAssistantPrefix}}|{{instructFirstOutputPrefix}}|'
+        '{{instructLastAssistantPrefix}}|{{instructLastOutputPrefix}}|'
+        '{{instructStop}}|{{instructUserFiller}}|'
+        '{{instructSystemInstructionPrefix}}|{{instructFirstUserPrefix}}|'
+        '{{instructFirstInput}}|{{instructLastUserPrefix}}|'
+        '{{INSTRUCTLASTINPUT}}';
+    const system =
+        '{{systemPrompt}}|{{defaultSystemPrompt}}|{{instructSystem}}|'
+        '{{instructSystemPrompt}}';
+    const context = '{{exampleSeparator}}|{{chatSeparator}}|{{chatStart}}';
+
+    test('instruct mode gives the template text as written', () {
+      // Not resolved again; an empty first/last sequence falls back.
+      expect(run(instruct, preset: bundle), (
+        '<story>|</story>|<in {{user}}>|<in {{user}}>|</in>|'
+            '<out {{name}}>|<out {{name}}>|</out>|</out>|<sys>|</sys>|'
+            '<out {{name}}>|<out {{name}}>|<last-out>|<last-out>|<stop>|继续|'
+            '<last-sys>|<first-in>|<first-in>|<in {{user}}>|<in {{user}}>',
+        '',
+      ));
+      expect(run(context, preset: bundle), (
+        '***{{char}}|***{{char}}|<开始>',
+        '',
+      ));
+      expect(run('{{instructInput::x}}{{chatStart}}a{{/chatStart}}'), (
+        '{{instructInput::x}}{{chatStart}}a{{/chatStart}}',
+        'invalid_macro_arguments',
+      ));
+    });
+
+    test('the system prompt prefers the card\'s, resolved', () {
+      expect(run(system, preset: bundle, system: ' 卡{{char}} '), (
+        '卡道渊|写{{char}}的回复|写{{char}}的回复|写{{char}}的回复',
+        '',
+      ));
+      expect(run(system, preset: bundle), (
+        '写{{char}}的回复|写{{char}}的回复|写{{char}}的回复|写{{char}}的回复',
+        '',
+      ));
+      // A card field's env has no card fields, so no card system prompt.
+      expect(run('{{description}}', preset: bundle, system: '卡'), (
+        '[写{{char}}的回复]',
+        '',
+      ));
+    });
+
+    test('a text preset without a template is ST with it off', () {
+      final plain = PresetImporter().decode({
+        'preset': {'temp': 1},
+        'context': {'chat_start': '<开始>'},
+      });
+      expect(run(instruct, preset: plain).$1, '|' * 21);
+      expect(run(system, preset: plain, system: '卡'), ('|||', ''));
+      // The missing separator is the previous template's: a fresh install's.
+      expect(run(context, preset: plain), ('***|***|<开始>', ''));
+    });
+
+    /// A text completion of [preset] for the card 道渊 and the brief `x`.
+    PresetInput text(
+      Map<String, dynamic> preset, {
+      String type = 'normal',
+      Map<String, dynamic> card = const {},
+    }) => PresetInput(
+      preset: PresetImporter().decode({
+        'preset': {'temp': 1},
+        ...preset,
+      }),
+      branchId: 'main',
+      throughPosition: 1,
+      brief: 'x',
+      generationType: type,
+      clock: DateTime.utc(2026),
+      randomSeed: 1,
+      userName: '阿雨',
+      card: CardImporter().decode(
+        Uint8List.fromList(utf8.encode(jsonEncode({'name': '道渊', ...card}))),
+        'card.json',
+      ),
+    );
+
+    test('instruct templates are migrated as ST selects them', () {
+      // instruct-mode.js `migrateInstructModeSettings` (L55-105), run on
+      // every template ST selects or imports (L834).
+      const empty = {'story_string': '', 'chat_start': ''};
+      final legacy = text({
+        'context': empty,
+        'instruct': {
+          'input_sequence': '<in>',
+          'output_sequence': '<out>',
+          'output_suffix': '</old>',
+          'separator_sequence': '</out>',
+          'names': true,
+          'system_sequence_prefix': '<sys>',
+        },
+      });
+      expect(legacy.env.instruct, {
+        // What the template lacks keeps a fresh install's (Alpaca's).
+        'first_output_sequence': '',
+        'last_output_sequence': '',
+        'stop_sequence': '',
+        'activation_regex': '',
+        'wrap': true,
+        'macro': true,
+        'input_sequence': '<in>',
+        'output_sequence': '<out>',
+        'output_suffix': '</out>',
+        'names_behavior': 'always',
+        'input_suffix': '',
+        'system_sequence': '',
+        'system_suffix': '',
+        'user_alignment_message': '',
+        'last_system_sequence': '',
+        'first_input_sequence': '',
+        'last_input_sequence': '',
+        'skip_examples': false,
+        'system_same_as_user': false,
+        'sequences_as_stop_strings': true,
+        'story_string_prefix': '',
+        'story_string_suffix': '',
+      });
+      expect(run('{{instructSeparator}}', preset: legacy.preset).$1, '</out>');
+      // Compile reads the same template: names, sequences as stop strings.
+      final result = PromptCompiler().compile(legacy);
+      expect(result.completionText, '<in>\n阿雨: x\n<out>\n道渊:');
+      expect(result.stopStrings, containsAll(['\n<in>', '\n<out>']));
+      String names(Map<String, dynamic> instruct) =>
+          text({
+                'instruct': {'output_sequence': '<out>', ...instruct},
+              }).env.instruct['names_behavior']
+              as String;
+      expect(names({'names': false, 'names_force_groups': true}), 'force');
+      expect(names({'names': 0}), 'none');
+      expect(names({}), 'force');
+      expect(names({'names_behavior': 'none'}), 'none');
+    });
+
+    test('without a context template a fresh ST install\'s is used', () {
+      // default/content/settings.json's power_user.context after
+      // power-user.js `loadContextSettings`.
+      final plain = text(
+        {},
+        card: {'description': '描述', 'personality': '冷静', 'scenario': '山中'},
+      );
+      expect(run(context, preset: plain.preset), ('***|***|***', ''));
+      final result = PromptCompiler().compile(plain);
+      expect(
+        result.completionText,
+        startsWith('描述\n道渊\'s personality: 冷静\nScenario: 山中\n***\n阿雨: x\n'),
+      );
+      expect(result.stopStrings, unorderedEquals(['\n***', '\n阿雨:']));
+    });
+
+    test('a context template gets ST\'s defaults for what it lacks', () {
+      // `#context_presets` change (power-user.js L2037-2085): control
+      // defaults (L354-370), the rest from the template selected before.
+      final partial = text(
+        {
+          'context': {'story_string': '[{{description}}]'},
+        },
+        card: {'description': '描述'},
+      );
+      expect(run(context, preset: partial.preset), ('***|***|***', ''));
+      final result = PromptCompiler().compile(partial);
+      expect(result.completionText, startsWith('[描述]\n***\n阿雨: x\n'));
+      // `use_stop_strings` defaults to off; the character's name stops a
+      // continue after a user message only (script.js L3033-3042).
+      expect(result.stopStrings, ['\n阿雨:']);
+      expect(
+        PromptCompiler()
+            .compile(
+              text({
+                'context': {'story_string': ''},
+              }, type: 'continue'),
+            )
+            .stopStrings,
+        unorderedEquals(['\n阿雨:', '\n道渊:']),
+      );
+    });
+
+    test('a stored env keeps the templates it was compiled with', () {
+      // Tasks freeze MacroEnv.of's templates; older ones as written.
+      final engine = MacroEngine(
+        env: MacroEnv.fromJson({
+          'textCompletion': true,
+          'instruct': {'output_sequence': 'O', 'separator_sequence': 'S'},
+          'context': <String, dynamic>{},
+        }),
+        clock: DateTime.utc(2026),
+        seed: 1,
+      );
+      expect(engine.render('{{instructSeparator}}|{{chatStart}}'), '|');
+    });
+
+    test('a chat preset has no templates; it is reported', () {
+      final (text, codes) = run('$instruct|$system|$context', system: '卡');
+      expect(text, '|' * 28);
+      expect(codes.split(','), everyElement('advanced_formatting_unavailable'));
+      expect(codes.split(','), hasLength(29));
+    });
+
+    test('text completion without a system prompt template drops the '
+        'card\'s system prompt and post-history instructions', () {
+      // script.js `Generate` L4686-4697 and L4748-4765: with the system
+      // prompt disabled `system` is empty and nothing follows the history.
+      final result = PromptCompiler().compile(
+        PresetInput(
+          preset: PresetImporter().decode({
+            'preset': {'temp': 1},
+            'context': {'story_string': '[{{#if system}}{{system}}{{/if}}]'},
+          }),
+          branchId: 'main',
+          throughPosition: 1,
+          brief: '',
+          generationType: 'continue',
+          clock: DateTime.utc(2026),
+          randomSeed: 1,
+          userName: '阿雨',
+          card: CardImporter().decode(
+            Uint8List.fromList(
+              utf8.encode(
+                jsonEncode({
+                  'name': '道渊',
+                  'system_prompt': '卡',
+                  'post_history_instructions': '后',
+                }),
+              ),
+            ),
+            'card.json',
+          ),
+        ),
+      );
+      expect(result.completionText, '[]\n***\n');
     });
   });
 

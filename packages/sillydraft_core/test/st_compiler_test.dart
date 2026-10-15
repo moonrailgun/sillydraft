@@ -378,6 +378,184 @@ void main() {
     },
   );
 
+  group('text completion prompts are what ST Generate builds', () {
+    // Expected texts come from the pinned ST 1.19.0 script.js `Generate`,
+    // its text completion path run verbatim, for the same chat: two
+    // chapters as the character's messages, then the brief as the user's.
+    Map<String, dynamic> load(String p) =>
+        jsonDecode(File('test/fixtures/st/$p').readAsStringSync())
+            as Map<String, dynamic>;
+    final chatml = load('instruct/ChatML.json');
+    final context = load('context/Default.json');
+    const system = {'content': '写{{char}}', 'post_history': '后{{user}}'};
+    PresetInput text(
+      Map<String, dynamic> bundle, {
+      bool chapters = true,
+    }) => PresetInput(
+      preset: PresetImporter().decode({
+        'preset': {'temp': 1},
+        ...bundle,
+      }),
+      branchId: 'main',
+      throughPosition: 10,
+      brief: '写第三章',
+      userName: '阿雨',
+      card: CardImporter().decode(
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'name': '道渊',
+              'description': '描述',
+              'personality': '冷静',
+              'scenario': '山中',
+              'mes_example':
+                  '<START>\n{{user}}: 你好\n{{char}}: 嗯。\n<START>\n{{char}}: 走吧',
+            }),
+          ),
+        ),
+        'card.json',
+      ),
+      history: [
+        if (chapters)
+          for (final (i, content) in ['第一章\n山路', '第二章'].indexed)
+            ContextChapter(
+              branchId: 'main',
+              position: i,
+              chapterId: 'c$i',
+              revisionId: 'r$i',
+              content: content,
+            ),
+      ],
+      clock: DateTime.utc(2026, 10, 13),
+      randomSeed: 42,
+    );
+    String prompt(Map<String, dynamic> bundle, {bool chapters = true}) =>
+        PromptCompiler()
+            .compile(text(bundle, chapters: chapters))
+            .completionText!;
+
+    test('card examples follow the story string as {{mesExamples}}', () {
+      // script.js L4616-4661, L5021: parseMesExamples blocks, under the
+      // example separator, or formatInstructModeExamples in instruct mode
+      // (the user's name with `force`); `skip_examples` keeps the blocks
+      // unformatted instead of dropping them.
+      expect(
+        prompt({}),
+        contains('山中\n***\n阿雨: 你好\n道渊: 嗯。\n***\n道渊: 走吧\n***\n道渊: 第一章'),
+      );
+      expect(
+        prompt({'instruct': chatml, 'context': context}),
+        contains(
+          '<|im_end|>\n***\n<|im_start|>user\n阿雨: 你好<|im_end|>\n'
+          '<|im_start|>assistant\n嗯。<|im_end|>\n***\n'
+          '<|im_start|>assistant\n走吧<|im_end|>\n***\n'
+          '<|im_start|>assistant\n第一章',
+        ),
+      );
+      expect(
+        prompt({
+          'instruct': {...chatml, 'skip_examples': true},
+          'context': context,
+        }),
+        contains(
+          '<|im_end|>\n***\n阿雨: 你好\n道渊: 嗯。\n***\n道渊: 走吧\n***\n'
+          '<|im_start|>assistant\n第一章',
+        ),
+      );
+    });
+
+    test('a normal generation ends as Generate\'s last prompt line', () {
+      // L4994-5011, `modifyLastPromptLine` L5028-5091: the last message
+      // loses its line break, then the character's name follows
+      // (`always_force_name2`, on unless the context template turns it
+      // off) or, in instruct mode, `formatInstructModePrompt`. The
+      // post-history instructions are an unnamed user message (L4748-4765).
+      expect(prompt({}), endsWith('道渊: 第二章\n阿雨: 写第三章\n道渊:'));
+      expect(prompt({'sysprompt': system}), endsWith('阿雨: 写第三章\n后阿雨\n道渊:'));
+      expect(
+        prompt({
+          'context': {...context, 'always_force_name2': false},
+        }),
+        endsWith('道渊: 第二章\n阿雨: 写第三章'),
+      );
+      // The first message takes the first sequence, the last user message
+      // the last one; the user alignment message opens a chat that does
+      // not start with the user (L4767-4827, L4929-4936).
+      final sequences = {
+        ...chatml,
+        'first_input_sequence': '<fi {{name}}>',
+        'last_input_sequence': '<li {{name}}>',
+        'first_output_sequence': '<fo {{name}}>',
+        'last_output_sequence': '<lo {{name}}>',
+        'user_alignment_message': '开始吧{{char}}',
+      };
+      expect(
+        prompt({
+          'instruct': sequences,
+          'context': context,
+          'sysprompt': system,
+        }),
+        endsWith(
+          '***\n<fi 阿雨>\n开始吧道渊<|im_end|>\n<fo 道渊>\n第一章\n山路<|im_end|>\n'
+          '<|im_start|>assistant\n第二章<|im_end|>\n'
+          '<|im_start|>user\n写第三章<|im_end|>\n'
+          '<li System>\n后阿雨<|im_end|>\n<lo 道渊>\n',
+        ),
+      );
+      expect(
+        prompt({
+          'instruct': sequences,
+          'context': context,
+          'sysprompt': system,
+        }, chapters: false),
+        endsWith(
+          '***\n<fi 阿雨>\n写第三章<|im_end|>\n'
+          '<li System>\n后阿雨<|im_end|>\n<lo 道渊>\n',
+        ),
+      );
+      // Names with `always`, after the space the output sequence ends with
+      // (Mistral's).
+      expect(
+        prompt({
+          'instruct': {
+            ...chatml,
+            'input_sequence': '[INST] ',
+            'output_sequence': '[/INST] ',
+            'last_output_sequence': '[/INST]',
+            'input_suffix': '',
+            'output_suffix': '</s>',
+            'wrap': false,
+            'names_behavior': 'always',
+          },
+          'context': context,
+        }),
+        endsWith('</s>[INST] 阿雨: 写第三章[/INST] 道渊:'),
+      );
+    });
+
+    test('a partial instruct template keeps a fresh install\'s values', () {
+      // instruct-mode.js L826-857: a field the template and its migration
+      // lack keeps the previous template's, the fresh install's Alpaca
+      // (default/content/settings.json).
+      final partial = text({
+        'instruct': {'input_sequence': '<in>', 'output_suffix': '</out>'},
+        'context': context,
+      });
+      expect(partial.env.instruct, containsPair('wrap', true));
+      expect(partial.env.instruct, containsPair('macro', true));
+      expect(
+        partial.env.instruct,
+        containsPair('output_sequence', '### Response:'),
+      );
+      expect(
+        PromptCompiler().compile(partial).completionText,
+        '描述\n冷静\n山中\n***\n<in>\n阿雨: 你好\n### Response:\n嗯。</out>***\n'
+        '### Response:\n走吧</out>***\n### Response:\n第一章\n山路</out>'
+        '### Response:\n第二章</out><in>\n写第三章\n### Response:\n',
+      );
+    });
+  });
+
   test('text completion presets read the response length from genamt', () {
     // ST 1.19.0 preset-manager.js L744-747 saves the response length as
     // `genamt` and the context size as `max_length`; script.js

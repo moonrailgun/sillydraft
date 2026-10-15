@@ -4,7 +4,8 @@
     "Default story template",
     "trim postprocessor applied",
     "Single character",
-    "No examples or macros in sequences"
+    "No examples or macros in sequences",
+    "Last chat line trimmed as Generate does before the tail"
   ],
   "formattedStory": "<|im_start|>system\nWrite a novel<|im_end|>\n",
   "formattedUser": "<|im_start|>user\nbrief<|im_end|>\n",
@@ -15,5 +16,5 @@
     "\n<|im_start|>assistant",
     "\n<|im_start|>system"
   ],
-  "expected": "<|im_start|>system\nWrite a novel<|im_end|>\n***\n<|im_start|>user\nbrief<|im_end|>\n\n<|im_start|>assistant\n"
+  "expected": "<|im_start|>system\nWrite a novel<|im_end|>\n***\n<|im_start|>user\nbrief<|im_end|>\n<|im_start|>assistant\n"
 }

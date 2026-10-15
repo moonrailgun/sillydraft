@@ -59,10 +59,13 @@ const renderedStory = 'Write a novel';
 const formattedStory = formattingContext.formatInstructModeStoryString(renderedStory, {customContext: ctx, customInstruct: instruct});
 const formattedUser = formattingContext.formatInstructModeChat('阿雨', 'brief', true, false, false, '阿雨', '旁白', 1, instruct);
 const formattedTail = formattingContext.formatInstructModePrompt('旁白', false, '', '阿雨', '旁白', false, false, instruct);
+// script.js `Generate` L5003-5009: before the tail, the last chat line loses
+// one trailing newline (not on continue; in instruct mode only with wrap).
+const lastLine = instruct.wrap ? formattedUser.replace(/\n?$/, '') : formattedUser;
 await fs.writeFile('test/fixtures/st/text-format-reference.json', JSON.stringify({
-  commit, assumptions: ['Default story template', 'trim postprocessor applied', 'Single character', 'No examples or macros in sequences'],
+  commit, assumptions: ['Default story template', 'trim postprocessor applied', 'Single character', 'No examples or macros in sequences', 'Last chat line trimmed as Generate does before the tail'],
   formattedStory, formattedUser, formattedTail,
   stopStrings: formattingContext.getInstructStoppingSequences({customInstruct: instruct, useStopStrings: false}),
-  expected: formattedStory + ctx.chat_start + '\n' + formattedUser + formattedTail,
+  expected: formattedStory + ctx.chat_start + '\n' + lastLine + formattedTail,
 }, null, 2) + '\n');
 console.log('Captured ST text sequence formatting');
