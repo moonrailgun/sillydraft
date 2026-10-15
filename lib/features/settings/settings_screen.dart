@@ -7,6 +7,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../lore/sidecar.dart';
 import '../skills/skills_screen.dart';
 import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
@@ -194,6 +195,14 @@ class SettingsScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
+                      const SizedBox(height: 12),
+                      Text('旁路整理', style: heading),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '每写完一章，用资料整理模型在后台维护人物、记忆与推演。每次整理会额外调用若干轮模型（最多 8 轮），每轮都会重发本章正文和资料索引。',
+                      ),
+                      const SizedBox(height: 12),
+                      const SidecarSwitches(),
                     ],
                   ],
                 ),

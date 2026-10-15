@@ -5,6 +5,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../lore/sidecar.dart';
 import 'agent_providers.dart';
 
 final _comparisonProvider =
@@ -43,7 +44,13 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
     try {
       final repo = ref.read(repositoryProvider);
       if (accept) {
+        final proposal = await repo.getProposal(widget.proposalId);
         await repo.acceptProposal(widget.proposalId);
+        startSidecarQuietly(
+          ref.read(servicesProvider),
+          branchId: proposal.branchId,
+          chapterId: proposal.chapterId,
+        );
       } else {
         await repo.rejectProposal(widget.proposalId);
       }

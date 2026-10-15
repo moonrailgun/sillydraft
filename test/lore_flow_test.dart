@@ -5,9 +5,11 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/theme.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/lore/lore_screen.dart';
+import 'package:sillydraft/features/lore/lore_edit_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/finders.dart';
+import 'support/host.dart';
 
 /// The app's forui theme and toaster around a test page, as `SillyDraftApp`
 /// provides them.
@@ -18,6 +20,35 @@ Widget _app(Widget home) => MaterialApp(
   ),
   home: home,
 );
+
+Future<void> _openEditor(
+  WidgetTester tester,
+  AppServices services,
+  String branchId,
+  LoreEntry entry,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [servicesProvider.overrideWithValue(services)],
+      child: testHost(
+        Builder(
+          builder: (context) => FButton(
+            onPress: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    LoreEditScreen(branchId: branchId, entry: entry),
+              ),
+            ),
+            child: const Text('打开'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('打开'));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets(
@@ -79,4 +110,45 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets('the author\'s edit makes a sidecar note theirs', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final branch = novel.activeBranchId;
+    final chapter = await repo.createChapter(
+      branchId: branch,
+      name: '渡口',
+      content: ManuscriptContent.plainText('雨夜。'),
+    );
+    final lin = await repo.saveLoreEntry(
+      branchId: branch,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '摆渡人',
+      atChapterId: chapter.id,
+      provenance: {
+        'type': 'sidecar',
+        'taskId': 't',
+        'chapterId': chapter.id,
+        'revisionId': chapter.revisionId,
+      },
+    );
+    await _openEditor(tester, services, branch, lin);
+    await tester.enterText(find.byKey(const Key('lore-content')), '摆渡人，左撇子');
+    await tester.ensureVisible(find.text('保存资料'));
+    await tester.tap(find.text('保存资料'));
+    await tester.pumpAndSettle();
+    final saved = await repo.getLoreEntry(branchId: branch, id: lin.id);
+    expect(saved.content, '摆渡人，左撇子');
+    expect(saved.provenance, {'type': 'manual'});
+  });
 }

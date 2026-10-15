@@ -92,6 +92,32 @@ class TaskScreen extends ConsumerWidget {
             Text(
               task.result['stage'] == 'saving' ? '正在保存图片到本地…' : '正在等待生图服务返回图片…',
             ),
+          if (task.result['transcript'] case final List transcript)
+            for (final message in transcript.cast<Map>())
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child:
+                    message['role'] == 'assistant' &&
+                        message['tool_calls'] == null
+                    ? SelectableText('${message['content']}')
+                    : FAccordion(
+                        children: [
+                          FAccordionItem(
+                            title: Text(
+                              message['role'] == 'tool'
+                                  ? '工具结果 · ${message['tool_name']}'
+                                  : '工具调用',
+                            ),
+                            child: SelectableText(
+                              message['role'] == 'tool'
+                                  ? '${message['content']}'
+                                  : const JsonEncoder.withIndent('  ')
+                                        .convert(message['tool_calls']),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
           if (task.result['assetId'] case final String assetId) ...[
             AssetImageView(assetId: assetId, height: 280),
             const SizedBox(height: 12),

@@ -7,6 +7,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../agent/agent_providers.dart';
+import '../lore/sidecar.dart';
 import '../resources/writing_profile.dart';
 
 /// The brief that writes the next chapter along [direction].
@@ -24,10 +25,13 @@ Future<GenerationTask> writeChapter(
   Chapter chapter, {
   required String brief,
   bool rewrite = false,
+  VoidCallback? onWaitSidecar,
 }) async {
   final services = ref.read(servicesProvider);
   final connection = await services.connectionFor('writing');
   if (connection == null) throw const FormatException('请先在设置里添加写作模型连接。');
+  // Written with what the sidecar records about the chapter before.
+  await awaitSidecar(services, chapter.branchId, onWait: onWaitSidecar);
   final profile = await WritingContext.load(services, chapter.branchId);
   const rewriteInstruction = '重新写当前章节的完整正文，替换当前版本，不要续写或输出说明。\n原写作要求：\n';
   if (rewrite && !brief.startsWith(rewriteInstruction)) {
@@ -52,16 +56,33 @@ Future<GenerationTask> writeChapter(
       autoAccept: true,
     ),
   );
-  unawaited(_nameWhenWritten(services, task));
+  unawaited(_afterWritten(services, task));
   return task;
 }
 
-/// Gives a chapter titled only by its number a name once [task] has written
-/// it, with the analysis model when one is set up.
-Future<void> _nameWhenWritten(AppServices services, GenerationTask task) async {
+/// Once [task] has written its chapter: starts the sidecar on the text that
+/// was taken in, and names a chapter titled only by its number, with the
+/// analysis model when one is set up.
+Future<void> _afterWritten(AppServices services, GenerationTask task) async {
   try {
     final done = await services.runner.wait(task.id);
     if (done.status != TaskStatus.completed) return;
+    // A result left for review is not the chapter's text yet; accepting it
+    // starts the sidecar instead.
+    final proposal = done.result['proposalId'];
+    if (proposal is String &&
+        (await services.repository.getProposal(proposal)).status ==
+            ProposalStatus.accepted) {
+      try {
+        await startSidecar(
+          services,
+          branchId: done.branchId,
+          chapterId: done.chapterId!,
+        );
+      } catch (_) {
+        // It can be run again from the lore page.
+      }
+    }
     final connection =
         await services.connectionFor('analysis') ??
         await services.connectionFor('writing');
@@ -84,6 +105,7 @@ Future<Chapter> startNextChapter(
   StorySnapshot story, {
   required String name,
   required String brief,
+  VoidCallback? onWaitSidecar,
 }) async {
   final services = ref.read(servicesProvider), repo = services.repository;
   // No chapter for a request that cannot run.
@@ -105,7 +127,7 @@ Future<Chapter> startNextChapter(
   } else {
     chapter = await repo.createChapter(branchId: story.branch.id, name: name);
   }
-  await writeChapter(ref, chapter, brief: brief);
+  await writeChapter(ref, chapter, brief: brief, onWaitSidecar: onWaitSidecar);
   return chapter;
 }
 
@@ -157,6 +179,7 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
       ),
       brief: task.input['brief'] as String? ?? '',
       rewrite: task.kind == TaskKind.rewrite,
+      onWaitSidecar: () => toast(context, sidecarWaitNotice),
     );
   });
 
@@ -210,6 +233,11 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
           '写入这一章',
           () => _run(() async {
             await ref.read(repositoryProvider).acceptProposal(pending.id);
+            startSidecarQuietly(
+              ref.read(servicesProvider),
+              branchId: pending.branchId,
+              chapterId: pending.chapterId,
+            );
           }),
           key: const Key('chapter-accept'),
           primary: true,

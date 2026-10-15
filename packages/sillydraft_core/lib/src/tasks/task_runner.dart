@@ -3,13 +3,16 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../agent/illustration_service.dart';
+import '../agent/sidecar_agent.dart';
 import '../agent/skills.dart';
 import '../agent/writing_service.dart';
 import '../assets/asset_library.dart';
 import '../model/asset.dart';
 import '../providers/image_provider.dart';
 
+import '../model/lore.dart';
 import '../model/manuscript.dart';
+import '../model/story.dart';
 import '../model/task.dart';
 import '../mvu/mvu_data.dart';
 import '../providers/provider.dart';
@@ -24,6 +27,7 @@ import '../storage/story_repository.dart';
 
 part 'agent_runner.dart';
 part 'illustration_runner.dart';
+part 'sidecar_runner.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
   ModelConnection connection,
@@ -247,6 +251,8 @@ final class TaskRunner implements TaskControl {
     GenerationTask task,
     GenerationCancellation cancel,
   ) async {
+    // Tool loops keep their text as it streams, not the durable snapshot.
+    final looped = const {TaskKind.agent, TaskKind.sidecar}.contains(task.kind);
     ModelProvider? provider;
     final text = StringBuffer(), reasoning = StringBuffer();
     final reconnect = task.isRemote && task.result['remoteReconnect'] == true;
@@ -305,6 +311,10 @@ final class TaskRunner implements TaskControl {
       }
       if (task.kind == TaskKind.agent) {
         await _executeAgent(task, provider, cancel, text, reasoning);
+        return;
+      }
+      if (task.kind == TaskKind.sidecar) {
+        await _executeSidecar(task, provider, cancel, text, reasoning);
         return;
       }
       GenerationFinished? finish;
@@ -433,12 +443,8 @@ final class TaskRunner implements TaskControl {
       await repository.updateTask(
         task.id,
         status: _closing ? TaskStatus.interrupted : TaskStatus.cancelled,
-        partialText: task.kind == TaskKind.agent
-            ? text.toString()
-            : durableText,
-        reasoning: task.kind == TaskKind.agent
-            ? reasoning.toString()
-            : durableReasoning,
+        partialText: looped ? text.toString() : durableText,
+        reasoning: looped ? reasoning.toString() : durableReasoning,
         error: _closing
             ? (task.isRemote ? '本地连接已关闭，远程任务可能仍在执行，可获取同一任务的结果。' : '应用关闭，生成已中断。')
             : '',
@@ -449,36 +455,24 @@ final class TaskRunner implements TaskControl {
         status: error.code == 'interrupted'
             ? TaskStatus.interrupted
             : TaskStatus.failed,
-        partialText: task.kind == TaskKind.agent
-            ? text.toString()
-            : durableText,
-        reasoning: task.kind == TaskKind.agent
-            ? reasoning.toString()
-            : durableReasoning,
+        partialText: looped ? text.toString() : durableText,
+        reasoning: looped ? reasoning.toString() : durableReasoning,
         error: error.toString(),
       );
     } on FormatException {
       await repository.updateTask(
         task.id,
         status: TaskStatus.failed,
-        partialText: task.kind == TaskKind.agent
-            ? text.toString()
-            : durableText,
-        reasoning: task.kind == TaskKind.agent
-            ? reasoning.toString()
-            : durableReasoning,
+        partialText: looped ? text.toString() : durableText,
+        reasoning: looped ? reasoning.toString() : durableReasoning,
         error: '返回结果未满足格式要求，原始输出已保留。',
       );
     } catch (_) {
       await repository.updateTask(
         task.id,
         status: TaskStatus.failed,
-        partialText: task.kind == TaskKind.agent
-            ? text.toString()
-            : durableText,
-        reasoning: task.kind == TaskKind.agent
-            ? reasoning.toString()
-            : durableReasoning,
+        partialText: looped ? text.toString() : durableText,
+        reasoning: looped ? reasoning.toString() : durableReasoning,
         error: '生成未完成，请检查模型配置后重试。',
       );
     } finally {

@@ -68,15 +68,16 @@ extension TaskOperations on StoryRepository {
   }
 
   /// Tasks without the frozen request snapshots in their input
-  /// ([_snapshotKeys]): task views re-read this list on every repository
-  /// change, and one preset snapshot can be most of a megabyte. Running or
-  /// inspecting a task reads it whole with [getTask].
+  /// ([_snapshotKeys]) or a sidecar's transcript in their result: task views
+  /// re-read this list on every repository change, and one preset snapshot
+  /// can be most of a megabyte. Running or inspecting a task reads it whole
+  /// with [getTask].
   Future<List<GenerationTask>> listTasks({
     String? branchId,
     bool activeOnly = false,
   }) async => _listed(
     await _rows(
-      '''SELECT $_taskColumns FROM generation_tasks WHERE (? IS NULL OR branch_id = ?)
+      '''SELECT $_listedColumns FROM generation_tasks WHERE (? IS NULL OR branch_id = ?)
       AND (? = 0 OR status IN ('queued','running')) ORDER BY created_at DESC, id''',
       [branchId, branchId, activeOnly ? 1 : 0],
     ),
@@ -152,6 +153,7 @@ extension TaskOperations on StoryRepository {
     final task = await getTask(id);
     if (!task.isRemote ||
         task.kind == TaskKind.agent ||
+        task.kind == TaskKind.sidecar ||
         ![TaskStatus.failed, TaskStatus.interrupted].contains(task.status) ||
         task.result.containsKey('proposalId') ||
         task.result.containsKey('assetId')) {
@@ -290,6 +292,10 @@ const _snapshotKeys = [
 const _taskColumns =
     'id, branch_id, kind, status, chapter_id, base_revision_id, '
     'partial_text, reasoning, error, result_json, retry_of, created_at, updated_at';
+final _listedColumns = _taskColumns.replaceFirst(
+  'result_json',
+  "json_remove(result_json, '\$.transcript') AS result_json",
+);
 final _listedInput =
     'json_remove(input_json, ${_snapshotKeys.map((k) => "'\$.$k'").join(', ')})';
 

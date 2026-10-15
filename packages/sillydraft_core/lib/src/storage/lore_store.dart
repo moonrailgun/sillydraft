@@ -1,12 +1,18 @@
 part of 'story_repository.dart';
 
 extension LoreOperations on StoryRepository {
+  /// Each entity's latest version through [throughChapterId]. Versions the
+  /// sidecar wrote for [ignoreSidecarOf], and with [skipStaleVersions] those
+  /// whose source chapter changed since, are passed over for the version
+  /// before them, as writing that chapter or after it needs.
   Future<List<LoreEntry>> listLore(
     String branchId, {
     String? throughChapterId,
     LoreKind? kind,
     bool includeDeleted = false,
     String query = '',
+    String? ignoreSidecarOf,
+    bool skipStaleVersions = false,
   }) async {
     final story = await getStory(branchId);
     final positions = {for (final (i, s) in story.chapters.indexed) s.id: i};
@@ -16,6 +22,16 @@ extension LoreOperations on StoryRepository {
     final cutoff = throughChapterId == null
         ? story.chapters.length - 1
         : positions[throughChapterId]!;
+    final heads = {
+      for (final chapter in story.chapters) chapter.id: chapter.revisionId,
+    };
+    Map<String, dynamic> provenance(Map<String, Object?> row) =>
+        jsonDecode(row['provenance_json'] as String) as Map<String, dynamic>;
+    bool stale(Map<String, dynamic> provenance) {
+      final source = provenance['chapterId'] as String?;
+      return source != null && heads[source] != provenance['revisionId'];
+    }
+
     final selected = <String, Map<String, Object?>>{};
     final ranks = <String, int>{};
     for (final row in await _rows(
@@ -26,22 +42,24 @@ extension LoreOperations on StoryRepository {
       if (anchor != null && !positions.containsKey(anchor)) continue;
       final position = anchor == null ? -1 : positions[anchor]!;
       if (position > cutoff) continue;
+      if (skipStaleVersions || ignoreSidecarOf != null) {
+        final source = provenance(row);
+        if ((skipStaleVersions && stale(source)) ||
+            (ignoreSidecarOf != null &&
+                source['type'] == 'sidecar' &&
+                source['chapterId'] == ignoreSidecarOf)) {
+          continue;
+        }
+      }
       final id = row['entity_id'] as String;
       if (position >= (ranks[id] ?? -2)) {
         selected[id] = row;
         ranks[id] = position;
       }
     }
-    final heads = {
-      for (final chapter in story.chapters) chapter.id: chapter.revisionId,
-    };
     final result = <LoreEntry>[];
     for (final row in selected.values) {
-      final provenance =
-          jsonDecode(row['provenance_json'] as String) as Map<String, dynamic>;
-      final source = provenance['chapterId'] as String?;
-      final stale = source != null && heads[source] != provenance['revisionId'];
-      final entry = _lore(row, stale: stale);
+      final entry = _lore(row, stale: stale(provenance(row)));
       if ((includeDeleted || !entry.deleted) &&
           (kind == null || entry.kind == kind) &&
           '${entry.name} ${entry.content}'.toLowerCase().contains(

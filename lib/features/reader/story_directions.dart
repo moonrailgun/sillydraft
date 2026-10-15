@@ -8,6 +8,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../branches/branch_screen.dart';
+import '../lore/sidecar.dart';
 import 'next_chapter.dart';
 
 /// The latest story-direction run on a branch, and whether the story it
@@ -177,6 +178,7 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
       widget.story,
       name: '${direction['title']}',
       brief: brief ?? chapterBrief(direction),
+      onWaitSidecar: () => toast(context, sidecarWaitNotice),
     );
     if (mounted) setState(() => _adjusting = null);
     widget.onOpenChapter?.call(chapter.id);

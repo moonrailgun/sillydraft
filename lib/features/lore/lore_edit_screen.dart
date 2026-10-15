@@ -55,8 +55,8 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
   Future<void> _save({bool deleted = false}) async {
     setState(() => _busy = true);
     try {
-      final repo = ref.read(repositoryProvider),
-          provenance = widget.entry?.provenance ?? {'type': 'manual'};
+      final repo = ref.read(repositoryProvider);
+      var provenance = widget.entry?.provenance ?? {'type': 'manual'};
       if (_rechecked && provenance['chapterId'] is String) {
         final source = await repo.getChapter(
           branchId: widget.branchId,
@@ -64,6 +64,10 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
         );
         provenance['revisionId'] = source.revisionId;
         provenance['reviewedAt'] = DateTime.now().toUtc().toIso8601String();
+      } else if (provenance['type'] == 'sidecar') {
+        // The author's edit makes the note theirs: the sidecar no longer
+        // redoes it, and it never goes stale with the chapter.
+        provenance = {'type': 'manual'};
       }
       final entry = await repo.saveLoreEntry(
         branchId: widget.branchId,

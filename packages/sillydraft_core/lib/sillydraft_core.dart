@@ -45,6 +45,7 @@ export 'src/providers/comfyui.dart';
 export 'src/providers/comfy_workflow.dart';
 export 'src/agent/illustration_service.dart';
 export 'src/agent/persona_service.dart';
+export 'src/agent/sidecar_agent.dart';
 export 'src/st/resource_library.dart';
 export 'src/model/display_context.dart';
 export 'src/html/html_blocks.dart';

@@ -207,6 +207,7 @@ final class AppServices {
       assetLibrary: assets,
     );
     writing = WritingService(repository: repository, runner: runner);
+    sidecar = SidecarAgent(repository: repository, runner: runner);
     editor = EditorAgent(repository: repository, runner: runner);
     illustrations = IllustrationService(repository: repository, runner: runner);
     personas = PersonaService(repository: repository, runner: runner);
@@ -224,6 +225,7 @@ final class AppServices {
   final Uri? updateEndpoint;
   late final TaskControl runner;
   late final WritingService writing;
+  late final SidecarAgent sidecar;
   late final EditorAgent editor;
   late final ResourceLibrary library;
   late final AssetLibrary? assets;

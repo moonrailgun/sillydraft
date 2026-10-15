@@ -98,6 +98,8 @@ Future<_Open> _open(
       ),
     );
   }
+  // The sidecar's own model calls are covered in sidecar_flow_test.dart.
+  await repo.setSetting(SidecarSettings.key, {'enabled': false});
   if (reader != null) await repo.setSetting('reader', reader);
   final novel = await repo.createNovel(title: '灯塔');
   final chapter = await repo.createChapter(

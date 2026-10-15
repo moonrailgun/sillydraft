@@ -10,6 +10,7 @@ import '../maps/map_screen.dart';
 import '../maps/relationship_graph.dart';
 import 'lore_edit_screen.dart';
 import 'lore_providers.dart';
+import 'sidecar.dart';
 import 'variables_screen.dart';
 
 class LoreScreen extends ConsumerStatefulWidget {
@@ -100,7 +101,11 @@ class _LoreState extends ConsumerState<LoreScreen> {
       ? IconAction(icon: icon, tooltip: tooltip, onPress: onPress)
       : HeaderIconAction(icon: icon, tooltip: tooltip, onPress: onPress);
 
-  Widget _list(List<LoreEntry> entries, {bool timeline = false}) {
+  Widget _list(
+    List<LoreEntry> entries, {
+    bool timeline = false,
+    Map<String, String> titles = const {},
+  }) {
     if (entries.isEmpty) {
       return const Center(
         child: Padding(
@@ -137,7 +142,10 @@ class _LoreState extends ConsumerState<LoreScreen> {
             children: [
               const SizedBox(height: 4),
               Text(
-                '${loreLabels[entry.kind]} · ${certaintyLabels[entry.certainty]}${entry.deleted ? ' · 已归档' : ''}${entry.sourceStale ? ' · 待复核' : ''}${timeline ? ' · ${loreStatusLabels[entry.data['status']] ?? '进行中'}' : ''}',
+                '${loreLabels[entry.kind]} · ${certaintyLabels[entry.certainty]}${entry.deleted ? ' · 已归档' : ''}${entry.sourceStale ? ' · 待复核' : ''}${timeline ? ' · ${loreStatusLabels[entry.data['status']] ?? '进行中'}' : ''}${entry.provenance['type'] == 'sidecar' ? ' · ${switch (titles[entry.provenance['chapterId']]) {
+                        final String t => '$t · ',
+                        _ => '',
+                      }}旁路整理' : ''}',
                 overflow: TextOverflow.visible,
                 style: theme.typography.body.xs.copyWith(
                   color: theme.colors.mutedForeground,
@@ -162,6 +170,9 @@ class _LoreState extends ConsumerState<LoreScreen> {
 
   Widget _page(List<LoreEntry> all, StorySnapshot? story, LoreScope scope) {
     final active = all.where((e) => !e.deleted).toList();
+    final titles = {
+      for (final c in story?.chapters ?? const <Chapter>[]) c.id: c.title,
+    };
     switch (_tab) {
       case 1:
         final timeline = active
@@ -178,7 +189,7 @@ class _LoreState extends ConsumerState<LoreScreen> {
             positions[b.atChapterId] ?? -1,
           ),
         );
-        return _list(timeline, timeline: true);
+        return _list(timeline, timeline: true, titles: titles);
       case 2:
         return RelationshipGraph(
           key: ValueKey(scope),
@@ -186,7 +197,10 @@ class _LoreState extends ConsumerState<LoreScreen> {
           onOpen: (entry) => _edit(entry: entry),
         );
       case 3:
-        return _list(active.where((e) => e.kind == LoreKind.map).toList());
+        return _list(
+          active.where((e) => e.kind == LoreKind.map).toList(),
+          titles: titles,
+        );
     }
     final entries = all
         .where(
@@ -246,9 +260,31 @@ class _LoreState extends ConsumerState<LoreScreen> {
             ],
           ),
         ),
-        Expanded(child: _list(entries)),
+        Expanded(child: _list(entries, titles: titles)),
       ],
     );
+  }
+
+  /// Runs the sidecar again on the chapter this page is looking from.
+  Future<void> _resync(StorySnapshot story) async {
+    try {
+      final chapterId = _through ?? story.chapters.lastOrNull?.id;
+      if (chapterId == null) throw const FormatException('还没有章节可以整理');
+      final task = await startSidecar(
+        ref.read(servicesProvider),
+        branchId: widget.branchId,
+        chapterId: chapterId,
+        manual: true,
+      );
+      if (task != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => TaskScreen(taskId: task.id)),
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
 
   @override
@@ -263,6 +299,11 @@ class _LoreState extends ConsumerState<LoreScreen> {
           FLucideIcons.sparkles,
           '从整部正文提取资料',
           _analyzing ? null : _analyze,
+        ),
+        _action(
+          FLucideIcons.refreshCw,
+          '重新整理本章',
+          story.value == null ? null : () => _resync(story.value!),
         ),
         _action(
           FLucideIcons.braces,

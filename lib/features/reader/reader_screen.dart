@@ -24,6 +24,7 @@ import '../agent/agent_providers.dart';
 import '../agent/task_screen.dart';
 import '../agent/writing_request_screen.dart';
 import '../html/html_block_view.dart';
+import '../lore/sidecar.dart';
 import '../html/tavern_host.dart';
 import 'reader_document.dart';
 import 'reader_settings.dart';
@@ -997,6 +998,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
           latest,
           name: '',
           brief: request.brief,
+          onWaitSidecar: () => toast(context, sidecarWaitNotice),
         );
         if (mounted) setState(() => _openWhenLoaded = chapter.id);
       } finally {
@@ -1049,6 +1051,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
             previous?.input['brief'] as String? ??
             '重新写当前章节《${chapter.title}》的完整正文。',
         rewrite: true,
+        onWaitSidecar: () => toast(context, sidecarWaitNotice),
       );
     } catch (e) {
       if (mounted) showError(context, e);

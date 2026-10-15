@@ -62,4 +62,5 @@ const taskKindLabels = {
   TaskKind.branches: '故事走向',
   TaskKind.analysis: '资料整理',
   TaskKind.illustration: '插画生成',
+  TaskKind.sidecar: '旁路整理',
 };

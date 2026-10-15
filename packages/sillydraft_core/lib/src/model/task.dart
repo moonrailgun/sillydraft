@@ -4,7 +4,15 @@ import '../st/preset_importer.dart';
 import '../st/prompt_compiler.dart';
 import '../providers/provider.dart';
 
-enum TaskKind { writing, rewrite, branches, analysis, agent, illustration }
+enum TaskKind {
+  writing,
+  rewrite,
+  branches,
+  analysis,
+  agent,
+  illustration,
+  sidecar,
+}
 
 enum TaskStatus { queued, running, completed, failed, cancelled, interrupted }
 
