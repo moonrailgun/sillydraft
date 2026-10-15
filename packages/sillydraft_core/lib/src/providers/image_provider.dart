@@ -69,3 +69,8 @@ abstract interface class ImageProvider {
   });
   void close();
 }
+
+/// A provider that reads workflows saved on its server, as ComfyUI does.
+abstract interface class WorkflowSource {
+  Future<Map<String, dynamic>> readWorkflow(String filename);
+}

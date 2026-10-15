@@ -1,7 +1,6 @@
 import '../model/asset.dart';
 import '../model/task.dart';
 import '../providers/image_provider.dart';
-import '../providers/comfyui.dart';
 import '../providers/comfy_workflow.dart';
 import '../providers/provider.dart';
 import '../storage/story_repository.dart';
@@ -62,16 +61,17 @@ final class IllustrationService {
     if (factory == null) throw StateError('未配置生图执行器');
     final provider = await factory(connection);
     try {
-      if (provider is! ComfyUIProvider) {
+      if (provider is! WorkflowSource) {
         throw const ProviderException('comfy_workflow', '此执行器无法读取 ComfyUI 工作流');
       }
+      final source = provider as WorkflowSource;
       return ModelConnection.fromJson({
         ...connection.raw,
         for (final MapEntry(:key, value: workflow) in saved.entries)
           if (workflow != null && workflow.filename.isNotEmpty)
             key: ComfyWorkflow.fromJson({
               ...workflow.raw,
-              'nodes': await provider.readWorkflow(workflow.filename),
+              'nodes': await source.readWorkflow(workflow.filename),
             }).raw,
       });
     } finally {

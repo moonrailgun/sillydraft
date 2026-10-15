@@ -10,7 +10,7 @@ import 'comfy_workflow.dart';
 import 'image_provider.dart';
 import 'provider.dart';
 
-final class ComfyUIProvider implements ImageProvider {
+final class ComfyUIProvider implements ImageProvider, WorkflowSource {
   ComfyUIProvider({required this.config, String apiKey = ''})
     : _client = Dio(
         BaseOptions(
@@ -49,6 +49,7 @@ final class ComfyUIProvider implements ImageProvider {
     }
   }
 
+  @override
   Future<Map<String, dynamic>> readWorkflow(String filename) async {
     if (!_workflowFile(filename)) {
       throw const FormatException('请选择 workflows 目录内的 JSON 工作流文件');
