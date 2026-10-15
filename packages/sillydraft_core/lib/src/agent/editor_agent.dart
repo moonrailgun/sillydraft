@@ -18,7 +18,7 @@ import 'skills.dart';
 final class EditorAgent {
   const EditorAgent({required this.repository, required this.runner});
   final StoryRepository repository;
-  final TaskRunner runner;
+  final TaskControl runner;
 
   Future<GenerationTask> send({
     required String conversationId,

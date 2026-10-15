@@ -10,7 +10,7 @@ import '../tasks/task_runner.dart';
 final class IllustrationService {
   const IllustrationService({required this.repository, required this.runner});
   final StoryRepository repository;
-  final TaskRunner runner;
+  final TaskControl runner;
 
   /// What the author last chose on the illustration page for [connection]:
   /// size, quality, extra parameters and download hosts.

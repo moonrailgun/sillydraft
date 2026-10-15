@@ -222,7 +222,7 @@ final class AppServices {
   /// Where update checks ask for the latest release; null turns them off
   /// (tests, and iOS, which has no published package).
   final Uri? updateEndpoint;
-  late final TaskRunner runner;
+  late final TaskControl runner;
   late final WritingService writing;
   late final EditorAgent editor;
   late final ResourceLibrary library;

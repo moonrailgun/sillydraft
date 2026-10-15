@@ -393,14 +393,22 @@ class _AgentState extends ConsumerState<AgentPanel> {
       color: theme.colors.mutedForeground,
       fontWeight: FontWeight.w600,
     );
-    void answer(bool approved) => ref
-        .read(servicesProvider)
-        .runner
-        .respondToImageConfirmation(
-          task.id,
-          pending['id'] as String,
-          approved: approved,
-        );
+    // A remote runner answers over the network, which can fail.
+    Future<void> answer(bool approved) async {
+      try {
+        await ref
+            .read(servicesProvider)
+            .runner
+            .respondToImageConfirmation(
+              task.id,
+              pending['id'] as String,
+              approved: approved,
+            );
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
+    }
+
     return FCard(
       key: const Key('agent-image-confirmation'),
       child: Padding(

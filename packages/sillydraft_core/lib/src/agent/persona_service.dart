@@ -37,7 +37,7 @@ const _sentence =
 final class PersonaService {
   const PersonaService({required this.repository, required this.runner});
   final StoryRepository repository;
-  final TaskRunner runner;
+  final TaskControl runner;
 
   /// Appearance and outfit from the first four reference images, and a
   /// description when [draft] has none.

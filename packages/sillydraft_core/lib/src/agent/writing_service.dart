@@ -39,7 +39,7 @@ final class PreparedWriting extends JsonSource {
 final class WritingService {
   const WritingService({required this.repository, required this.runner});
   final StoryRepository repository;
-  final TaskRunner runner;
+  final TaskControl runner;
 
   Future<GenerationTask> generate({
     required String branchId,

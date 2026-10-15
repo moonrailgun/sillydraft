@@ -131,11 +131,15 @@ void main() {
         isEmpty,
       );
       expect(
-        runner.respondToImageConfirmation(task.id, 'stale', approved: true),
+        await runner.respondToImageConfirmation(
+          task.id,
+          'stale',
+          approved: true,
+        ),
         isFalse,
       );
       expect(
-        runner.respondToImageConfirmation(
+        await runner.respondToImageConfirmation(
           task.id,
           confirmation['id'] as String,
           approved: true,
@@ -143,7 +147,7 @@ void main() {
         isTrue,
       );
       expect(
-        runner.respondToImageConfirmation(
+        await runner.respondToImageConfirmation(
           task.id,
           confirmation['id'] as String,
           approved: true,
@@ -241,7 +245,7 @@ void main() {
               as Map;
       expect(second['negativePrompt'], 'lowres, blurry');
       expect(images, hasLength(1));
-      runner.respondToImageConfirmation(
+      await runner.respondToImageConfirmation(
         drawn.id,
         second['id'] as String,
         approved: true,

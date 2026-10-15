@@ -66,7 +66,36 @@ final class _ProgressSaver {
   }
 }
 
-final class TaskRunner {
+/// What services and screens need from task execution. [TaskRunner] runs
+/// tasks in this process; a remote library hands them to the desktop.
+abstract interface class TaskControl {
+  ProviderFactory get providerFactory;
+  ImageProviderFactory? get imageProviderFactory;
+  AssetLibrary? get assetLibrary;
+  Future<int> recoverInterrupted();
+  Future<GenerationTask> start({
+    required String branchId,
+    required TaskKind kind,
+    required Map<String, dynamic> input,
+    String? chapterId,
+    String? baseRevisionId,
+    String? retryOf,
+  });
+  Future<GenerationTask> wait(String id);
+  Future<void> cancel(String id);
+  Future<GenerationTask> reconnectRemote(String id);
+  Future<GenerationTask> resume(String id);
+
+  /// An answer applies only to this pending request, never a later tool call.
+  Future<bool> respondToImageConfirmation(
+    String taskId,
+    String confirmationId, {
+    required bool approved,
+  });
+  Future<void> close();
+}
+
+final class TaskRunner implements TaskControl {
   TaskRunner({
     required this.repository,
     required this.providerFactory,
@@ -74,8 +103,11 @@ final class TaskRunner {
     this.assetLibrary,
   });
   final StoryRepository repository;
+  @override
   final ProviderFactory providerFactory;
+  @override
   final ImageProviderFactory? imageProviderFactory;
+  @override
   final AssetLibrary? assetLibrary;
   final _running = <String, Future<void>>{};
   final _cancellations = <String, GenerationCancellation>{};
@@ -87,12 +119,12 @@ final class TaskRunner {
   int _imageConfirmationSequence = 0;
   bool _closing = false;
 
-  /// An answer applies only to this pending request, never a later tool call.
-  bool respondToImageConfirmation(
+  @override
+  Future<bool> respondToImageConfirmation(
     String taskId,
     String confirmationId, {
     required bool approved,
-  }) {
+  }) async {
     final pending = _imageConfirmations[taskId];
     if (pending == null ||
         pending.id != confirmationId ||
@@ -105,11 +137,13 @@ final class TaskRunner {
     return true;
   }
 
+  @override
   Future<int> recoverInterrupted() {
     if (_running.isNotEmpty) throw StateError('运行中不能恢复旧任务');
     return repository.recoverInterruptedTasks();
   }
 
+  @override
   Future<GenerationTask> start({
     required String branchId,
     required TaskKind kind,
@@ -146,11 +180,13 @@ final class TaskRunner {
     return task;
   }
 
+  @override
   Future<GenerationTask> wait(String id) async {
     await _running[id];
     return repository.getTask(id);
   }
 
+  @override
   Future<void> cancel(String id) async {
     final task = await repository.getTask(id, snapshots: false);
     if (task.isRemote) {
@@ -174,6 +210,7 @@ final class TaskRunner {
     await repository.updateTask(id, status: TaskStatus.cancelled);
   }
 
+  @override
   Future<GenerationTask> reconnectRemote(String id) async {
     if (_closing) throw StateError('任务执行器已关闭');
     if (_running.containsKey(id)) return repository.getTask(id);
@@ -182,6 +219,7 @@ final class TaskRunner {
 
   /// Retry explicitly starts a new network request and a new durable task. It
   /// never pretends a broken stream can be resumed or silently retries billing.
+  @override
   Future<GenerationTask> resume(String id) async {
     final old = await repository.getTask(id);
     if (old.isActive || old.status == TaskStatus.completed) {
@@ -197,6 +235,7 @@ final class TaskRunner {
     );
   }
 
+  @override
   Future<void> close() async {
     _closing = true;
     for (final cancel in _cancellations.values) {
