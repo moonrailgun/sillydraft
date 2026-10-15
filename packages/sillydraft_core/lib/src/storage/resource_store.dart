@@ -67,6 +67,29 @@ extension ResourceOperations on StoryRepository {
           [archived ? 1 : 0, id],
         );
       });
+
+  /// Refused while a work's writing profile or lore names the resource: its
+  /// backup would no longer restore. Later edit versions inherit its parent.
+  Future<void> deleteResource(String id) => _write(() async {
+    final resource = await getResource(id);
+    // Resource ids are UUIDs, so a substring match finds every JSON reference.
+    final novels = await _rows(
+      '''SELECT DISTINCT b.novel_id FROM branches b
+        WHERE EXISTS (SELECT 1 FROM app_settings s
+          WHERE s.key = 'writing/' || b.id AND instr(s.value_json, ?) > 0)
+        OR EXISTS (SELECT 1 FROM lore_versions l WHERE l.branch_id = b.id
+          AND instr(l.data_json || l.provenance_json, ?) > 0)''',
+      [id, id],
+    );
+    if (novels.isNotEmpty) {
+      throw FormatException('资源仍被 ${novels.length} 部作品的写作配置或资料使用，不能删除');
+    }
+    await _execute(
+      'UPDATE library_resources SET parent_id = ? WHERE parent_id = ?',
+      [resource.parentId, id],
+    );
+    await _execute('DELETE FROM library_resources WHERE id = ?', [id]);
+  });
 }
 
 LibraryResource _resource(Map<String, Object?> r) =>

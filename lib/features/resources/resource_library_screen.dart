@@ -331,6 +331,27 @@ class ResourceDetailScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _delete(
+    BuildContext context,
+    WidgetRef ref,
+    LibraryResource resource,
+  ) async {
+    final yes = await confirmAction(
+      context,
+      title: '删除“${resource.name}”？',
+      message: '资源和加密保存的原文件都会删除，不能撤销。仍被作品使用的资源不能删除。',
+      confirmLabel: '删除资源',
+      destructive: true,
+    );
+    if (!yes || !context.mounted) return;
+    try {
+      await ref.read(repositoryProvider).deleteResource(resource.id);
+      if (context.mounted) Navigator.pop(context);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) => PageScaffold(
     title: '资源详情',
@@ -412,6 +433,15 @@ class ResourceDetailScreen extends ConsumerWidget {
                   ),
                   child: Text(resource.archived ? '恢复到资源库' : '归档'),
                 ),
+                // Like works on the bookshelf, only archived resources can be deleted.
+                if (resource.archived)
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => _delete(context, ref, resource),
+                    prefix: const Icon(FLucideIcons.trash2),
+                    child: const Text('删除'),
+                  ),
               ],
             ),
             const SizedBox(height: 24),

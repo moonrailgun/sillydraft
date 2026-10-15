@@ -234,4 +234,50 @@ void main() {
       expect(book.name, '雾港世界书');
     },
   );
+
+  test('deleting a resource is refused while a work uses it', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final library = ResourceLibrary(
+      repository: repo,
+      keyProvider: () async => List.filled(32, 1),
+    );
+    Uint8List json(Map<String, Object?> value) =>
+        Uint8List.fromList(utf8.encode(jsonEncode(value)));
+    final card = await library.import(
+      json({'name': '林舟', 'first_mes': '灯亮了。'}),
+      filename: 'card.json',
+      kind: ResourceKind.character,
+    );
+    // Lore seeded from the card keeps naming it.
+    await repo.createNovelFromCard(resourceId: card.id, title: '渡口');
+    await expectLater(
+      repo.deleteResource(card.id),
+      throwsA(isA<FormatException>()),
+    );
+
+    final preset = await library.import(
+      json({'name': '预设', 'temperature': .7}),
+      filename: 'preset.json',
+      kind: ResourceKind.preset,
+    );
+    final edited = await library.edit(preset.id, {
+      ...preset.data,
+      'temperature': .5,
+    });
+    final novel = await repo.createNovel(title: '雾港');
+    await repo.setSetting('writing/${novel.activeBranchId}', {
+      'presetId': edited.id,
+    });
+    await repo.deleteResource(preset.id);
+    expect((await repo.getResource(edited.id)).parentId, isNull);
+    await expectLater(
+      repo.deleteResource(edited.id),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      (await repo.listResources(includeArchived: true)).map((r) => r.id),
+      unorderedEquals([card.id, edited.id]),
+    );
+  });
 }
