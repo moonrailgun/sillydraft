@@ -170,26 +170,63 @@ extension _AgentExecution on TaskRunner {
     if (await repository.conversationBranch(conversation) != task.branchId) {
       throw const FormatException('会话不属于任务分支');
     }
-    final request = ProviderRequest.fromJson(
-      jsonObject(input['request'], 'request'),
-    );
-    final messages = request.messages;
     final skills = [
       for (final s in input['skills'] as List? ?? const [])
         AgentSkill.fromJson(s as Map<String, dynamic>),
     ];
-    final tools = [
-      ..._editingTools,
-      if (input['image'] case final Map<String, dynamic> image)
-        _imageTool(image),
-      ...skillTools(skills),
-    ];
+    await _toolLoop(
+      task,
+      provider,
+      cancel,
+      output,
+      reasoning,
+      tools: [
+        ..._editingTools,
+        if (input['image'] case final Map<String, dynamic> image)
+          _imageTool(image),
+        ...skillTools(skills),
+      ],
+      execute: (call) => _executeTool(task, call, cancel),
+      record: (role, content, metadata) => repository.appendAgentMessage(
+        conversation,
+        role: role,
+        content: content,
+        metadata: metadata,
+      ),
+    );
+  }
+
+  /// Rounds of model output and tool calls until the model answers without
+  /// any. [record] keeps each message durable as it lands: the conversation
+  /// for the editor, the task's transcript for the sidecar. [name] is what
+  /// errors call the run.
+  Future<void> _toolLoop(
+    GenerationTask task,
+    ModelProvider provider,
+    GenerationCancellation cancel,
+    StringBuffer output,
+    StringBuffer reasoning, {
+    required List<Map<String, dynamic>> tools,
+    required Future<Map<String, dynamic>> Function(ToolCallReady call) execute,
+    required Future<void> Function(
+      String role,
+      String content,
+      Map<String, dynamic> metadata,
+    )
+    record,
+    String overflow = '编辑会话超出上下文限制，请创建新会话',
+    String name = '编辑',
+  }) async {
+    final request = ProviderRequest.fromJson(
+      jsonObject(task.input['request'], 'request'),
+    );
+    final messages = request.messages;
     for (var round = 0; round < 8; round++) {
       cancel.check();
       if (estimateTokens(jsonEncode(messages)) +
               provider.config.maxOutputTokens >
           provider.config.contextWindow) {
-        throw const ProviderException('context_limit', '编辑会话超出上下文限制，请创建新会话');
+        throw ProviderException('context_limit', overflow);
       }
       final text = StringBuffer();
       final calls = <ToolCallReady>[];
@@ -228,17 +265,16 @@ extension _AgentExecution on TaskRunner {
       // Tool calls that follow keep the saved text, so it must be complete.
       await progress.flush();
       if (finished == null) {
-        throw const ProviderException('interrupted', '编辑会话流中断');
+        throw ProviderException('interrupted', '$name会话流中断');
       }
       if (!finished.isComplete) {
-        throw ProviderException('incomplete', '编辑回复未完整结束：${finished.reason}');
+        throw ProviderException(
+          'incomplete',
+          '$name回复未完整结束：${finished.reason}',
+        );
       }
       if (calls.isEmpty) {
-        await repository.appendAgentMessage(
-          conversation,
-          role: 'assistant',
-          content: text.toString(),
-        );
+        await record('assistant', text.toString(), const {});
         await repository.updateTask(
           task.id,
           status: TaskStatus.completed,
@@ -253,12 +289,7 @@ extension _AgentExecution on TaskRunner {
       }
       final seen = <String>{};
       final wireCalls = calls.map((c) => c.toOpenAI()).toList();
-      await repository.appendAgentMessage(
-        conversation,
-        role: 'assistant',
-        content: text.toString(),
-        metadata: {'tool_calls': wireCalls},
-      );
+      await record('assistant', text.toString(), {'tool_calls': wireCalls});
       messages.add({
         'role': 'assistant',
         'content': text.toString(),
@@ -271,7 +302,7 @@ extension _AgentExecution on TaskRunner {
         }
         Map<String, dynamic> result;
         try {
-          result = await _executeTool(task, call, cancel);
+          result = await execute(call);
         } on GenerationCancelled {
           rethrow;
         } catch (_) {
@@ -285,18 +316,13 @@ extension _AgentExecution on TaskRunner {
             'preview': content.substring(0, 32000),
           });
         }
-        await repository.appendAgentMessage(
-          conversation,
-          role: 'tool',
-          content: content,
-          metadata: {
-            'tool_call_id': call.id,
-            'tool_name': call.name,
-            // Marks the conversation so later turns keep this skill loaded.
-            if (call.name == 'activate_skill' && result['loaded'] == true)
-              'skill': call.arguments['name'],
-          },
-        );
+        await record('tool', content, {
+          'tool_call_id': call.id,
+          'tool_name': call.name,
+          // Marks the conversation so later turns keep this skill loaded.
+          if (call.name == 'activate_skill' && result['loaded'] == true)
+            'skill': call.arguments['name'],
+        });
         messages.add({
           'role': 'tool',
           'content': content,
@@ -304,7 +330,7 @@ extension _AgentExecution on TaskRunner {
         });
       }
     }
-    throw const ProviderException('round_limit', '编辑任务达到 8 轮工具调用限制，已有结果已保留');
+    throw ProviderException('round_limit', '$name任务达到 8 轮工具调用限制，已有结果已保留');
   }
 
   Future<Map<String, dynamic>> _executeTool(
