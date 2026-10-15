@@ -7,10 +7,11 @@ import 'asset_library_test.dart' show testPicture;
 import 'task_runner_test.dart' show ScriptProvider;
 
 class _ImageModel implements ImageProvider {
-  _ImageModel(this.config, this.requests);
+  _ImageModel(this.config, this.requests, [this.referenceCounts]);
   @override
   final ModelConnection config;
   final List<ImageRequest> requests;
+  final List<int>? referenceCounts;
   @override
   Future<GeneratedImage> generate(
     ImageRequest request, {
@@ -18,6 +19,7 @@ class _ImageModel implements ImageProvider {
     GenerationCancellation? cancellation,
   }) async {
     requests.add(request);
+    referenceCounts?.add(references.length);
     return GeneratedImage(bytes: testPicture());
   }
 
@@ -302,6 +304,126 @@ void main() {
       await runner.close().timeout(const Duration(seconds: 5));
       expect((await repo.getTask(task.id)).isActive, isFalse);
       expect(images, isEmpty);
+    },
+  );
+
+  test(
+    'the assistant sends character images, only to engines that take them',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('sillydraft-agent-refs-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '雾港');
+      final other = await repo.createNovel(title: '别的书');
+      final library = AssetLibrary(repository: repo, directory: dir);
+      final portrait = await library.importImage(
+        branchId: novel.activeBranchId,
+        name: '林岚',
+        bytes: testPicture(),
+        purpose: AssetPurpose.reference,
+      );
+      final foreign = await library.importImage(
+        branchId: other.activeBranchId,
+        name: '外人',
+        bytes: testPicture(),
+        purpose: AssetPurpose.reference,
+      );
+      final conversation = await repo.createConversation(
+        branchId: novel.activeBranchId,
+      );
+      final requests = <ProviderRequest>[], counts = <int>[];
+      var script = <List<ProviderEvent>>[];
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+          requests.add(request);
+          for (final e in script.removeAt(0)) {
+            yield e;
+          }
+        }),
+        assetLibrary: library,
+        imageProviderFactory: (c) async => _ImageModel(c, [], counts),
+      );
+      addTearDown(runner.close);
+      final agent = EditorAgent(repository: repo, runner: runner);
+      final editor = ModelConnection(
+        id: 't',
+        name: 't',
+        baseUrl: 'http://localhost:1',
+        model: 't',
+      );
+      Map<String, dynamic> properties(ProviderRequest r) =>
+          ((r.tools.firstWhere(
+                        (t) =>
+                            (t['function'] as Map)['name'] == 'generate_image',
+                      )['function']
+                      as Map)['parameters']
+                  as Map)['properties']
+              as Map<String, dynamic>;
+
+      script = [
+        [const TextDelta('好'), const GenerationFinished('stop')],
+      ];
+      await runner.wait(
+        (await agent.send(
+          conversationId: conversation,
+          connection: editor,
+          message: '你好',
+          imageConnection: ModelConnection(
+            id: 'nai',
+            name: 'NovelAI',
+            baseUrl: 'https://image.novelai.net',
+            model: 'nai-diffusion-4-5-full',
+            protocol: ModelProtocol.novelAI,
+          ),
+        )).id,
+      );
+      expect(properties(requests.last).containsKey('references'), isFalse);
+
+      script = [
+        [
+          ToolCallReady('a', 'generate_image', {
+            'prompt': '外人',
+            'name': '外人',
+            'references': [foreign.id],
+          }),
+          const GenerationFinished('tool_calls'),
+        ],
+        [
+          ToolCallReady('b', 'generate_image', {
+            'prompt': '短发的林岚撑着红伞',
+            'name': '林岚',
+            'references': [portrait.id],
+          }),
+          const GenerationFinished('tool_calls'),
+        ],
+        [const TextDelta('已生成'), const GenerationFinished('stop')],
+      ];
+      final task = await agent.send(
+        conversationId: conversation,
+        connection: editor,
+        message: '画林岚',
+        imageConnection: ModelConnection(
+          id: 'img',
+          name: 'img',
+          baseUrl: 'http://localhost:1',
+          model: 'painter',
+        ),
+      );
+      final pending = await _awaitConfirmation(repo, task.id);
+      expect(properties(requests.last)['references']['maxItems'], 16);
+      final confirmation = pending.result['imageConfirmation'] as Map;
+      expect(confirmation['prompt'], '短发的林岚撑着红伞');
+      expect(confirmation['references'], [portrait.id]);
+      await runner.respondToImageConfirmation(
+        task.id,
+        confirmation['id'] as String,
+        approved: true,
+      );
+      final done = await runner.wait(task.id);
+      expect(done.status, TaskStatus.completed, reason: done.error);
+      expect(counts, [1]);
     },
   );
 }

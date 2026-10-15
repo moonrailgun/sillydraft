@@ -437,6 +437,30 @@ class _AgentState extends ConsumerState<AgentPanel> {
               const SizedBox(height: 4),
               SelectableText(negative),
             ],
+            if (pending['references'] case final List references
+                when references.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('参考图', style: label),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final id in references.cast<String>())
+                    ClipRRect(
+                      key: Key('agent-image-reference-$id'),
+                      borderRadius: theme.style.borderRadius.md,
+                      child: AssetImageView(
+                        assetId: id,
+                        thumbnail: true,
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.end,

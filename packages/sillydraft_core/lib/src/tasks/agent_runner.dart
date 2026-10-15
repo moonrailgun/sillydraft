@@ -135,27 +135,41 @@ bool _takesNegative(Map<String, dynamic> image) =>
         ) ==
         true;
 
-Map<String, dynamic> _imageTool(Map<String, dynamic> image) => {
-  'type': 'function',
-  'function': {
-    'name': 'generate_image',
-    'description': '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
-        if (_takesNegative(image))
-          'negative_prompt': {
-            'type': 'string',
-            'description': '负面提示词，填写时替换作者默认的负面提示词',
-          },
-        'name': {'type': 'string', 'description': '图片的简短名称'},
+Map<String, dynamic> _imageTool(Map<String, dynamic> image) {
+  final limit = referenceLimit(
+    ModelConnection.fromJson(image['connection'] as Map<String, dynamic>),
+  );
+  return {
+    'type': 'function',
+    'function': {
+      'name': 'generate_image',
+      'description': '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
+          if (_takesNegative(image))
+            'negative_prompt': {
+              'type': 'string',
+              'description': '负面提示词，填写时替换作者默认的负面提示词',
+            },
+          'name': {'type': 'string', 'description': '图片的简短名称'},
+          if (limit > 0)
+            'references': {
+              'type': 'array',
+              'items': {'type': 'string'},
+              'maxItems': limit,
+              'description':
+                  '参考图的图片 id，最多 $limit 张。画人物时先用 read_lore 读出场人物，'
+                  '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
+            },
+        },
+        'required': ['prompt', 'name'],
+        'additionalProperties': false,
       },
-      'required': ['prompt', 'name'],
-      'additionalProperties': false,
     },
-  },
-};
+  };
+}
 
 extension _AgentExecution on TaskRunner {
   Future<void> _executeAgent(
@@ -458,15 +472,41 @@ extension _AgentExecution on TaskRunner {
       final image = task.input['image'];
       final prompt = args['prompt'], name = args['name'];
       final negative = args['negative_prompt'];
+      final references = args['references'];
       if (image is! Map<String, dynamic> ||
-          args.length != (args.containsKey('negative_prompt') ? 3 : 2) ||
+          args.keys.any(
+            (k) => ![
+              'prompt',
+              'name',
+              'negative_prompt',
+              'references',
+            ].contains(k),
+          ) ||
           (negative != null &&
               (negative is! String || !_takesNegative(image))) ||
           prompt is! String ||
           name is! String ||
           name.trim().isEmpty ||
-          name.length > 100) {
+          name.length > 100 ||
+          (references != null &&
+              (references is! List ||
+                  references.any((id) => id is! String) ||
+                  references.length >
+                      referenceLimit(
+                        ModelConnection.fromJson(
+                          image['connection'] as Map<String, dynamic>,
+                        ),
+                      )))) {
         throw const FormatException('参数无效');
+      }
+      final referenceIds = [...?(references as List?)?.cast<String>()];
+      // Checked before the author is asked: a picture from another book
+      // never reaches the confirmation card.
+      final novel = (await repository.getBranch(task.branchId)).novelId;
+      for (final id in referenceIds) {
+        if ((await repository.getAsset(id)).novelId != novel) {
+          throw const FormatException('参考图不属于当前作品');
+        }
       }
       final connection = ModelConnection.fromJson(
         jsonObject(image['connection'], 'image.connection'),
@@ -497,6 +537,7 @@ extension _AgentExecution on TaskRunner {
               'name': name,
               'prompt': request.prompt,
               'negativePrompt': ?request.parameters['negative_prompt'],
+              if (referenceIds.isNotEmpty) 'references': referenceIds,
             },
           },
         );
@@ -524,6 +565,7 @@ extension _AgentExecution on TaskRunner {
             name: name,
             request: request,
             chapterId: image['chapterId'] as String?,
+            referenceAssetIds: referenceIds,
           );
       final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
       try {

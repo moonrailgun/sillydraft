@@ -369,4 +369,53 @@ void main() {
       'ComfyUI · Krea2 Turbo.json · krea.safetensors',
     );
   });
+
+  testWidgets('the confirmation card shows the reference images chosen', (
+    tester,
+  ) async {
+    final script = <List<ProviderEvent>>[];
+    final (services, chapter) = await _book(script: script);
+    addTearDown(services.close);
+    final portrait = await services.repository.storeAsset(
+      branchId: chapter.branchId,
+      name: '林岚',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 1,
+        height: 1,
+        byteLength: 1,
+      ),
+      purpose: AssetPurpose.reference,
+    );
+    script.add([
+      ToolCallReady('r', 'generate_image', {
+        'prompt': '林岚',
+        'name': '林岚',
+        'references': [portrait.id],
+      }),
+      const GenerationFinished('tool_calls'),
+    ]);
+    await _pump(
+      tester,
+      services,
+      AppScaffold(
+        child: AgentPanel(
+          branchId: chapter.branchId,
+          request: AgentRequest('画林岚', chapterId: chapter.id),
+        ),
+      ),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(
+      find.byKey(Key('agent-image-reference-${portrait.id}')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('取消'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  });
 }
