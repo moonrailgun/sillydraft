@@ -247,13 +247,16 @@ extension _AgentExecution on TaskRunner {
       final text = StringBuffer();
       final calls = <ToolCallReady>[];
       GenerationFinished? finished;
+      await repository.updateTask(
+        task.id,
+        status: TaskStatus.running,
+        result: {'round': round + 1},
+      );
       final progress = _progress[task.id] = _ProgressSaver(
-        () => repository.updateTask(
+        () => repository.saveTaskProgress(
           task.id,
-          status: TaskStatus.running,
           partialText: output.toString(),
           reasoning: reasoning.toString(),
-          result: {'round': round + 1},
         ),
       );
       await for (final event in provider.generate(

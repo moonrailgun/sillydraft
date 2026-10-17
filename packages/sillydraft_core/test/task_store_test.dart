@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:drift/native.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
@@ -106,9 +107,9 @@ void main() {
 
       chapter = await store.createChapter(branchId: novel.activeBranchId);
       final task = await queued();
-      await store.updateTask(
+      await store.updateTask(task.id, status: TaskStatus.running);
+      await store.saveTaskProgress(
         task.id,
-        status: TaskStatus.running,
         partialText: '已经收到',
         reasoning: '旁路内容',
       );
@@ -121,8 +122,95 @@ void main() {
       expect(restored.reasoning, '旁路内容');
       expect(restored.baseRevisionId, chapter.revisionId);
       expect(restored.input['variableBaseVersion'], 0);
+      // Recovery moves the text onto the task row, which backups copy.
+      final exported = (await store.exportProject(novel.id))
+          .tables['generation_tasks']!
+          .single;
+      expect(exported['partial_text'], '已经收到');
+      expect(exported['reasoning'], '旁路内容');
     },
   );
+
+  test(
+    'streamed progress is saved beside the task, not over its snapshot',
+    () async {
+      await store.close();
+      final dir = await Directory.systemTemp.createTemp('sillydraft-progress-');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = '${dir.path}/library.sqlite';
+      // No checkpoints: the WAL keeps every page the saves wrote.
+      store = StoryRepository.connect(
+        NativeDatabase(
+          File(path),
+          setup: (db) => db.execute('PRAGMA wal_autocheckpoint = 0'),
+        ),
+      );
+      novel = await store.createNovel(title: '流式进度');
+      final snapshot = 'x' * 512 * 1024;
+      final task = await store.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.writing,
+        input: {
+          'brief': '写下一段',
+          'preset': {'prompts': snapshot},
+        },
+      );
+      await store.updateTask(task.id, status: TaskStatus.running);
+      final wal = File('$path-wal');
+      final before = wal.lengthSync();
+      var text = '';
+      for (var i = 0; i < 20; i++) {
+        text += '雾港的灯在夜里亮着，';
+        await store.saveTaskProgress(
+          task.id,
+          partialText: text,
+          reasoning: '想$i',
+        );
+      }
+      // SQLite rewrites a row whose size changes: saved on the task row,
+      // each save rewrote the snapshot, 20 times its size in all.
+      expect(wal.lengthSync() - before, lessThan(snapshot.length));
+      final listed = (await store.listTasks(branchId: novel.activeBranchId))
+          .single;
+      expect((listed.partialText, listed.reasoning), (text, '想19'));
+      expect((await store.getTask(task.id)).partialText, text);
+
+      // Stopping keeps the last progress; progress after that is dropped.
+      await store.updateTask(task.id, status: TaskStatus.cancelled);
+      await store.saveTaskProgress(task.id, partialText: '迟到', reasoning: '');
+      final done = await store.getTask(task.id);
+      expect(
+        (done.status, done.partialText, done.reasoning),
+        (TaskStatus.cancelled, text, '想19'),
+      );
+      expect(
+        (await store.exportProject(novel.id))
+            .tables['generation_tasks']!
+            .single['partial_text'],
+        text,
+      );
+    },
+  );
+
+  test('a remote run cancelled mid-stream keeps its progress', () async {
+    final task = await store.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.writing,
+      input: {
+        'connection': {'protocol': ModelProtocol.sillyDraftRunner.name},
+      },
+    );
+    await store.updateTask(task.id, status: TaskStatus.running);
+    await store.saveTaskProgress(task.id, partialText: '部分', reasoning: '想');
+    await store.acknowledgeRemoteCancellation(task.id);
+    final row = (await store.exportProject(novel.id))
+        .tables['generation_tasks']!
+        .single;
+    expect(
+      (row['status'], row['partial_text'], row['reasoning']),
+      ('cancelled', '部分', '想'),
+    );
+  });
 
   test(
     'completed task cannot duplicate proposals on repeated delivery',

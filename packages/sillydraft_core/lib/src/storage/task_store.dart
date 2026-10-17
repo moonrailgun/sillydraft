@@ -55,7 +55,11 @@ extension TaskOperations on StoryRepository {
   Future<GenerationTask> getTask(String id, {bool snapshots = true}) async {
     if (snapshots) {
       return _task(
-        await _one('SELECT * FROM generation_tasks WHERE id = ?', [id], '生成任务'),
+        await _one(
+          'SELECT $_taskColumns, input_json FROM generation_tasks WHERE id = ?',
+          [id],
+          '生成任务',
+        ),
       );
     }
     final listed = await _listed(
@@ -133,8 +137,28 @@ extension TaskOperations on StoryRepository {
         id,
       ],
     );
+    await _execute('DELETE FROM task_progress WHERE task_id = ?', [id]);
     return getTask(id, snapshots: false);
   }, tasksOnly: true);
+
+  /// Saves a running task's streamed text beside its row, which keeps it
+  /// until the task's next update: SQLite rewrites a whole row whose size
+  /// changes, and a task row carries its frozen snapshots. Readers see it as
+  /// the task's text. A task no longer running keeps the text it has.
+  Future<void> saveTaskProgress(
+    String id, {
+    required String partialText,
+    required String reasoning,
+  }) => _write(
+    () => _execute(
+      '''INSERT INTO task_progress (task_id, partial_text, reasoning)
+      SELECT id, ?, ? FROM generation_tasks WHERE id = ? AND status = 'running'
+      ON CONFLICT(task_id) DO UPDATE SET
+        partial_text = excluded.partial_text, reasoning = excluded.reasoning''',
+      [partialText, reasoning, id],
+    ),
+    tasksOnly: true,
+  );
 
   /// Sets a sidecar run's [transcript] whatever state the task is in:
   /// cancelling marks the task before its run stops.
@@ -154,9 +178,10 @@ extension TaskOperations on StoryRepository {
       "SELECT id FROM generation_tasks WHERE status IN ('queued','running')",
     );
     await _execute(
-      "UPDATE generation_tasks SET status = 'interrupted', error = ?, updated_at = ? WHERE status IN ('queued','running')",
+      "UPDATE generation_tasks SET status = 'interrupted', error = ?, updated_at = ?, $_settleProgress WHERE status IN ('queued','running')",
       ['应用上次退出时任务未完成，可保留已有结果或重新生成。', _now()],
     );
+    await _execute('DELETE FROM task_progress');
     return rows.length;
   });
 
@@ -190,9 +215,11 @@ extension TaskOperations on StoryRepository {
         if (!task.isRemote) throw StateError('此任务不是远程任务');
         if (task.status == TaskStatus.completed) return task;
         await _execute(
-          "UPDATE generation_tasks SET status = 'cancelled', error = '', updated_at = ? WHERE id = ?",
+          "UPDATE generation_tasks SET status = 'cancelled', error = '', updated_at = ?, "
+          '$_settleProgress WHERE id = ?',
           [_now(), id],
         );
+        await _execute('DELETE FROM task_progress WHERE task_id = ?', [id]);
         return getTask(id);
       });
 
@@ -251,6 +278,7 @@ extension TaskOperations on StoryRepository {
         id,
       ],
     );
+    await _execute('DELETE FROM task_progress WHERE task_id = ?', [id]);
     return getTask(id);
   });
 
@@ -302,9 +330,19 @@ const _snapshotKeys = [
   'chatMacros',
   'outlets',
 ];
-const _taskColumns =
+
+/// A task's [column], streamed text included ([saveTaskProgress]).
+String _live(String column) =>
+    'coalesce((SELECT p.$column FROM task_progress p '
+    'WHERE p.task_id = generation_tasks.id), $column)';
+
+/// Moves a task's streamed text onto its row.
+final _settleProgress =
+    'partial_text = ${_live('partial_text')}, reasoning = ${_live('reasoning')}';
+final _taskColumns =
     'id, branch_id, kind, status, chapter_id, base_revision_id, '
-    'partial_text, reasoning, error, result_json, retry_of, created_at, updated_at';
+    '${_live('partial_text')} AS partial_text, ${_live('reasoning')} AS reasoning, '
+    'error, result_json, retry_of, created_at, updated_at';
 final _listedColumns = _taskColumns.replaceFirst(
   'result_json',
   "json_remove(result_json, '\$.transcript') AS result_json",

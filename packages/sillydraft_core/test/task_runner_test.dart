@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor;
+import 'package:drift/native.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
@@ -23,6 +26,21 @@ final class ScriptProvider implements ModelProvider {
       [];
   @override
   void close() {}
+}
+
+/// Writes to task rows, and saves of streamed progress.
+final class _TaskWrites extends QueryInterceptor {
+  var rows = 0, progress = 0;
+  @override
+  Future<void> runCustom(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (statement.contains('UPDATE generation_tasks')) rows++;
+    if (statement.contains('INSERT INTO task_progress')) progress++;
+    return executor.runCustom(statement, args);
+  }
 }
 
 void main() {
@@ -665,6 +683,65 @@ void main() {
       expect(saves, lessThan(20));
     },
   );
+
+  for (final kind in [TaskKind.writing, TaskKind.sidecar]) {
+    test('a streaming ${kind.name} run leaves its task row alone', () async {
+      final spy = _TaskWrites();
+      final repo = StoryRepository.connect(
+        NativeDatabase.memory().interceptWith(spy),
+      );
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '流式');
+      final chapter = await repo.createChapter(
+        branchId: novel.activeBranchId,
+        content: ManuscriptContent.plainText('原文'),
+      );
+      int? rowsWhileStreaming;
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (_, _) async* {
+          final before = spy.rows;
+          for (var i = 0; i < 12; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+            yield const TextDelta('字');
+          }
+          rowsWhileStreaming = spy.rows - before;
+          yield const GenerationFinished('stop');
+        }),
+      );
+      addTearDown(runner.close);
+      final task = kind == TaskKind.writing
+          ? await WritingService(repository: repo, runner: runner).generate(
+              branchId: novel.activeBranchId,
+              chapterId: chapter.id,
+              connection: connection,
+              brief: '写下一段',
+              append: true,
+            )
+          : await runner.start(
+              branchId: novel.activeBranchId,
+              kind: kind,
+              chapterId: chapter.id,
+              baseRevisionId: chapter.revisionId,
+              input: {
+                'connection': connection.raw,
+                'request': ProviderRequest(
+                  messages: [
+                    {'role': 'user', 'content': '整理资料'},
+                  ],
+                ).raw,
+                'duties': [SidecarDuty.memory.name],
+              },
+            );
+      final done = await runner.wait(task.id);
+      expect(done.status, TaskStatus.completed, reason: done.error);
+      expect(done.partialText, '字' * 12);
+      expect(spy.progress, greaterThan(2));
+      // SQLite rewrites a whole row whose size changes, and a task row
+      // carries its run's frozen snapshots.
+      expect(rowsWhileStreaming, 0);
+    });
+  }
 
   test('stopping keeps text the save throttle held back', () async {
     final reached = Completer<void>();

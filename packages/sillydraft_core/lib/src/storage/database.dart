@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -31,6 +31,7 @@ final class StoryDatabase extends GeneratedDatabase {
         ...resourceSchema,
         ...loreSchema,
         ...assetSchema,
+        ...progressSchema,
       ]) {
         await customStatement(sql);
       }
@@ -44,7 +45,13 @@ final class StoryDatabase extends GeneratedDatabase {
         );
       }
       // Older libraries are not upgraded; refuse rather than misread them.
-      throw StateError('作品库来自不再支持的旧版本 SillyDraft（数据版本 $from），无法打开');
+      if (from < 9) {
+        throw StateError('作品库来自不再支持的旧版本 SillyDraft（数据版本 $from），无法打开');
+      }
+      // 9 → 10 only adds a table.
+      for (final sql in progressSchema) {
+        await customStatement(sql);
+      }
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -52,6 +59,17 @@ final class StoryDatabase extends GeneratedDatabase {
       await customStatement('PRAGMA journal_mode = WAL');
     },
   );
+
+  /// A running task's streamed text, saved apart from its row: SQLite
+  /// rewrites a whole row whose size changes, and a task row carries the
+  /// run's frozen snapshots, most of a megabyte. drift stores the new
+  /// version only after the upgrade, so it may run twice.
+  static const progressSchema = <String>[
+    '''CREATE TABLE IF NOT EXISTS task_progress (
+      task_id TEXT PRIMARY KEY REFERENCES generation_tasks(id) ON DELETE CASCADE,
+      partial_text TEXT NOT NULL, reasoning TEXT NOT NULL
+    )''',
+  ];
 
   static const assetSchema = <String>[
     '''CREATE TABLE story_assets (

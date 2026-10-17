@@ -320,9 +320,8 @@ final class TaskRunner implements TaskControl {
       GenerationFinished? finish;
       // Completion and every failure path save the full text themselves.
       final progress = _progress[task.id] = _ProgressSaver(
-        () => repository.updateTask(
+        () => repository.saveTaskProgress(
           task.id,
-          status: TaskStatus.running,
           partialText: durableText,
           reasoning: durableReasoning,
         ),
