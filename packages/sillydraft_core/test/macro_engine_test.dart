@@ -1743,11 +1743,13 @@ void main() {
       expect(compile(history: false).chatValues['firstincludedmessageid'], '3');
     });
 
-    test('a stage without a chat keeps them and reports it', () {
+    test('a stage without a chat keeps them with a warning', () {
       expect(_run('{{lastMessageId}}'), (
         '{{lastMessageId}}',
         'chat_state_unavailable',
       ));
+      final engine = _engine()..render('{{lastMessage}}');
+      expect(engine.diagnostics.single.severity, DiagnosticSeverity.warning);
       expect(_run('{{allChatRange}}'), (
         '{{allChatRange}}',
         'chat_state_unavailable',
@@ -1831,12 +1833,30 @@ void main() {
       expect(engine.diagnostics.single.code, 'invalid_macro_arguments');
     });
 
-    test('a stage without a request keeps token limits and reports it', () {
+    test('limits and a model nothing gives stay as written with a warning', () {
       expect(_run('{{maxContext}}'), ('{{maxContext}}', 'request_unavailable'));
       expect(_run('{{maxPromptTokens}}'), (
         '{{maxPromptTokens}}',
         'request_unavailable',
       ));
+      // No connection to write with: the model is unknown too.
+      final engine = MacroEngine(
+        env: const MacroEnv(model: null, maxResponse: 300),
+        clock: DateTime.utc(2026),
+        seed: 1,
+      );
+      expect(
+        engine.render('{{model}}|{{maxResponse}}|{{maxPrompt}}'),
+        '{{model}}|300|{{maxPrompt}}',
+      );
+      expect(engine.diagnostics.map((d) => d.code), [
+        'request_unavailable',
+        'request_unavailable',
+      ]);
+      expect(
+        engine.diagnostics.map((d) => d.severity),
+        everyElement(DiagnosticSeverity.warning),
+      );
     });
 
     test('input is the send box Generate has emptied', () {

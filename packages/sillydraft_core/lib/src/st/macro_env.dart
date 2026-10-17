@@ -38,13 +38,14 @@ final class MacroEnv {
   /// system prompt templates for a text completion; ST `main_api` is
   /// `openai` for a chat preset; its reasoning template). [isMobile]
   /// defaults to running on Android or iOS. [maxContext] and [maxResponse]
-  /// are the request's token limits.
+  /// are the request's token limits. A null [model] is one nothing gives:
+  /// no connection to write with.
   factory MacroEnv.of({
     Map<String, dynamic>? card,
     required String user,
     String persona = '',
     ImportedPreset? preset,
-    String model = '',
+    String? model = '',
     bool? isMobile,
     num? maxContext,
     num? maxResponse,
@@ -255,7 +256,10 @@ final class MacroEnv {
   /// image generation prefixes `charPrefix`, `charNegativePrefix`.
   final Map<String, String> card;
   final List<String> alternateGreetings;
-  final String model;
+
+  /// The model the request goes to; null where none is known (no
+  /// connection to write with).
+  final String? model;
   final bool isMobile;
 
   /// ST `main_api` is not `openai`: the prompt is a text completion.

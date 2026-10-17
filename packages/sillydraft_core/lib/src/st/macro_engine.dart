@@ -161,7 +161,7 @@ final class MacroEngine {
       (['maxcontext', 'maxcontexttokens'], env.maxContext),
       (['maxresponse', 'maxresponsetokens'], env.maxResponse),
     ])
-      for (final name in names) name: _Macro((c) => _tokens(c, value)),
+      for (final name in names) name: _Macro((c) => _known(c, value)),
     'reverse': _Macro(
       (c) => String.fromCharCodes(c.args.single.runes.toList().reversed),
       min: 1,
@@ -201,7 +201,7 @@ final class MacroEngine {
       name: _Macro(_greeting, max: 1, integer: true),
     for (final name in ['charversion', 'version', 'char_version'])
       name: _Macro((_) => _cardless ? '' : env.card['version'] ?? ''),
-    'model': _Macro((_) => env.model),
+    'model': _Macro((c) => _known(c, env.model)),
     'original': _Macro(_originalValue),
     'ismobile': _Macro((_) => '${env.isMobile}'),
     // instruct-macros.js `registerSimple`: a template field as written (a
@@ -278,8 +278,9 @@ final class MacroEngine {
             : momentHumanize(clock.difference(idleSince!).inMilliseconds),
       ),
     'timediff': _Macro(_timeDiff, min: 2, max: 2),
-    // chat-macros.js reads ST's `chat`: a stage with one gives the values
-    // in [values]; elsewhere the text stays and is reported.
+    // chat-macros.js reads ST's `chat`: every stage gives the values in
+    // [values]; an engine without them (an older task's unrecorded texts)
+    // keeps the text and reports it.
     for (final name in [
       'lastmessage',
       'lastmessageid',
@@ -294,8 +295,7 @@ final class MacroEngine {
       name: _Macro((c) {
         _failure = CompatibilityDiagnostic(
           'chat_state_unavailable',
-          '此处没有对话，${c.name} 保留原文：{{${c.raw}}}',
-          severity: DiagnosticSeverity.error,
+          '此处没有对话记录，${c.name} 保留原文：{{${c.raw}}}',
         );
         return null;
       }),
@@ -951,14 +951,15 @@ final class MacroEngine {
 
   static final _integer = RegExp(r'^\s*-?\d+\s*$');
 
-  /// The request's token limit [value]; a stage without a request keeps
-  /// the text and reports it.
-  String? _tokens(_Call c, num? value) {
-    if (value != null) return _jsString(value);
+  /// [value], the model or a token limit of the request (or of the one a
+  /// stage without a request would make); null when no connection gives
+  /// it, which keeps the text and reports it.
+  String? _known(_Call c, Object? value) {
+    if (value case final num n) return _jsString(n);
+    if (value case final String text) return text;
     _failure = CompatibilityDiagnostic(
       'request_unavailable',
-      '此处没有模型请求，${c.name} 保留原文：{{${c.raw}}}',
-      severity: DiagnosticSeverity.error,
+      '没有写作用的模型连接，${c.name} 保留原文：{{${c.raw}}}',
     );
     return null;
   }
