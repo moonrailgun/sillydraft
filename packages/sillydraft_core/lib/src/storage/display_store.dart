@@ -5,8 +5,13 @@ extension DisplayOperations on StoryRepository {
   /// Cached until the profile changes; resources are immutable versions.
   Future<DisplayContext> displayContext(String branchId) async {
     final profile = await _settingJson('writing/$branchId') ?? '{}';
-    // Editing a persona changes {{user}} without touching the profile.
-    final key = '$profile\n${await _settingJson('personas') ?? ''}';
+    // Editing a persona changes {{user}}, and the connections the model and
+    // token limits, without touching the profile.
+    final key = [
+      profile,
+      for (final setting in ['personas', 'connections', 'modelRoles'])
+        await _settingJson(setting) ?? '',
+    ].join('\n');
     final cached = _displayCache[branchId];
     if (cached != null && cached.key == key) return cached.context;
     final context = await _buildDisplayContext(
@@ -41,12 +46,26 @@ extension DisplayOperations on StoryRepository {
       rules.addAll(DisplayContext.regexRulesOf(preset?['extensions']));
     }
     final persona = await personaFor(profile);
+    // The macros read what a writing request of the branch would. Settings
+    // writing refuses leave it without that preset or connection.
+    ImportedPreset? preset;
+    try {
+      preset = await writingPreset(profile);
+    } on Exception {
+      preset = null;
+    }
+    final connection = await _writingConnection();
     final cardId = profile['cardId'];
     final raw = cardId is String ? await _resourceData(cardId) : null;
     if (raw == null) {
       return DisplayContext(
         rules: rules,
-        env: MacroEnv.of(user: persona.name, persona: persona.prompt),
+        env: DisplayContext.writingEnv(
+          user: persona.name,
+          persona: persona.prompt,
+          preset: preset,
+          connection: connection,
+        ),
       );
     }
     final index = profile['greetingIndex'];
@@ -57,7 +76,19 @@ extension DisplayOperations on StoryRepository {
       persona: persona.prompt,
       greetingIndex: index is int ? index : 0,
       cardId: cardId as String,
+      preset: preset,
+      connection: connection,
     );
+  }
+
+  /// The connection writing uses, read where no request is made; null
+  /// also when the connection settings cannot be read.
+  Future<ModelConnection?> _writingConnection() async {
+    try {
+      return await connectionFor('writing');
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The preset a branch writes with, from its writing [profile]: the
@@ -99,6 +130,30 @@ extension DisplayOperations on StoryRepository {
     });
   }
 
+  /// The chat macros of [branchId] where no request is made, read from its
+  /// chapters as they are now ([DisplayContext.chatMacros]).
+  Future<Map<String, String>> chatMacros(
+    String branchId, [
+    DisplayContext? context,
+  ]) async {
+    context ??= await displayContext(branchId);
+    final rows = await _rows(
+      'SELECT count(*) AS n FROM branch_chapters WHERE branch_id = ?',
+      [branchId],
+    );
+    final count = rows.single['n'] as int;
+    if (count == 0) return context.chatMacros(0, '');
+    final last = _chapter(
+      await _one(
+        '${StoryRepository._chapterQuery} '
+            'ORDER BY c.position DESC, c.chapter_id DESC LIMIT 1',
+        [branchId],
+        '章节',
+      ),
+    );
+    return context.chatMacros(count, last.content.text);
+  }
+
   Future<Map<String, dynamic>?> _resourceData(Object? id) async {
     if (id is! String) return null;
     try {
@@ -134,6 +189,7 @@ extension DisplayOperations on StoryRepository {
       rules: context.rules,
       macros: MacroEngine(
         env: context.env,
+        values: await chatMacros(branchId, context),
         clock: DateTime.now(),
         seed: 0,
         local: variables.local,

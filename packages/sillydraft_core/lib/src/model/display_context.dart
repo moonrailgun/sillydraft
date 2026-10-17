@@ -1,4 +1,9 @@
+import 'dart:math';
+
+import '../providers/provider.dart';
 import '../st/macro_engine.dart';
+import '../st/preset_importer.dart';
+import '../st/prompt_compiler.dart';
 
 /// What a branch needs to show manuscripts the way its bound card expects:
 /// the display regex rules, macro values, card greetings and metadata an
@@ -18,7 +23,8 @@ final class DisplayContext {
 
   /// Context for a card's JSON (a V1 root or a V2/V3 document), with
   /// [rules] from global and preset regex placed before the card's own, as
-  /// SillyTavern orders them.
+  /// SillyTavern orders them; the macros read [writingEnv] of [preset] and
+  /// [connection].
   factory DisplayContext.fromCard(
     Map<String, dynamic> raw, {
     List<Map<String, dynamic>> rules = const [],
@@ -26,6 +32,8 @@ final class DisplayContext {
     String persona = '',
     int greetingIndex = 0,
     String? cardId,
+    ImportedPreset? preset,
+    ModelConnection? connection,
   }) {
     final data = raw['spec'] == null
         ? raw
@@ -69,10 +77,12 @@ final class DisplayContext {
     final helper = extensions['tavern_helper'];
     return DisplayContext(
       rules: [...rules, ...regexRulesOf(extensions)],
-      env: MacroEnv.of(
+      env: writingEnv(
         card: raw,
         user: userName.isEmpty ? '我' : userName,
         persona: persona,
+        preset: preset,
+        connection: connection,
       ),
       greetings: greetings,
       greetingIndex: greetings.isEmpty
@@ -98,6 +108,68 @@ final class DisplayContext {
     );
   }
 
+  /// What macros read where no request is made: ST reads its live settings
+  /// there (the model and token limits of the selected API, script.js
+  /// `getGeneratingModel`, `getMax*Tokens`; the selected templates), so
+  /// this is the env of the request the branch would make, with its
+  /// writing profile's [preset] (none: the default writing preset, which
+  /// has no templates) to the [connection] writing uses. Without one the
+  /// model and the connection's limits are unknown.
+  static MacroEnv writingEnv({
+    Map<String, dynamic>? card,
+    required String user,
+    String persona = '',
+    ImportedPreset? preset,
+    ModelConnection? connection,
+  }) => PresetInput.envOf(
+    card: card,
+    user: user,
+    persona: persona,
+    preset: preset,
+    model: connection?.model,
+    contextWindow: connection?.contextWindow,
+    maxOutputTokens: connection?.maxOutputTokens,
+  );
+
+  /// The chat macros where no request is made: ST 1.19.0 chat-macros.js
+  /// reads the live `chat`, here the branch's [count] chapters (chapter N
+  /// is message N, each a character message, as at the prompt), the last
+  /// one's text [last] as stored. Nothing has been generated since the
+  /// chat was opened (state-macros.js clears `lastGenerationType` on
+  /// CHAT_CHANGED). A story begun from a card opens with its greeting,
+  /// which script.js `getFirstMessage` (L7710-7742) gives the greetings as
+  /// swipes only with alternate greetings, an empty first one dropped;
+  /// [greeting] is the one shown (default [greetingIndex]).
+  Map<String, String> chatMacros(int count, String last, {int? greeting}) {
+    final values = PromptCompiler.chatValues([
+      for (var i = 0; i < count; i++)
+        PromptMessage('assistant', i == count - 1 ? last : ''),
+    ], '');
+    if (count == 1 && greetings.isNotEmpty) {
+      final skipped = greetings.first.isEmpty ? 1 : 0;
+      final swipes = greetings.length > 1;
+      values['lastswipeid'] = swipes ? '${greetings.length - skipped}' : '';
+      values['currentswipeid'] = swipes
+          ? '${max((greeting ?? greetingIndex) - skipped, 0) + 1}'
+          : '';
+    }
+    return values;
+  }
+
+  /// Macros of the greeting a story opens with ([greeting], default
+  /// [greetingIndex]): script.js `getChatResult` (L7684-7708) starts a chat
+  /// with just that greeting, as written, and `messageFormatting`
+  /// (L1805-1812) resolves its macros against that chat.
+  MacroEngine greetingMacros({required DateTime clock, int? greeting}) {
+    final index = greeting ?? greetingIndex;
+    return MacroEngine(
+      env: env,
+      values: chatMacros(1, greetings[index], greeting: index),
+      clock: clock,
+      seed: 0,
+    );
+  }
+
   /// The `regex_scripts` list of a card or preset `extensions` object.
   static List<Map<String, dynamic>> regexRulesOf(Object? extensions) {
     if (extensions is! Map<String, dynamic>) return const [];
@@ -113,8 +185,8 @@ final class DisplayContext {
   /// Regex rules in SillyTavern order: global, preset, then card.
   final List<Map<String, dynamic>> rules;
 
-  /// What the env macros read. No request is made here, so `{{model}}` is
-  /// empty, and examples are formatted as for a chat completion.
+  /// What the env macros read: [writingEnv] of the branch's writing
+  /// profile and connection.
   final MacroEnv env;
 
   /// Raw card greetings: the first message, then the alternates.

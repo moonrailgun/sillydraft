@@ -68,23 +68,15 @@ final class PresetInput {
     Map<String, String> globalVariables = const {},
     List<Map<String, dynamic>> globalRegex = const [],
     List<PromptMessage>? conversation,
-  }) : env = MacroEnv.of(
+  }) : env = envOf(
          card: card?.raw,
          user: userName,
          persona: persona,
          preset: preset,
          model: model,
          isMobile: isMobile,
-         // The request's limits, as WritingService checks them: the
-         // connection's context window, and the response length the
-         // preset asks for, else the connection's.
-         maxContext: contextWindow,
-         maxResponse: switch (_parameters(
-           preset.parts['preset']?.parameters ?? preset.parameters,
-         )['max_tokens']) {
-           final num tokens => tokens,
-           _ => maxOutputTokens,
-         },
+         contextWindow: contextWindow,
+         maxOutputTokens: maxOutputTokens,
        ),
        history = List.unmodifiable(history),
        conversation = conversation == null
@@ -94,6 +86,38 @@ final class PresetInput {
        localVariables = Map.unmodifiable(localVariables),
        globalVariables = Map.unmodifiable(globalVariables),
        _globalRegex = jsonEncode(globalRegex);
+
+  /// The env of a request compiled with [preset] for [model], on a
+  /// connection with [contextWindow] and [maxOutputTokens]. Its limits are
+  /// the ones WritingService checks: the connection's context window, and
+  /// the response length the preset asks for, else the connection's. A
+  /// stage without a request reads the env of the one its branch would
+  /// make (null [model] and connection limits: none to write with).
+  static MacroEnv envOf({
+    Map<String, dynamic>? card,
+    required String user,
+    String persona = '',
+    ImportedPreset? preset,
+    String? model = '',
+    bool? isMobile,
+    int? contextWindow,
+    int? maxOutputTokens,
+  }) => MacroEnv.of(
+    card: card,
+    user: user,
+    persona: persona,
+    preset: preset,
+    model: model,
+    isMobile: isMobile,
+    maxContext: contextWindow,
+    maxResponse: switch (_parameters(
+      preset?.parts['preset']?.parameters ?? preset?.parameters ?? const {},
+    )['max_tokens']) {
+      final num tokens => tokens,
+      _ => maxOutputTokens,
+    },
+  );
+
   final ImportedPreset preset;
   final String branchId, brief, userName, persona, generationType;
   final int throughPosition, randomSeed;
@@ -232,7 +256,7 @@ final class PromptCompiler {
     ];
     final macros = MacroEngine(
       env: input.env,
-      values: _chatValues(chat, input.generationType),
+      values: chatValues(chat, input.generationType),
       clock: input.clock,
       idleSince: _idleSince(conversation),
       seed: input.randomSeed,
@@ -259,7 +283,7 @@ final class PromptCompiler {
         depth: 0,
       );
       chat.add(PromptMessage('user', sent));
-      macros.values.addAll(_chatValues(chat, input.generationType));
+      macros.values.addAll(chatValues(chat, input.generationType));
     }
     final history = <PromptMessage>[];
     if (conversation != null) {
@@ -581,7 +605,7 @@ final class PromptCompiler {
       localVariables: macros.local,
       globalVariables: macros.global,
       chatValues: {
-        ..._chatValues(chat, input.generationType),
+        ...chatValues(chat, input.generationType),
         'firstincludedmessageid': firstIncluded(
           chat.length,
           text == null ? [for (final m in messages) m.role] : null,
@@ -593,17 +617,14 @@ final class PromptCompiler {
   }
 
   /// ST 1.19.0 (06bde939…) chat-macros.js over [chat], and state-macros.js
-  /// `lastGenerationType` ([type] started this request). No message is a
-  /// swipe in progress; an assistant message has one swipe, as every ST
-  /// reply (script.js `saveReply`), the others none. The reader shows a chat
-  /// from its first message (`firstDisplayedMessageId`). What the previous
-  /// request had in context (`chat_metadata.lastInContextMessageId`) is not
-  /// kept, so `firstIncludedMessageId` is empty, as before a chat's first
-  /// request.
-  static Map<String, String> _chatValues(
-    List<PromptMessage> chat,
-    String type,
-  ) {
+  /// `lastGenerationType` ([type] started this request; '' where none
+  /// has since the chat was opened). No message is a swipe in progress; an
+  /// assistant message has one swipe, as every ST reply (script.js
+  /// `saveReply`), the others none. The reader shows a chat from its first
+  /// message (`firstDisplayedMessageId`). What the previous request had in
+  /// context (`chat_metadata.lastInContextMessageId`) is not kept, so
+  /// `firstIncludedMessageId` is empty, as before a chat's first request.
+  static Map<String, String> chatValues(List<PromptMessage> chat, String type) {
     String last(bool Function(PromptMessage m) test) =>
         chat.lastWhere(test, orElse: () => const PromptMessage('', '')).content;
     final id = chat.isEmpty ? '' : '${chat.length - 1}';

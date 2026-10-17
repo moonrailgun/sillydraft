@@ -209,7 +209,8 @@ void main() {
       personaId: 'yu',
     );
     final branch = novel.activeBranchId;
-    // Without a task: the branch's card and persona; no request, no model.
+    // Without a task: the branch's card and persona; with no connection to
+    // write with, the model stays as written.
     final manual = await repo.createChapter(
       branchId: branch,
       content: ManuscriptContent.plainText('暗号'),
@@ -219,7 +220,7 @@ void main() {
         manual.revisionId,
         branchId: branch,
       )).content.text,
-      '服饰：道袍|冷静阿雨|道渊|\n',
+      '服饰：道袍|冷静阿雨|道渊|{{model}}\n',
     );
     // A task keeps the env its prompt was compiled with.
     final task = await repo.createTask(
@@ -509,5 +510,111 @@ void main() {
       '<思>|</思>\n',
     );
     expect(shown(task(legacy)), '<think>\n</think>\n');
+  });
+
+  group('stages without a request', () {
+    // ST reads its live state wherever no request is made: the chat as it is
+    // (chat-macros.js), the model and token limits of the API it would
+    // write with (script.js `getGeneratingModel`, `getMax*Tokens`) and the
+    // selected templates. SillyDraft reads the branch's chapters, writing
+    // profile and the connection writing would use.
+    Future<void> connect(StoryRepository repo, {String model = 'm2'}) async {
+      await repo.setSetting('connections', {
+        'items': [
+          ModelConnection(
+            id: 'w',
+            name: '写作',
+            baseUrl: 'http://localhost:1/v1',
+            model: 'm1',
+            models: ['m1', 'm2'],
+            contextWindow: 8000,
+            maxOutputTokens: 1000,
+          ).raw,
+        ],
+      });
+      await repo.setSetting('modelRoles', {
+        'writing': 'w',
+        'writingModel': model,
+      });
+    }
+
+    test(
+      'display reads the branch\'s chat, preset and connection now',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final branch = (await repo.createNovel(title: '显示')).activeBranchId;
+        final first = await repo.createChapter(
+          branchId: branch,
+          content: ManuscriptContent.plainText('暗号'),
+        );
+        await repo.createChapter(
+          branchId: branch,
+          content: ManuscriptContent.plainText('末章'),
+        );
+        final rule = <String, dynamic>{
+          'findRegex': '/暗号/g',
+          'replaceString':
+              '{{model}}|{{maxContext}}|{{maxResponse}}|{{maxPrompt}}|'
+              '{{instructInput}}|{{lastMessageId}}|{{allChatRange}}|'
+              '{{lastCharMessage}}|{{lastUserMessage}}|{{lastSwipeId}}|'
+              '{{currentSwipeId}}|{{firstDisplayedMessageId}}|'
+              '{{firstIncludedMessageId}}|{{lastGenerationType}}|{{outlet::x}}',
+          'placement': [2],
+          'markdownOnly': true,
+        };
+        for (final (id, data) in [
+          (
+            'text',
+            {
+              'temp': 1,
+              'genamt': 300,
+              'extensions': {
+                'regex_scripts': [rule],
+              },
+            },
+          ),
+          ('instruct', {'input_sequence': '<in>', 'output_sequence': '<out>'}),
+        ]) {
+          await repo.storeResource(
+            id: id,
+            kind: ResourceKind.preset,
+            name: id,
+            filename: '$id.json',
+            sourceHash: id,
+            encryptedSource: [],
+            data: data,
+          );
+        }
+        await repo.setSetting('writing/$branch', {
+          'presetId': 'text',
+          'instructId': 'instruct',
+        });
+        await connect(repo);
+        Future<String> shown() async => (await repo.presentRevision(
+          first.revisionId,
+          branchId: branch,
+        )).content.text;
+        // Two chapters, the last a reply with one swipe; nothing has been
+        // generated since the chat was opened.
+        expect(await shown(), 'm2|8000|300|7700|<in>|1|0-1|末章\n||1|1|0|||\n');
+        // The chat is read as it is when the text is shown.
+        await repo.createChapter(
+          branchId: branch,
+          content: ManuscriptContent.plainText('新章'),
+        );
+        expect(await shown(), 'm2|8000|300|7700|<in>|2|0-2|新章\n||1|1|0|||\n');
+        // So is the connection writing would use.
+        await connect(repo, model: 'm1');
+        expect(await shown(), startsWith('m1|8000|'));
+        // With none, what only a connection gives stays as written; the rule
+        // still applies.
+        await repo.removeSetting('connections');
+        expect(
+          await shown(),
+          '{{model}}|{{maxContext}}|300|{{maxPrompt}}|<in>|2|0-2|新章\n||1|1|0|||\n',
+        );
+      },
+    );
   });
 }

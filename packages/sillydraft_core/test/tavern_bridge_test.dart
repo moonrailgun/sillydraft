@@ -135,6 +135,32 @@ void main() {
       },
     );
 
+    test('chat macros outside a request follow ST\'s live chat', () {
+      final context = DisplayContext.fromCard({
+        'name': '道渊',
+        'first_mes': '',
+        'alternate_greetings': ['一', '二'],
+      }, greetingIndex: 2);
+      String values(Map<String, String> chat) => [
+        for (final key in [
+          'lastmessageid',
+          'lastmessage',
+          'lastswipeid',
+          'currentswipeid',
+          'allchatrange',
+          'firstdisplayedmessageid',
+          'lastgenerationtype',
+        ])
+          chat[key],
+      ].join('|');
+      // `getFirstMessage` drops an empty first greeting from the swipes.
+      expect(values(context.chatMacros(1, '二')), '0|二|2|2|0-0|0|');
+      expect(values(context.chatMacros(3, '末')), '2|末|1|1|0-2|0|');
+      expect(values(context.chatMacros(0, '')), '||||||');
+      // A story without a card starts with an ordinary chapter.
+      expect(values(DisplayContext.empty.chatMacros(1, '首')), '0|首|1|1|0-0|0|');
+    });
+
     test(
       'presents an opening chapter with the card display regex and no task',
       () async {
