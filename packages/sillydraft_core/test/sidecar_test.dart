@@ -107,6 +107,20 @@ final class _TaskWrites extends QueryInterceptor {
   }
 }
 
+/// Scans of a branch's lore versions, the read every listing of notes makes.
+final class _LoreScans extends QueryInterceptor {
+  var count = 0;
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (statement.contains('FROM lore_versions WHERE branch_id')) count++;
+    return executor.runSelect(statement, args);
+  }
+}
+
 /// What each tool call answered, in order, from the task's transcript.
 List<Map<String, dynamic>> _toolResults(GenerationTask task) => [
   for (final m in (task.result['transcript'] as List).cast<Map>())
@@ -820,5 +834,122 @@ void main() {
     final listed = (await b.repo.listLore(b.novel.activeBranchId)).single;
     expect(listed.content, '雨夜救下落水者');
     expect(listed.sourceStale, isTrue);
+  });
+
+  test('a write reads its notes and their staleness in one scan', () async {
+    final scans = _LoreScans();
+    final b = await _book([], spy: scans);
+    final branchId = b.novel.activeBranchId, first = b.chapter.id;
+    final next = await b.repo.createChapter(
+      branchId: branchId,
+      title: '第二章 夜航',
+      content: ManuscriptContent.plainText('夜航船驶出渡口。'),
+    );
+    var head = b.chapter.revisionId;
+    Future<void> edit(String text) async => head = (await b.repo.saveChapter(
+      branchId: branchId,
+      chapterId: first,
+      expectedRevisionId: head,
+      content: ManuscriptContent.plainText(text),
+    )).revisionId;
+    Future<LoreEntry> note(
+      String name,
+      String content, {
+      LoreEntry? over,
+      String? at,
+      Map<String, dynamic>? provenance,
+    }) => b.repo.saveLoreEntry(
+      branchId: branchId,
+      id: over?.id,
+      expectedRevisionId: over?.revisionId,
+      kind: LoreKind.character,
+      name: name,
+      content: content,
+      atChapterId: at ?? first,
+      provenance:
+          provenance ??
+          {
+            'type': 'sidecar',
+            'taskId': 't',
+            'chapterId': first,
+            'revisionId': head,
+          },
+    );
+    // Each write must match what prepare gave when it listed the notes for
+    // the prompt, then listed them again, plainly, for the stale warning.
+    Future<bool> warned(
+      String chapterId, {
+      bool rewrite = false,
+      int? rangeStart,
+      int? rangeEnd,
+    }) async {
+      scans.count = 0;
+      final got = await written(
+        b,
+        chapterId,
+        rewrite: rewrite,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+      );
+      expect(scans.count, 1);
+      final lore = await b.repo.listLore(
+        branchId,
+        throughChapterId: chapterId,
+        ignoreSidecarOf: rewrite && rangeStart == null ? chapterId : null,
+        skipStaleVersions: true,
+      );
+      final stale = (await b.repo.listLore(
+        branchId,
+        throughChapterId: chapterId,
+      )).any((e) => e.sourceStale);
+      expect(got.revisions, [for (final e in lore) e.revisionId]);
+      expect(got.notes.contains('stale_lore'), stale);
+      return stale;
+    }
+
+    Future<List<bool>> writes() async => [
+      for (final chapterId in [first, next.id]) ...[
+        await warned(chapterId),
+        await warned(chapterId, rewrite: true),
+        await warned(chapterId, rewrite: true, rangeStart: 0, rangeEnd: 2),
+      ],
+    ];
+
+    // A deleted note gone stale warns of nothing.
+    final boat = await note('旧渡船', '沉在渡口');
+    await b.repo.deleteLoreEntry(
+      branchId: branchId,
+      id: boat.id,
+      expectedRevisionId: boat.revisionId,
+      atChapterId: first,
+    );
+    await edit('雨夜，林岚撑着红伞走过渡口，船已不见。');
+    expect(await writes(), List.filled(6, false));
+    // A rewrite sets aside the sidecar's note; a reviewed one (written at
+    // the next chapter) is the author's.
+    final lin = await note(
+      '林岚',
+      '雨夜救下落水者',
+      over: await note('林岚', '渡口的摆渡人', provenance: {'type': 'manual'}),
+    );
+    final umbrella = {
+      'type': 'sidecar',
+      'taskId': 't',
+      'chapterId': first,
+      'revisionId': head,
+      'reviewedAt': '2026-10-18T00:00:00.000Z',
+    };
+    await note('红伞', '林岚的伞', at: next.id, provenance: umbrella);
+    expect(await writes(), List.filled(6, false));
+    await edit('改写后：渡口空无一人。');
+    expect(await writes(), List.filled(6, true));
+    // Reviewed again, 林岚 is current; only the next chapter's note is stale.
+    await note(
+      '林岚',
+      '渡口空无一人',
+      over: lin,
+      provenance: {'type': 'manual', 'chapterId': first, 'revisionId': head},
+    );
+    expect(await writes(), [false, false, false, true, true, true]);
   });
 }

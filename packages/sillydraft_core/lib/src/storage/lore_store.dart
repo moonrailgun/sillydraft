@@ -4,7 +4,9 @@ extension LoreOperations on StoryRepository {
   /// Each entity's latest version through [throughChapterId]. Versions the
   /// sidecar wrote for [ignoreSidecarOf], and with [skipStaleVersions] those
   /// whose source chapter changed since, are passed over for the version
-  /// before them, as writing that chapter or after it needs.
+  /// before them, as writing that chapter or after it needs. [staleLatest]
+  /// receives each listed entity's latest version whose source changed,
+  /// passed over or not, from the same scan.
   Future<List<LoreEntry>> listLore(
     String branchId, {
     String? throughChapterId,
@@ -13,6 +15,7 @@ extension LoreOperations on StoryRepository {
     String query = '',
     String? ignoreSidecarOf,
     bool skipStaleVersions = false,
+    List<LoreEntry>? staleLatest,
   }) async {
     final story = await getStory(branchId);
     final positions = {for (final (i, s) in story.chapters.indexed) s.id: i};
@@ -34,6 +37,7 @@ extension LoreOperations on StoryRepository {
 
     final selected = <String, Map<String, Object?>>{};
     final ranks = <String, int>{};
+    final latest = <String, (int, Map<String, Object?>)>{};
     for (final row in await _rows(
       'SELECT * FROM lore_versions WHERE branch_id = ? ORDER BY sequence',
       [branchId],
@@ -42,6 +46,8 @@ extension LoreOperations on StoryRepository {
       if (anchor != null && !positions.containsKey(anchor)) continue;
       final position = anchor == null ? -1 : positions[anchor]!;
       if (position > cutoff) continue;
+      final id = row['entity_id'] as String;
+      if (position >= (latest[id]?.$1 ?? -2)) latest[id] = (position, row);
       if (skipStaleVersions || ignoreSidecarOf != null) {
         final source = provenance(row);
         if ((skipStaleVersions && stale(source)) ||
@@ -49,22 +55,28 @@ extension LoreOperations on StoryRepository {
           continue;
         }
       }
-      final id = row['entity_id'] as String;
       if (position >= (ranks[id] ?? -2)) {
         selected[id] = row;
         ranks[id] = position;
       }
     }
+    bool listed(LoreEntry entry) =>
+        (includeDeleted || !entry.deleted) &&
+        (kind == null || entry.kind == kind) &&
+        '${entry.name} ${entry.content}'.toLowerCase().contains(
+          query.toLowerCase(),
+        );
+    if (staleLatest != null) {
+      for (final (_, row) in latest.values) {
+        if (!stale(provenance(row))) continue;
+        final entry = _lore(row, stale: true);
+        if (listed(entry)) staleLatest.add(entry);
+      }
+    }
     final result = <LoreEntry>[];
     for (final row in selected.values) {
       final entry = _lore(row, stale: stale(provenance(row)));
-      if ((includeDeleted || !entry.deleted) &&
-          (kind == null || entry.kind == kind) &&
-          '${entry.name} ${entry.content}'.toLowerCase().contains(
-            query.toLowerCase(),
-          )) {
-        result.add(entry);
-      }
+      if (listed(entry)) result.add(entry);
     }
     result.sort((a, b) => a.name.compareTo(b.name));
     return result;

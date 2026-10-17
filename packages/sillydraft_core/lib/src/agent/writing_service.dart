@@ -9,6 +9,7 @@ import '../mvu/mvu_data.dart';
 import '../mvu/mvu_init.dart';
 import '../mvu/mvu_service.dart';
 import '../model/chapter_title.dart';
+import '../model/lore.dart';
 import '../model/story.dart';
 import '../providers/provider.dart';
 import '../st/card_importer.dart';
@@ -203,16 +204,15 @@ final class WritingService {
     // Notes whose chapter text changed since give way to the version before
     // them; a whole-chapter rewrite also sets aside the sidecar's notes on
     // the text it replaces.
+    final staleLatest = <LoreEntry>[];
     final lore = await repository.listLore(
       branchId,
       throughChapterId: chapterId,
       ignoreSidecarOf: rewrite && rangeStart == null ? chapterId : null,
       skipStaleVersions: true,
+      staleLatest: staleLatest,
     );
-    final staleLore = (await repository.listLore(
-      branchId,
-      throughChapterId: chapterId,
-    )).any((e) => e.sourceStale);
+    final staleLore = staleLatest.isNotEmpty;
     final availableLore = lore
         .where((e) => e.data['worldBookOnly'] != true)
         .toList();
