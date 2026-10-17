@@ -33,6 +33,9 @@ class _Model implements ModelProvider {
         throw const ProviderException('http_500', '整理模型不可用');
       }
       yield const TextDelta('已整理');
+    } else if ('${request.messages.first['content']}'.contains('章节名')) {
+      log.add('naming');
+      yield const TextDelta('夜渡');
     } else {
       log.add('writing');
       await gates.writing;
@@ -253,6 +256,31 @@ void main() {
       expect(log, ['writing', 'sidecar', 'writing', 'sidecar']);
     },
   );
+
+  testWidgets('the sidecar reads a numbered chapter under its new name', (
+    tester,
+  ) async {
+    final log = <String>[];
+    final d = await _desk(tester, log: log);
+    final unnamed = await d.services.repository.createChapter(
+      branchId: d.branchId,
+    );
+    await writeChapter(d.ref, unnamed, brief: '写夜航');
+    await _settle(tester);
+    expect(log, ['writing', 'naming', 'sidecar']);
+    final named = await d.services.repository.getChapter(
+      branchId: d.branchId,
+      chapterId: unnamed.id,
+    );
+    expect(named.name, '夜渡');
+    final run = await d.services.repository.getTask(
+      (await _tasks(d, TaskKind.sidecar)).single.id,
+    );
+    expect(
+      '${(run.input['request'] as Map)['messages'][1]['content']}',
+      contains('title="${named.title}"'),
+    );
+  });
 
   testWidgets('a failed sidecar does not hold the writing back', (
     tester,

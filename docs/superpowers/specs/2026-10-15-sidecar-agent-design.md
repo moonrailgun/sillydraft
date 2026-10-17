@@ -65,7 +65,7 @@
 
 ### 触发与顺序
 
-- **触发**：`next_chapter.dart` 的 `writeChapter` 在写作任务完成后、与 `_nameWhenWritten` 同一时机，启动该章的旁路整理（续写与改写都经过这里）。在 `proposal_screen.dart` 与 `next_chapter.dart` 里采纳编辑助手提出的正文候选时，同样触发。触发逻辑放在一个函数里，几处调用它。
+- **触发**：`next_chapter.dart` 的 `writeChapter` 在写作任务完成后启动该章的旁路整理；只有编号的章节先起名再启动，事件按新章名记录（续写与改写都经过这里）。在 `proposal_screen.dart` 与 `next_chapter.dart` 里采纳编辑助手提出的正文候选时，同样触发。触发逻辑放在一个函数里，几处调用它。
 - **开关**：全局设置 `sidecar` = `{enabled: true, duties: {characters: true, memory: true, projection: true}}`。总开关关闭或职责全关时不触发。
 - **手动**：资料页“重新整理本章”，对“资料截至哪个故事位置”所选章节（未选时为最后一章）运行，不受总开关限制。
 - **去重**：同一分支同一章节已有进行中的旁路整理时，取消旧的再启动新的。

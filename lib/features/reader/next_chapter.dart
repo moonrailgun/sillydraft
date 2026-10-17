@@ -69,40 +69,37 @@ Future<GenerationTask> writeChapter(
   return task;
 }
 
-/// Once [task] has written its chapter: starts the sidecar on the text that
-/// was taken in, and names a chapter titled only by its number, with the
-/// analysis model when one is set up.
+/// Once [task] has written its chapter: names a chapter titled only by its
+/// number, with the analysis model when one is set up, then starts the
+/// sidecar on the text that was taken in, so its notes carry that name.
 Future<void> _afterWritten(AppServices services, GenerationTask task) async {
+  final done = await services.runner.wait(task.id);
+  if (done.status != TaskStatus.completed) return;
   try {
-    final done = await services.runner.wait(task.id);
-    if (done.status != TaskStatus.completed) return;
-    // A result left for review is not the chapter's text yet; accepting it
-    // starts the sidecar instead.
-    final proposal = done.result['proposalId'];
-    if (proposal is String &&
-        (await services.repository.getProposal(proposal)).status ==
-            ProposalStatus.accepted) {
-      try {
-        await startSidecar(
-          services,
-          branchId: done.branchId,
-          chapterId: done.chapterId!,
-        );
-      } catch (_) {
-        // It can be run again from the lore page.
-      }
-    }
     final connection =
         await services.connectionFor('analysis') ??
         await services.connectionFor('writing');
-    if (connection == null) return;
-    await services.writing.nameChapter(
-      branchId: done.branchId,
-      chapterId: done.chapterId!,
-      connection: connection,
-    );
+    if (connection != null) {
+      await services.writing.nameChapter(
+        branchId: done.branchId,
+        chapterId: done.chapterId!,
+        connection: connection,
+      );
+    }
   } catch (_) {
     // A name is a nicety: on failure the chapter keeps its number.
+  }
+  // A result left for review is not the chapter's text yet; accepting it
+  // starts the sidecar instead.
+  final proposal = done.result['proposalId'];
+  if (proposal is String &&
+      (await services.repository.getProposal(proposal)).status ==
+          ProposalStatus.accepted) {
+    await startSidecar(
+      services,
+      branchId: done.branchId,
+      chapterId: done.chapterId!,
+    );
   }
 }
 
