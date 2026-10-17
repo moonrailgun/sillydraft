@@ -190,7 +190,7 @@ void main() {
       expect(find.textContaining('暗号到了。', findRichText: true), findsWidgets);
       await tester.tap(find.text('预览显示效果'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('采纳到正文'));
+      await tester.tap(find.text('写入正文'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(
         host(services, ReaderScreen(branchId: chapter.branchId)),

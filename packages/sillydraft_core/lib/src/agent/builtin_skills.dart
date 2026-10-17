@@ -34,7 +34,7 @@ metadata:
 ## 输出
 - 按人物分组，每条给出章节标题和简短引文；
 - 先列最影响阅读的问题，每位人物最多五条；
-- 需要补的设定用 propose_lore 提出（certainty 用 inference），需要改的正文用 propose_chapter 提出候选，不要直接下结论替作者改人设。
+- 需要补的设定用 propose_lore 提出（certainty 用 inference），需要改的正文先说明改法，作者同意后再用 propose_chapter 修改，不要直接下结论替作者改人设。
 ''',
     <String, String>{},
   ),
@@ -86,7 +86,7 @@ metadata:
 ## 输出
 - 章节目标与结论一句话；
 - 最多五处具体问题，每处引用开头几个字定位，并给出删、并、补、换位中的具体做法；
-- 作者同意后，用 propose_chapter 生成调整后的候选（instructions 写清要改哪几处），不要整章重写。
+- 作者同意后，用 propose_chapter 改写这几处（instructions 写清要改哪几处），不要整章重写。
 ''',
     <String, String>{},
   ),
@@ -110,7 +110,7 @@ metadata:
 
 ## 输出
 - 先给三到五处“原句 → 改写”的示例和理由，请作者确认方向；
-- 作者确认后用 propose_chapter 生成整章对白调整的候选。
+- 作者确认后用 propose_chapter 调整整章对白。
 ''',
     {
       'references/dialogue-checklist.md': '''
@@ -146,7 +146,7 @@ metadata:
 
 ## 输出
 - 按严重程度排序的问题列表，引用两处原文对照；
-- 资料缺失的设定用 propose_lore 补充，确需修改正文的用 propose_chapter 提出候选。
+- 资料缺失的设定用 propose_lore 补充，确需修改正文的，作者同意后用 propose_chapter 修改。
 ''',
     <String, String>{},
   ),
@@ -170,7 +170,7 @@ metadata:
 
 ## 输出
 - 当前局面摘要和三个方案；
-- 作者选定后，可以用 propose_chapter 为下一个章节生成正文候选（instructions 写入所选节拍），或用 propose_lore 记录计划（certainty 为 plan）。
+- 作者选定后，可以用 propose_chapter 为下一个章节生成正文（instructions 写入所选节拍），或用 propose_lore 记录计划（certainty 为 plan）。
 ''',
     <String, String>{},
   ),

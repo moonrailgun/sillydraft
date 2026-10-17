@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../illustrations/asset_image.dart';
 import '../illustrations/illustration_detail.dart';
+import '../lore/sidecar.dart';
 import '../presets/preset_screen.dart';
 import '../skills/skill_providers.dart';
 import '../skills/skills_screen.dart';
@@ -218,7 +220,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       final conversation = await _ensureConversation();
       if (mounted) setState(() {});
       final profile = await WritingContext.load(services, widget.branchId);
-      await services.editor.send(
+      final task = await services.editor.send(
         conversationId: conversation,
         connection: connection,
         message: text,
@@ -236,6 +238,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         imageConnection: await services.connectionFor('image'),
         attachChapterId: request?.chapterId,
       );
+      unawaited(_sidecarAfterRound(services, task).catchError((Object _) {}));
       if (mounted && request == null) _input.clear();
     } catch (e) {
       if (mounted) setState(() => _error = e);
@@ -250,7 +253,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
     final confirm = await confirmAction(
       context,
       title: '删除这段编辑会话？',
-      message: '会话消息将删除，运行任务会先停止。正文、候选和资料会保留；任务记录中的输入快照也会保留。',
+      message: '会话消息将删除，运行任务会先停止。正文和资料会保留；任务记录中的输入快照也会保留。',
       confirmLabel: '删除会话',
       destructive: true,
     );
@@ -589,13 +592,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
       (
         FLucideIcons.penLine,
         '续写',
-        '按当前情节续写，生成追加正文候选',
-        () => fill('续写$name：沿当前情节自然推进，生成一段追加正文候选。', edit: true),
+        '按当前情节续写，接在正文末尾',
+        () => fill('续写$name：沿当前情节自然推进，写一段追加正文。', edit: true),
       ),
       (
         FLucideIcons.pencil,
         '修改',
-        '说明怎么改，助手提出改写候选',
+        '说明怎么改，助手改写正文',
         () => fill('修改$name：', edit: true),
       ),
       (
@@ -611,7 +614,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         '把人物、设定与伏笔整理成资料建议',
         () => fill('归纳目前为止出场的人物、地点、设定和伏笔，整理成资料建议。'),
       ),
-      (FLucideIcons.notebookPen, '生成正文', '为参考位置的章节生成正文候选', _generate),
+      (FLucideIcons.notebookPen, '生成正文', '为参考位置的章节生成正文', _generate),
     ];
     return SingleChildScrollView(
       key: const Key('agent-quick-actions'),
@@ -868,13 +871,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
                           onPress: _conversation == null ? null : _delete,
                         ),
                         MenuAction(
-                          tooltip: '候选与任务',
+                          tooltip: '任务',
                           entries: [
-                            menuEntry(
-                              pending > 0 ? '候选 · $pending' : '候选',
-                              () => _openList('候选', _proposals),
-                              icon: FLucideIcons.gitCompareArrows,
-                            ),
+                            if (pending > 0)
+                              menuEntry(
+                                '未写入 · $pending',
+                                () => _openList('未写入的正文', _proposals),
+                                icon: FLucideIcons.gitCompareArrows,
+                              ),
                             menuEntry(
                               running > 0 ? '任务 · $running' : '任务',
                               () => _openList('任务', _history),
@@ -1062,7 +1066,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           color: context.theme.colors.mutedForeground,
         ),
         const SizedBox(height: 16),
-        const Text('聊人物、推情节，或让助手生成正文候选。', textAlign: TextAlign.center),
+        const Text('聊人物、推情节，或让助手写正文。', textAlign: TextAlign.center),
         const SizedBox(height: 8),
         Text(
           '这里的对话会独立保存，不会进入正文。',
@@ -1089,67 +1093,44 @@ class _AgentState extends ConsumerState<AgentPanel> {
     ),
   );
 
+  /// Writes the chapter or story state outran, waiting for the author.
   Widget _proposals(WidgetRef ref) => AsyncView(
     value: ref.watch(proposalsProvider(widget.branchId)),
-    builder: (proposals) => proposals.isEmpty
-        ? Center(
-            child: SingleChildScrollView(
+    builder: (all) {
+      final proposals = [
+        for (final p in all)
+          if (p.status == ProposalStatus.pending) p,
+      ];
+      return proposals.isEmpty
+          ? const Center(child: Text('没有未写入的正文。'))
+          : ListView.separated(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('生成的正文会先放在这里，等你审阅。', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FButton(
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: _generate,
-                    child: const Text('生成正文候选'),
+              itemCount: proposals.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, i) {
+                final p = proposals[i];
+                return FTile(
+                  title: Text(
+                    p.summary.isEmpty ? '未写入的正文' : p.summary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-            ),
-          )
-        : ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: proposals.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: FButton(
-                    variant: FButtonVariant.secondary,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: _generate,
-                    prefix: const Icon(FLucideIcons.notebookPen),
-                    child: const Text('生成正文候选'),
+                  subtitle: Text(
+                    p.content.text,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  suffix: const Icon(FLucideIcons.gitCompareArrows),
+                  onPress: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => ProposalScreen(proposalId: p.id),
+                    ),
                   ),
                 );
-              }
-              final p = proposals[i - 1];
-              return FTile(
-                title: Text(
-                  p.status == ProposalStatus.pending
-                      ? '待审阅正文'
-                      : p.status == ProposalStatus.accepted
-                      ? '已采纳'
-                      : '已拒绝',
-                ),
-                subtitle: Text(
-                  p.content.text,
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                suffix: const Icon(FLucideIcons.gitCompareArrows),
-                onPress: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => ProposalScreen(proposalId: p.id),
-                  ),
-                ),
-              );
-            },
-          ),
+              },
+            );
+    },
   );
 
   Widget _history(WidgetRef ref) => AsyncView(
@@ -1408,4 +1389,22 @@ String imageEngineLabel(ModelConnection connection, {String? workflow}) {
     if (file.isNotEmpty) file,
     ?connection.sentModel,
   ].join(' · ');
+}
+
+/// Starts the sidecar on the chapter the assistant wrote in [task] once the
+/// round ends, as a chapter written from the reader starts it.
+Future<void> _sidecarAfterRound(
+  AppServices services,
+  GenerationTask task,
+) async {
+  final done = await services.runner.wait(task.id);
+  final id = done.input['editChapterId'], repo = services.repository;
+  if (id is! String) return;
+  final chapter = await repo.getChapter(branchId: done.branchId, chapterId: id);
+  final sources = done.input['sourceRevisions'] as List? ?? const [];
+  if (sources.any((s) => s['revisionId'] == chapter.revisionId) ||
+      (await repo.getRevision(chapter.revisionId)).sourceProposalId == null) {
+    return;
+  }
+  startSidecarQuietly(services, branchId: done.branchId, chapterId: id);
 }

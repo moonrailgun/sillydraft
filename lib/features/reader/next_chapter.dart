@@ -89,18 +89,7 @@ Future<void> _afterWritten(AppServices services, GenerationTask task) async {
   } catch (_) {
     // A name is a nicety: on failure the chapter keeps its number.
   }
-  // A result left for review is not the chapter's text yet; accepting it
-  // starts the sidecar instead.
-  final proposal = done.result['proposalId'];
-  if (proposal is String &&
-      (await services.repository.getProposal(proposal)).status ==
-          ProposalStatus.accepted) {
-    await startSidecar(
-      services,
-      branchId: done.branchId,
-      chapterId: done.chapterId!,
-    );
-  }
+  await sidecarAfterWrite(services, done);
 }
 
 /// Starts the next chapter of [story] along [brief] and returns its chapter:
@@ -191,7 +180,8 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
         chapterId: task.chapterId!,
       ),
       brief: task.input['brief'] as String? ?? '',
-      rewrite: task.kind == TaskKind.rewrite,
+      // The assistant replaces a chapter without the rewrite kind.
+      rewrite: task.input['append'] != true,
       onWaitSidecar: () => toast(context, sidecarWaitNotice),
       onBudgetDrop: (summary) => showWorldInfoBudgetNotice(context, summary),
     );

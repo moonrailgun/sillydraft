@@ -150,7 +150,7 @@ void main() {
     );
     // A warning: the request can still start.
     expect(
-      tester.widget<FButton>(find.widgetWithText(FButton, '开始生成候选')).onPress,
+      tester.widget<FButton>(find.widgetWithText(FButton, '开始生成')).onPress,
       isNotNull,
     );
 
@@ -166,6 +166,6 @@ void main() {
     expect((await _stored(services)).cap, 0);
     // Checked again with the new budget.
     expect(find.byKey(const Key('world-book-budget')), findsNothing);
-    expect(find.text('开始生成候选'), findsOneWidget);
+    expect(find.text('开始生成'), findsOneWidget);
   });
 }

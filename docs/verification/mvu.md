@@ -20,7 +20,7 @@
 | `move`（仅 JSON Patch）：上游只解析不执行 | SillyDraft 执行移动（扩展） |
 | 更新后 `display_data` = 完整数据且变更路径替换为显示串，`delta_data` 只含变更；数据有变动则重新调和 schema | 相同 |
 | 角色卡自带 `registerMvuSchema`（MVU Zod）脚本时，schema 变为 `any`，结构校验交给脚本 | 不运行脚本；检测到该脚本时结构校验默认关闭（schema `{"type":"any"}`），变量管理器可手动开关（`writing/<分支>` 的 `mvuSchemaChecks`） |
-| 收到回复后：从上一条含变量的消息取数据，执行本条消息中的命令，去掉 `<status_current_variable>` 块，末尾追加 `<StatusPlaceHolderImpl/>`，写入本条消息 | 候选生成完成时从上一章的记录（第一章为初值）执行整章正文中的命令；采纳候选时随其他变量一起提交。追加续写时整章只保留一个占位符 |
+| 收到回复后：从上一条含变量的消息取数据，执行本条消息中的命令，去掉 `<status_current_variable>` 块，末尾追加 `<StatusPlaceHolderImpl/>`，写入本条消息 | 生成完成时从上一章的记录（第一章为初值）执行整章正文中的命令；写入正文时随其他变量一起提交，生成期间正文或变量有变化则不写入。追加续写时整章只保留一个占位符 |
 | 发送提示词时去掉 `\n<StatusPlaceHolderImpl/>`；“随AI输出”模式保留 `<UpdateVariable>`（由角色卡的仅提示词正则移除） | `PromptCompiler` 去掉历史中的占位符；`<UpdateVariable>` 交给正则 |
 | `{{get_message_variable::路径}}`、`{{get_chat_variable}}`、`{{get_global_variable}}`、`{{get_character_variable}}`、`{{get_preset_variable}}`：字符串原样，其余 JSON；`{{format_*_variable::路径}}` 输出 YAML（多行按宏所在列缩进），`_quoted` 变体字符串加双引号；去掉 `$` 开头的键 | `MacroEngine`：`message`/`chat` 读当前章局部变量，`global` 读分支共享变量；角色/预设作用域暂为空表 |
 | 额外模型解析、工具调用、`[mvu_plot]` / `[mvu_update]` 条目按阶段过滤、通知设置 | 未实现；始终按“随AI输出”处理，`[mvu_update]` 条目照常进入提示词 |
@@ -29,12 +29,12 @@
 
 ## 已知差异
 
-- 变量按分支与故事位置隔离；只有采纳候选才提交模型产生的变更。
+- 变量按分支与故事位置隔离；只有写入正文时才提交模型产生的变更。
 - 一章内多次续写时，该章的记录始终是“上一章记录 + 本章全文命令”，与 MVU 按消息计算一致；提示词展示的是该章当前已保存的记录。
 - 不执行角色卡脚本：MVU Zod 的 `prefault`/`clamp` 等 zod 规则不生效，只关闭结构校验。
 - 表达式求值不含 mathjs 的高等运算；日期字符串不参与减法。
 - 角色/预设作用域变量来自界面写入的 `htmlVariables/<分支>`，提示词宏中暂不读取。
-- 变量管理器保存时校验分支变量版本，界面打开后别处（采纳候选、HTML 界面）写入的变化会让保存被拒绝而不是被覆盖；楼层页按需读取每一章的变量。
+- 变量管理器保存时校验分支变量版本，界面打开后别处（写入正文、HTML 界面）写入的变化会让保存被拒绝而不是被覆盖；楼层页按需读取每一章的变量。
 
 ## 验证
 

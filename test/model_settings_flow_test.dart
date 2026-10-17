@@ -285,13 +285,13 @@ void main() {
       await tester.tap(find.text('预览提示词'));
       await tester.pumpAndSettle();
       expect(find.textContaining('tokens · second'), findsOneWidget);
-      expect(find.text('开始生成候选'), findsOneWidget);
+      expect(find.text('开始生成'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('writing-model')));
       await tester.tap(find.byKey(const Key('writing-model')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('我的模型 · first').last);
       await tester.pumpAndSettle();
-      expect(find.text('开始生成候选'), findsNothing);
+      expect(find.text('开始生成'), findsNothing);
       expect(
         await services.repository.listTasks(branchId: chapter.branchId),
         isEmpty,

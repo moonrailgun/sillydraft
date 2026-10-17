@@ -389,7 +389,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('fake-send')));
       await tester.pumpAndSettle();
-      expect(find.text('生成正文候选'), findsOneWidget);
+      expect(find.text('生成正文'), findsOneWidget);
       expect(_brief(tester), '开启仙途');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -451,7 +451,7 @@ void main() {
       (await repo.getBranchVariables(novel.activeBranchId)).local['境界'],
       '凡人',
     );
-    expect(find.text('生成正文候选'), findsOneWidget);
+    expect(find.text('生成正文'), findsOneWidget);
     expect(_brief(tester), '开启仙途');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

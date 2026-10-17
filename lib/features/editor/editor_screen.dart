@@ -36,9 +36,6 @@ class _EditorState extends ConsumerState<EditorScreen> {
 
   /// Whether the assistant is docked beside the manuscript (wide screens).
   bool _assistant = false;
-
-  /// Whether the assistant floats over the manuscript (phones).
-  bool _floating = false;
   late final AppServices _services;
   @override
   void initState() {
@@ -240,8 +237,8 @@ class _EditorState extends ConsumerState<EditorScreen> {
     }
   }
 
-  /// Picks up a candidate the author accepted elsewhere for this chapter, as
-  /// long as nothing typed here is still unsaved.
+  /// Picks up text written into this chapter elsewhere, as long as nothing
+  /// typed here is still unsaved.
   Future<void> _reloadAccepted() async {
     if (_saving != null || _content.encoded != _saved) return;
     final latest = await _services.repository.getChapter(
@@ -269,13 +266,11 @@ class _EditorState extends ConsumerState<EditorScreen> {
         setState(() => _assistant = !_assistant);
         return;
       }
-      setState(() => _floating = true);
       await showAssistantSheet(
         context,
         branchId: _chapter.branchId,
         chapterId: _chapter.id,
       );
-      if (mounted) setState(() => _floating = false);
       await _reloadAccepted();
     } catch (e) {
       if (mounted) showError(context, e);
@@ -332,14 +327,12 @@ class _EditorState extends ConsumerState<EditorScreen> {
     final dirty = _content.encoded != _saved;
     final dock = MediaQuery.sizeOf(context).width >= 1100;
     final docked = dock && _assistant;
-    // With the assistant beside or over the manuscript, a candidate can be
-    // accepted without leaving this page.
-    if (docked || _floating) {
-      ref.listen(
-        repositoryChangesProvider,
-        (_, _) => unawaited(_reloadAccepted().catchError((Object _) {})),
-      );
-    }
+    // A generation written into this chapter while this page is open, e.g.
+    // one whose task page was closed early, or the assistant's beside it.
+    ref.listen(
+      repositoryContentChangesProvider,
+      (_, _) => unawaited(_reloadAccepted().catchError((Object _) {})),
+    );
     final theme = context.theme;
     return PopScope(
       canPop: _allowPop,
@@ -469,7 +462,7 @@ class _EditorState extends ConsumerState<EditorScreen> {
                       size: FButtonSizeVariant.sm,
                       mainAxisSize: MainAxisSize.min,
                       onPress: _saveProposal,
-                      child: const Text('另存为候选'),
+                      child: const Text('另存，稍后处理'),
                     ),
                     FButton(
                       variant: FButtonVariant.outline,

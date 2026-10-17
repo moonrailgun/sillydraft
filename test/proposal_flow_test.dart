@@ -51,7 +51,7 @@ void main() {
         )).content.text.trim(),
         '原来的正文',
       );
-      expect(find.text('采纳到正文'), findsOneWidget);
+      expect(find.text('写入正文'), findsOneWidget);
       await repo.saveChapter(
         branchId: novel.activeBranchId,
         chapterId: chapter.id,
@@ -60,11 +60,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        tester.widget<FButton>(find.widgetWithText(FButton, '采纳到正文')).onPress,
+        tester.widget<FButton>(find.widgetWithText(FButton, '写入正文')).onPress,
         isNull,
       );
       expect(find.textContaining('正文已更新'), findsWidgets);
-      await tester.tap(find.text('拒绝候选'));
+      await tester.tap(find.text('放弃'));
       await tester.pumpAndSettle();
       expect(
         (await repo.getProposal(proposal.id)).status,

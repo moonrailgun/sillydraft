@@ -150,7 +150,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('获取远程结果'));
       await tester.pumpAndSettle();
-      expect(find.text('审阅正文候选'), findsOneWidget);
+      expect(find.text('处理未写入的正文'), findsOneWidget);
       expect(
         (await repo.listTasks(branchId: chapter.branchId)).single.id,
         task.id,

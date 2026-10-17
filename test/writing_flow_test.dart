@@ -78,20 +78,11 @@ void main() {
       await tester.tap(find.text('预览提示词'));
       await tester.pumpAndSettle();
       expect(await repo.listTasks(branchId: novel.activeBranchId), isEmpty);
-      await tester.ensureVisible(find.text('开始生成候选'));
-      await tester.tap(find.text('开始生成候选'));
+      await tester.ensureVisible(find.text('开始生成'));
+      await tester.tap(find.text('开始生成'));
       await tester.pumpAndSettle();
-      expect(
-        (await repo.getChapter(
-          branchId: novel.activeBranchId,
-          chapterId: chapter.id,
-        )).content.text.trim(),
-        '甲原文乙',
-      );
-      await tester.tap(find.text('审阅正文候选'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('采纳到正文'));
-      await tester.pumpAndSettle();
+      // Written straight into the chapter, with nothing left to review.
+      expect(find.text('处理未写入的正文'), findsNothing);
       expect(
         (await repo.getChapter(
           branchId: novel.activeBranchId,

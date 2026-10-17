@@ -351,7 +351,7 @@ void main() {
     expect(requests, hasLength(1));
     expect((await first).ok, isTrue);
     expect(jsonEncode(requests.single.messages), contains(brief));
-    expect(find.text('生成正文候选'), findsNothing);
+    expect(find.text('生成正文'), findsNothing);
     expect(find.byKey(const Key('chapter-draft')), findsOneWidget);
     final duplicate = await bridge.handleMessage(
       jsonEncode({

@@ -53,6 +53,25 @@ void startSidecarQuietly(
   startSidecar(services, branchId: branchId, chapterId: chapterId),
 );
 
+/// Once [task] has written its chapter, starts the sidecar on the text that
+/// was taken in. A result left for the author starts it when accepted.
+Future<void> sidecarAfterWrite(
+  AppServices services,
+  GenerationTask task,
+) async {
+  final done = await services.runner.wait(task.id);
+  final proposal = done.result['proposalId'];
+  if (proposal is String &&
+      (await services.repository.getProposal(proposal)).status ==
+          ProposalStatus.accepted) {
+    await startSidecar(
+      services,
+      branchId: done.branchId,
+      chapterId: done.chapterId!,
+    );
+  }
+}
+
 /// Background steps per branch that may yet start a sidecar task.
 final _starting = <String, Set<Future<void>>>{};
 

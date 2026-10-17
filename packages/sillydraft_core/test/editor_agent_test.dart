@@ -143,7 +143,7 @@ void main() {
           } else {
             toolResult =
                 jsonDecode(request.messages.last['content'] as String) as Map;
-            yield const TextDelta('已提出正文候选。');
+            yield const TextDelta('已写入正文。');
           }
           yield const GenerationFinished('stop');
         }),
@@ -169,7 +169,15 @@ void main() {
         ],
       );
       expect((await runner.wait(task.id)).status, TaskStatus.completed);
-      expect(toolResult!['accepted'], false);
+      // The assistant's write goes straight into the chapter.
+      expect(toolResult!['accepted'], true);
+      expect(
+        (await repo.getChapter(
+          branchId: novel.activeBranchId,
+          chapterId: chapter.id,
+        )).content.text,
+        contains('新段落'),
+      );
       expect(
         toolResult!['worldBookBudget'],
         startsWith('世界书预算不够，1 个条目未放入。本次预算 1 token，受「预算上限」限制'),

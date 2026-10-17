@@ -132,7 +132,11 @@ class TaskScreen extends ConsumerWidget {
               ),
             ),
           ],
-          if (task.result['proposalId'] case final String id)
+          // Written results are already in the chapter; only one the
+          // chapter or story state outran waits for the author.
+          if (task.result['proposalId'] case final String id
+              when ref.watch(proposalProvider(id)).value?.status ==
+                  ProposalStatus.pending)
             _action(
               FButton(
                 onPress: () => Navigator.push(
@@ -141,7 +145,7 @@ class TaskScreen extends ConsumerWidget {
                     builder: (_) => ProposalScreen(proposalId: id),
                   ),
                 ),
-                child: const Text('审阅正文候选'),
+                child: const Text('处理未写入的正文'),
               ),
             ),
           if (task.kind == TaskKind.analysis &&

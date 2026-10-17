@@ -111,7 +111,9 @@ const _editingTools = <Map<String, dynamic>>[
     'type': 'function',
     'function': {
       'name': 'propose_chapter',
-      'description': '用独立写作模型生成正文候选，供作者审阅。不会直接修改正文。',
+      'description':
+          '用独立写作模型生成或改写正文，写完直接写入该章节，作者可从版本历史恢复。'
+          '正文或故事变量在生成期间有变化时不写入，留给作者处理。每轮对话最多写入一次。',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -661,6 +663,9 @@ extension _AgentExecution on TaskRunner {
       final input = task.input;
       final service = WritingService(repository: repository, runner: this);
       final context = input['writingContext'] as Map<String, dynamic>? ?? {};
+      // ponytail: the write moves the chapter past this task's frozen
+      // sources, so later writes and lore suggestions in the same round are
+      // refused as stale; refresh the sources if one round needs several.
       final child = await service.generate(
         branchId: task.branchId,
         chapterId: args['chapterId'] as String,
@@ -693,17 +698,22 @@ extension _AgentExecution on TaskRunner {
                 'card.json',
               )
             : null,
+        autoAccept: true,
       );
       final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
       try {
         final result = await wait(child.id);
         cancel.check();
+        final proposal = result.result['proposalId'];
         return {
           'taskId': child.id,
           'status': result.status.name,
           ...result.result,
           if (result.error.isNotEmpty) 'error': result.error,
-          'accepted': false,
+          'accepted':
+              proposal is String &&
+              (await repository.getProposal(proposal)).status ==
+                  ProposalStatus.accepted,
           // Entries the world info budget left out, for the author to hear.
           for (final d
               in (child.input['compiled'] as Map)['diagnostics'] as List)

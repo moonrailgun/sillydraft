@@ -1081,14 +1081,15 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         roleConnectionProvider(role).select((c) => c.value != null),
       ),
     );
-    // Show inline generation while preserving any saved text. Tasks started
-    // in the candidate editor keep their existing review flow.
+    // Show inline generation while preserving any saved text. A selection
+    // rewrite is only a fragment of the chapter, so it stays on its task page.
     final tasks = ref.watch(tasksProvider(widget.branchId)).value ?? const [];
     final latest = tasks
         .where(
           (t) =>
               [TaskKind.writing, TaskKind.rewrite].contains(t.kind) &&
-              t.chapterId == chapter.id,
+              t.chapterId == chapter.id &&
+              t.input['replacementRange'] == null,
         )
         .firstOrNull;
     final pending =

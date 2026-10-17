@@ -6,6 +6,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../lore/sidecar.dart';
 import '../presets/preset_screen.dart';
 import '../resources/writing_profile.dart';
 import '../settings/settings_screen.dart';
@@ -114,6 +115,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         rangeStart: widget.rangeStart,
         rangeEnd: widget.rangeEnd,
         expectedRevisionId: widget.chapter.revisionId,
+        autoAccept: true,
       );
       if (mounted) setState(() => _draft = draft);
     } catch (e) {
@@ -126,10 +128,9 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
   Future<void> _start() async {
     setState(() => _busy = true);
     try {
-      final task = await ref
-          .read(servicesProvider)
-          .writing
-          .startPrepared(_draft!);
+      final services = ref.read(servicesProvider);
+      final task = await services.writing.startPrepared(_draft!);
+      holdForSidecar(task.branchId, sidecarAfterWrite(services, task));
       if (mounted) Navigator.pop(context, task);
     } catch (e) {
       if (mounted) setState(() => _error = e);
@@ -180,7 +181,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
   Widget build(BuildContext context) {
     final theme = context.theme;
     return PageScaffold(
-      title: widget.rangeStart == null ? '生成正文候选' : '改写选中片段',
+      title: widget.rangeStart == null ? '生成正文' : '改写选中片段',
       body: SafeArea(
         top: false,
         child: ListView(
@@ -193,7 +194,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            const Text('先查看将发送给模型的提示词，再开始生成。结果会进入候选，采纳后才写入正文。'),
+            const Text('先查看将发送给模型的提示词，再开始生成。写完直接写入正文，可在编辑器的版本历史里恢复。'),
             const SizedBox(height: 20),
             if (widget.rangeStart == null)
               Wrap(
@@ -376,7 +377,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
               FButton(
                 onPress: _busy || !draft.canRun ? null : _start,
                 prefix: const Icon(FLucideIcons.sparkles),
-                child: const Text('开始生成候选'),
+                child: const Text('开始生成'),
               ),
             ],
           ],

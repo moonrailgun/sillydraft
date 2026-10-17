@@ -311,11 +311,11 @@ void main() {
     await tester.tap(find.text('候选测试'));
     await tester.pumpAndSettle();
     await _section(tester, '助手');
-    await tester.tap(findAction('候选与任务'));
+    await tester.tap(findAction('任务'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('候选 · 1'));
+    await tester.tap(find.text('未写入 · 1'));
     await tester.pumpAndSettle();
-    expect(find.text('待审阅正文'), findsOneWidget);
+    expect(find.textContaining('候选的新正文'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

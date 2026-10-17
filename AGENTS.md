@@ -55,7 +55,7 @@ macOS 在 `macos/Runner/Info.plist` 里设置了 `FLTEnableImpeller=false`（绕
 
 - 单个 SQLite（drift）库：`StoryRepository`（`storage/story_repository.dart`）是一个 library，各领域的方法以 `part` 文件中的 extension 实现（`manuscript_store.dart`、`proposal_store.dart`、`display_store.dart` 等）。
 - 正文是 Quill delta（`ManuscriptContent`）。`revisions` 不可变；`branch_chapters` 把（分支, 章节）指向当前 revision。编辑、恢复历史都生成新 revision。
-- 模型输出先成为 proposal（候选），只有作者采纳才写成正文 revision；采纳时检查 `baseRevisionId`，旧候选不能覆盖并发修改。
+- 模型输出先成为 proposal（候选），采纳才写成正文 revision；写作任务都自动采纳（`autoAccept`），界面不显示候选。采纳时检查 `baseRevisionId` 和变量版本，生成期间正文或变量有变化就不写入，留作“未写入的正文”等作者处理。
 - 生成任务（`generation_tasks`）持久化完整输入快照：编译后的请求、预设、宏值、时钟、种子、显示正则（`outputRegex`）。
 
 ### 正文与显示的分离

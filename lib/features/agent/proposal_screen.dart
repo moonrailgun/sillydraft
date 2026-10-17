@@ -64,7 +64,7 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
 
   @override
   Widget build(BuildContext context) => PageScaffold(
-    title: '审阅正文候选',
+    title: '未写入的正文',
     body: AsyncView(
       value: ref.watch(proposalProvider(widget.proposalId)),
       builder: (proposal) => AsyncView(
@@ -85,7 +85,7 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                       variant: FAlertVariant.destructive,
                       icon: const Icon(FLucideIcons.circleAlert),
                       title: const Text(
-                        '正文已更新。这份候选依据旧版本，不能直接采纳。请比较后重新生成，或复制所需片段手动编辑。',
+                        '正文已更新。这份正文依据旧版本，不能直接写入。请比较后重新生成，或复制所需片段手动编辑。',
                       ),
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -99,7 +99,7 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                               ClipboardData(text: proposal.content.text),
                             ),
                             prefix: const Icon(FLucideIcons.copy),
-                            child: const Text('复制候选'),
+                            child: const Text('复制这份正文'),
                           ),
                         ),
                       ),
@@ -110,8 +110,8 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Text(
                       proposal.status == ProposalStatus.accepted
-                          ? '已采纳到正文'
-                          : '已拒绝，正文未改变',
+                          ? '已写入正文'
+                          : '已放弃，正文未改变',
                     ),
                   ),
                 Expanded(
@@ -126,7 +126,7 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                             padding: const EdgeInsets.only(bottom: 20),
                             child: FTile(
                               title: const Text('预览显示效果'),
-                              subtitle: const Text('显示正则仅影响预览；采纳与导出保留原正文。'),
+                              subtitle: const Text('显示正则仅影响预览；写入与导出保留原正文。'),
                               suffix: FSwitch(
                                 value: _displayRules,
                                 onChange: (value) =>
@@ -155,7 +155,7 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                               false,
                             );
                             final after = _panel(
-                              '候选正文',
+                              '新正文',
                               _displayRules
                                   ? comparison.before
                                   : comparison.base.content.text,
@@ -210,13 +210,13 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                           variant: FButtonVariant.outline,
                           mainAxisSize: MainAxisSize.min,
                           onPress: _busy ? null : () => _apply(false),
-                          child: const Text('拒绝候选'),
+                          child: const Text('放弃'),
                         ),
                         const Spacer(),
                         FButton(
                           mainAxisSize: MainAxisSize.min,
                           onPress: _busy || stale ? null : () => _apply(true),
-                          child: Text(_busy ? '保存中…' : '采纳到正文'),
+                          child: Text(_busy ? '保存中…' : '写入正文'),
                         ),
                       ],
                     ),

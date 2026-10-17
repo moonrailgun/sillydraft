@@ -216,12 +216,12 @@ void main() {
       fail('prompt preview did not produce a draft');
     }
     await tester.scrollUntilVisible(
-      find.text('开始生成候选'),
+      find.text('开始生成'),
       400,
       scrollable: requestList.first,
     );
     await tester.pumpAndSettle();
-    final startButton = find.widgetWithText(FButton, '开始生成候选');
+    final startButton = find.widgetWithText(FButton, '开始生成');
     final enabled = tester.widget<FButton>(startButton).onPress != null;
     note('start enabled: $enabled');
     if (!enabled) {
