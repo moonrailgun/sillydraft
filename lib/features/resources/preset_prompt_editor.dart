@@ -66,6 +66,10 @@ class _PresetPromptState extends State<PresetPromptEditor> {
     return (_groups[_group] as Map).putIfAbsent('order', _defaultOrder) as List;
   }
 
+  /// The entry open on a narrow screen, where rows collapse to one line.
+  String? _expanded;
+  bool get _narrow => MediaQuery.sizeOf(context).width < 600;
+
   List<dynamic> _defaultOrder() => [
     for (final p in _prompts) {'identifier': p['identifier'], 'enabled': true},
   ];
@@ -179,27 +183,33 @@ class _PresetPromptState extends State<PresetPromptEditor> {
       }
     });
     final theme = context.theme;
+    // Narrow: no drag handle (arrows reorder), details only when expanded.
+    final narrow = _narrow;
+    final open = !narrow || _expanded == id;
     final tile = Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: narrow ? 6 : 8),
       child: FCard(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 12, 4),
+          padding: narrow
+              ? const EdgeInsets.fromLTRB(12, 2, 4, 2)
+              : const EdgeInsets.fromLTRB(4, 8, 12, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  ReorderableDragStartListener(
-                    index: row,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        FLucideIcons.gripVertical,
-                        size: 18,
-                        color: theme.colors.mutedForeground,
+                  if (!narrow)
+                    ReorderableDragStartListener(
+                      index: row,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          FLucideIcons.gripVertical,
+                          size: 18,
+                          color: theme.colors.mutedForeground,
+                        ),
                       ),
                     ),
-                  ),
                   Expanded(
                     // The whole row toggles, not only the switch and texts.
                     child: GestureDetector(
@@ -214,7 +224,7 @@ class _PresetPromptState extends State<PresetPromptEditor> {
                             children: [
                               TextSpan(
                                 text:
-                                    '  $id · ${prompt['role'] ?? 'system'}${marker ? ' · 动态标记' : ''}'
+                                    '  ${narrow ? '' : '$id · '}${prompt['role'] ?? 'system'}${marker ? ' · 动态标记' : ''}'
                                     '${prompt['injection_position'] == 1 ? ' · 深度 ${prompt['injection_depth'] ?? 4}' : ''}',
                                 style: theme.typography.body.sm.copyWith(
                                   color: theme.colors.mutedForeground,
@@ -231,11 +241,23 @@ class _PresetPromptState extends State<PresetPromptEditor> {
                       ),
                     ),
                   ),
+                  if (narrow)
+                    IconAction(
+                      key: Key('prompt-expand-$id'),
+                      tooltip: open ? '收起' : '展开',
+                      onPress: () =>
+                          setState(() => _expanded = open ? null : id),
+                      icon: open
+                          ? FLucideIcons.chevronUp
+                          : FLucideIcons.chevronDown,
+                    ),
                 ],
               ),
-              if (!marker && (prompt['content'] as String? ?? '').isNotEmpty)
+              if (open &&
+                  !marker &&
+                  (prompt['content'] as String? ?? '').isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 6, 8, 4),
+                  padding: EdgeInsets.fromLTRB(narrow ? 0 : 40, 6, 8, 4),
                   child: Text(
                     prompt['content'] as String,
                     maxLines: 2,
@@ -245,47 +267,48 @@ class _PresetPromptState extends State<PresetPromptEditor> {
                     ),
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.only(left: 32, top: 4),
-                child: Wrap(
-                  spacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    FButton(
-                      key: Key('prompt-edit-$id'),
-                      variant: FButtonVariant.ghost,
-                      size: FButtonSizeVariant.sm,
-                      mainAxisSize: MainAxisSize.min,
-                      onPress: () => _edit(prompt),
-                      prefix: const Icon(FLucideIcons.pencil),
-                      child: const Text('编辑条目'),
-                    ),
-                    IconAction(
-                      key: Key('prompt-up-$id'),
-                      tooltip: '上移',
-                      onPress: row > 0
-                          ? () => _move(order, row, row - 1)
-                          : null,
-                      icon: FLucideIcons.arrowUp,
-                    ),
-                    IconAction(
-                      key: Key('prompt-down-$id'),
-                      tooltip: '下移',
-                      onPress: row < _prompts.length - 1
-                          ? () => _move(order, row, row + 1)
-                          : null,
-                      icon: FLucideIcons.arrowDown,
-                    ),
-                    if (!_builtIn.contains(id) && !marker)
-                      IconAction(
-                        key: Key('prompt-delete-$id'),
-                        tooltip: '删除条目',
-                        onPress: () => _delete(prompt),
-                        icon: FLucideIcons.trash2,
+              if (open)
+                Padding(
+                  padding: EdgeInsets.only(left: narrow ? 0 : 32, top: 4),
+                  child: Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      FButton(
+                        key: Key('prompt-edit-$id'),
+                        variant: FButtonVariant.ghost,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: () => _edit(prompt),
+                        prefix: const Icon(FLucideIcons.pencil),
+                        child: const Text('编辑条目'),
                       ),
-                  ],
+                      IconAction(
+                        key: Key('prompt-up-$id'),
+                        tooltip: '上移',
+                        onPress: row > 0
+                            ? () => _move(order, row, row - 1)
+                            : null,
+                        icon: FLucideIcons.arrowUp,
+                      ),
+                      IconAction(
+                        key: Key('prompt-down-$id'),
+                        tooltip: '下移',
+                        onPress: row < _prompts.length - 1
+                            ? () => _move(order, row, row + 1)
+                            : null,
+                        icon: FLucideIcons.arrowDown,
+                      ),
+                      if (!_builtIn.contains(id) && !marker)
+                        IconAction(
+                          key: Key('prompt-delete-$id'),
+                          tooltip: '删除条目',
+                          onPress: () => _delete(prompt),
+                          icon: FLucideIcons.trash2,
+                        ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -324,9 +347,11 @@ class _PresetPromptState extends State<PresetPromptEditor> {
               FSelectItem<int>(title: Text(groupLabel(i)), value: i),
           ],
         ),
-      const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Text('拖动或用箭头调整顺序；开关与顺序作用于当前顺序组，条目内容由各组共享。动态标记在生成时填入正文、人物或世界书。'),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          '${_narrow ? '展开条目后用箭头' : '拖动或用箭头'}调整顺序；开关与顺序作用于当前顺序组，条目内容由各组共享。动态标记在生成时填入正文、人物或世界书。',
+        ),
       ),
     ];
     return ReorderableListView.builder(

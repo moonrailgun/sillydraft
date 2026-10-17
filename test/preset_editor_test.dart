@@ -10,6 +10,61 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'support/host.dart';
 
 void main() {
+  testWidgets('phone rows collapse and reorder only with arrows', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Map<String, dynamic>? changed;
+    await tester.pumpWidget(
+      testHost(
+        Scaffold(
+          body: PresetPromptEditor(
+            value: {
+              'prompts': [
+                for (final id in ['main', 'style'])
+                  {
+                    'identifier': id,
+                    'name': id,
+                    'role': 'system',
+                    'content': '$id 的内容',
+                  },
+              ],
+            },
+            onChanged: (value) => changed = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ReorderableDragStartListener), findsNothing);
+    expect(find.byKey(const Key('prompt-edit-style')), findsNothing);
+    expect(find.text('style 的内容'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('prompt-style'))).height,
+      lessThan(60),
+    );
+    await tester.tap(find.byKey(const Key('prompt-expand-style')));
+    await tester.pumpAndSettle();
+    expect(find.text('style 的内容'), findsOneWidget);
+    expect(find.byKey(const Key('prompt-edit-main')), findsNothing);
+    await tester.tap(find.byKey(const Key('prompt-up-style')));
+    await tester.pumpAndSettle();
+    expect(
+      [
+        for (final item
+            in (changed!['prompt_order'] as List).single['order'] as List)
+          item['identifier'],
+      ],
+      ['style', 'main'],
+    );
+    // The moved entry stays open so the arrows can be tapped again.
+    expect(find.byKey(const Key('prompt-up-style')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1)); // tooltip hide timer
+  });
+
   testWidgets('prompt order skips missing entries and appends unplaced ones', (
     tester,
   ) async {
@@ -156,7 +211,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('prompt-enabled-style')));
+        await tester.tap(find.byKey(const Key('prompt-expand-style')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('prompt-up-style')));
+        await tester.tap(find.byKey(const Key('prompt-expand-main')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('prompt-edit-main')));
         await tester.pumpAndSettle();
         await tester.enterText(

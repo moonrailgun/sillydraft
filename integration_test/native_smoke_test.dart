@@ -231,7 +231,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await waitFor(find.byKey(const Key('prompt-edit-main')));
+    await waitFor(find.byKey(const Key('prompt-enabled-main')));
     await capture('preset');
     expect(tester.takeException(), isNull);
     binding.reportData = {

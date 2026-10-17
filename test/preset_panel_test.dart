@@ -115,6 +115,7 @@ void main() {
       ),
     );
     await tester.tap(row);
+    await tester.tap(find.byKey(const Key('prompt-expand-entry-35')));
     await tester.pumpAndSettle();
     final up = find.byKey(const Key('prompt-up-entry-35'));
     await tester.ensureVisible(up);
