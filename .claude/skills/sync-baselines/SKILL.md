@@ -1,5 +1,5 @@
 ---
-name: sync-upstream
+name: sync-baselines
 description: 定期把 SillyDraft 中照抄上游的名单、规则和版本固定点与上游对齐（SillyTavern 固定提交为主，另含酒馆助手、MVU、ComfyUI、NovelAI、Claude Code/Codex 命令行与工具链）。用户说“同步 ST”“升级 ST 基线”“检查上游更新”“定时同步配置”时使用，也用于定时任务的例行检查。
 ---
 
@@ -131,4 +131,4 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 
 ## 定时运行
 
-可以用 Claude Code 的 `/schedule` 建立每月一次的例行任务，提示词写：“在 sillydraft 仓库运行 sync-upstream 技能，只检查并报告差异，不升级基线、不提交”。
+可以用 Claude Code 的 `/schedule` 建立每月一次的例行任务，提示词写：“在 sillydraft 仓库运行 sync-baselines 技能，只检查并报告差异，不升级基线、不提交”。

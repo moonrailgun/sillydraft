@@ -11,7 +11,7 @@ SillyDraft 用 ST 的角色卡、预设、世界书、正则和社区前端起�
 - 正文显示要和 ST 聊天楼层看起来一致：Markdown 按 showdown（及 ST 的选项）解析，HTML 片段按 DOMPurify 净化。例如代码围栏只要一行以围栏开头就算结束，同一行的余下内容仍是正文（showdown 的规则，见 `HtmlBlocks.find`）。
 - 做不到的地方明确报告缺口（诊断、提示、文档），不静默丢弃，也不冒充兼容。兼容范围与依据记录在 `docs/st-preset-compatibility.md`，行为变化时同步更新。
 - ST 对照数据由 `packages/sillydraft_core/tool/capture_st_reference.mjs`（Node 22，在核心包目录运行）从固定源码生成。重新生成后先比对 reference JSON 的差异，再跑 `dart test test/st_compiler_test.dart test/provider_test.dart`；不要为让测试通过而更新基准。
-- 代码中照抄上游的名单和规则（如推理强度的模型名单）需要定期同步：流程与清单见 `.claude/skills/sync-upstream/SKILL.md`，新增这类镜像时把它登记进清单。
+- 代码中照抄上游的名单和规则（如推理强度的模型名单）需要定期同步：流程与清单见 `.claude/skills/sync-baselines/SKILL.md`，新增这类镜像时把它登记进清单。
 
 ## 命令
 
