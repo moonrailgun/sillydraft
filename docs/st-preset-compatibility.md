@@ -223,3 +223,11 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 NovelAI 文生图对齐固定基线 [SillyTavern 1.19.0 的 NovelAI 图片接口](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/novelai.js#L306)：Bearer 密钥、`/ai/generate-image`、`action: generate`、`params_version: 3`、单图 `n_samples: 1`、正负提示词的 V4 caption 结构，以及 ZIP 内 PNG 的返回格式。默认使用 V4.5 Full、1024×1024、28 步、引导强度 5；提示词原样发送，不隐式加入质量标签。
 
 只支持直连文生图与常用采样参数；不包含 NovelAI 文本后端、参考图编辑、Vibe Transfer、多角色定位、局部重绘、放大或 ST 生图扩展设置导入。取消仅终止等待，服务端可能继续执行和计费；不自动重试。模型列表与 ST 生图扩展的 `loadNovelModels` 一致，包括顺序（第一项为新连接的默认模型）。列表由 `capture_st_reference.mjs` 生成对照（`test/fixtures/st/novelai-models-reference.json`），`novelai_image_test.dart` 校验。它只是可选项，不冒充服务端发现或连接验证，手填其他模型名照常可用。与 ST 的差异：ST 在 ddim 采样器或 V4 Full、V4 Curated 模型下强制关闭 `sm`、`sm_dyn`，这里不做这一步。[模型列表](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/stable-diffusion/index.js#L2457-L2488)、[强制关闭](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/stable-diffusion/index.js#L4015-L4019)协议回归使用本地 HTTP 服务及 ZIP 图片，不调用付费模型。
+
+## 成本
+
+ST 1.19.0 不记录实际花费，只在发送前给 OpenRouter、ElectronHub、Chutes 显示“最大提示成本”：用模型列表单价乘最大输出与（最大上下文 − 最大输出）（[`calculateOpenRouterCost` 等](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/openai.js#L1803-L1947)）。单价来自各来源的 `/models`：OpenRouter 的 `pricing.prompt` / `pricing.completion` 按每 token，ElectronHub 的 `pricing.input` / `pricing.output` 与 Chutes 的 `pricing.prompt` / `pricing.completion` 按每百万 token。
+
+SillyDraft 每次请求结束记一笔（`usage_meter.dart`），设置 → 用量与成本汇总。取值顺序：响应里的 `usage.cost`（OpenRouter 约定；`is_byok` 时加上 `cost_details.upstream_inference_cost`）或 Claude Code 的 `total_cost_usd`；没有时，连接主机是上述三个来源之一，就按 ST 的字段与单位取单价，乘这次的实际 token 数，而不是 ST 的上限；其余记为“无价格”，只记 token，不计入金额。成本在记账时冻结，单价之后变化不重算。
+
+缺口：其他来源（OpenAI、Claude、DeepSeek、自定义网关、远程执行器背后的上游、Codex、NovelAI、ComfyUI）没有单价，除非上游自己返回成本；不发 `stream_options.include_usage`（ST 也不发），上游没返回 token 数或请求中途失败、取消时用 `estimateTokens` 估算，不是模型 tokenizer；与 ST 一样不计缓存折扣、推理、按次和图片费用；只有美元。
