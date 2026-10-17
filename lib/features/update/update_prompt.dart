@@ -7,6 +7,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/services.dart';
+import '../../app/theme.dart';
 import '../../app/widgets.dart';
 
 final appVersionProvider = FutureProvider<PackageInfo>(
@@ -95,49 +96,70 @@ Future<void> _offer(
   String current,
 ) => showAppDialog<void>(
   context: context,
-  builder: (dialog) => AppDialog(
-    key: const Key('update-dialog'),
-    title: Text('发现新版本 ${info.version}'),
-    body: Text(
-      '当前版本 $current\n\n${info.notes.isEmpty ? '这个版本没有更新说明。' : _plain(info.notes)}',
-    ),
-    actions: [
-      FButton(
-        variant: FButtonVariant.outline,
-        onPress: () async {
-          Navigator.pop(dialog);
-          await repository.setSetting('update', {
-            ...?await repository.getSetting('update'),
-            'skip': info.version,
-          });
-        },
-        child: const Text('跳过此版本'),
+  builder: (dialog) {
+    final skip = FButton(
+      variant: FButtonVariant.outline,
+      onPress: () async {
+        Navigator.pop(dialog);
+        await repository.setSetting('update', {
+          ...?await repository.getSetting('update'),
+          'skip': info.version,
+        });
+      },
+      child: const Text('跳过此版本'),
+    );
+    final later = FButton(
+      variant: FButtonVariant.outline,
+      onPress: () => Navigator.pop(dialog),
+      child: const Text('稍后'),
+    );
+    final download = FButton(
+      onPress: () async {
+        Navigator.pop(dialog);
+        var opened = false;
+        try {
+          opened = await launchUrl(
+            Uri.parse(info.downloadUrl),
+            mode: LaunchMode.externalApplication,
+          );
+        } catch (_) {
+          // Reported below like a launcher that declined the URL.
+        }
+        if (!opened && context.mounted) {
+          showError(context, '无法打开浏览器：${info.downloadUrl}');
+        }
+      },
+      prefix: const Icon(FLucideIcons.download),
+      child: const Text('下载'),
+    );
+    return AppDialog(
+      key: const Key('update-dialog'),
+      title: Text('发现新版本 ${info.version}'),
+      body: Text(
+        '当前版本 $current\n\n${info.notes.isEmpty ? '这个版本没有更新说明。' : _plain(info.notes)}',
       ),
-      FButton(
-        variant: FButtonVariant.outline,
-        onPress: () => Navigator.pop(dialog),
-        child: const Text('稍后'),
-      ),
-      FButton(
-        onPress: () async {
-          Navigator.pop(dialog);
-          var opened = false;
-          try {
-            opened = await launchUrl(
-              Uri.parse(info.downloadUrl),
-              mode: LaunchMode.externalApplication,
-            );
-          } catch (_) {
-            // Reported below like a launcher that declined the URL.
-          }
-          if (!opened && context.mounted) {
-            showError(context, '无法打开浏览器：${info.downloadUrl}');
-          }
-        },
-        child: const Text('下载'),
-      ),
-    ],
-  ),
+      actions: touchPlatform
+          // Phones: the rest share a row; the download spans the dialog
+          // below them, nearest the thumb.
+          ? [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: skip),
+                      const SizedBox(width: 8),
+                      Expanded(child: later),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  download,
+                ],
+              ),
+            ]
+          : [skip, later, download],
+    );
+  },
 );
 
 /// Release notes are GitHub Markdown; drop heading marks and code ticks so
