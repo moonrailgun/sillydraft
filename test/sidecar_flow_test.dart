@@ -17,7 +17,8 @@ class _Model implements ModelProvider {
   @override
   final ModelConnection config;
   final List<String> log;
-  final ({Future<void>? writing, Future<void>? sidecar}) gates;
+  final ({Future<void>? writing, Future<void>? sidecar, Future<void>? naming})
+  gates;
   final bool sidecarFails;
   @override
   Stream<ProviderEvent> generate(
@@ -35,6 +36,7 @@ class _Model implements ModelProvider {
       yield const TextDelta('已整理');
     } else if ('${request.messages.first['content']}'.contains('章节名')) {
       log.add('naming');
+      await gates.naming;
       yield const TextDelta('夜渡');
     } else {
       log.add('writing');
@@ -65,6 +67,7 @@ Future<_Desk> _desk(
   List<String>? log,
   Future<void>? writingGate,
   Future<void>? sidecarGate,
+  Future<void>? namingGate,
   bool sidecarFails = false,
   Map<String, dynamic>? sidecar,
   Map<String, dynamic>? roles = const {'analysis': 'm'},
@@ -76,6 +79,7 @@ Future<_Desk> _desk(
     modelProviderFactory: (c) async => _Model(c, log ?? [], (
       writing: writingGate,
       sidecar: sidecarGate,
+      naming: namingGate,
     ), sidecarFails),
   );
   addTearDown(services.close);
@@ -322,6 +326,56 @@ void main() {
       contains('title="${named.title}"'),
     );
   });
+
+  for (final on in [true, false]) {
+    testWidgets(
+      on
+          ? 'the next chapter waits while the one before is named for its '
+                'sidecar'
+          : 'switched off, the next chapter does not wait for a name',
+      (tester) async {
+        final log = <String>[];
+        final naming = Completer<void>();
+        final d = await _desk(
+          tester,
+          log: log,
+          namingGate: naming.future,
+          sidecar: {'enabled': on},
+        );
+        addTearDown(() {
+          if (!naming.isCompleted) naming.complete();
+        });
+        final numbered = await d.services.repository.createChapter(
+          branchId: d.branchId,
+        );
+        await writeChapter(d.ref, numbered, brief: '写夜航');
+        await _settle(tester);
+        expect(log, ['writing', 'naming']);
+        var waited = 0;
+        final next = writeChapter(
+          d.ref,
+          await d.services.repository.createChapter(
+            branchId: d.branchId,
+            name: '雾散',
+          ),
+          brief: '写雾散',
+          onWaitSidecar: () => waited++,
+        );
+        await _settle(tester);
+        expect(waited, on ? 1 : 0);
+        expect(log, ['writing', 'naming', if (!on) 'writing']);
+        naming.complete();
+        await _settle(tester);
+        await next;
+        expect(
+          log,
+          on
+              ? ['writing', 'naming', 'sidecar', 'writing', 'sidecar']
+              : ['writing', 'naming', 'writing'],
+        );
+      },
+    );
+  }
 
   testWidgets('a failed sidecar does not hold the writing back', (
     tester,

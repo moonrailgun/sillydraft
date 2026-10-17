@@ -20,11 +20,9 @@ Future<GenerationTask?> startSidecar(
   bool manual = false,
 }) async {
   final setup = await _setup(services);
-  final duties = setup.settings.duties;
-  if (!manual && (!setup.enabled || duties.isEmpty)) return null;
+  if (!manual && !_runsAfterEachChapter(setup)) return null;
   final connection = setup.connection;
   if (connection == null) {
-    if (!manual) return null;
     throw FormatException(
       await services.connectionFor('writing') == null
           ? '请先在设置里配置资料整理模型。'
@@ -35,12 +33,18 @@ Future<GenerationTask?> startSidecar(
     branchId: branchId,
     chapterId: chapterId,
     connection: connection,
-    duties: duties,
+    duties: setup.settings.duties,
   );
 }
 
 Future<SidecarSetup> _setup(AppServices services) =>
     SidecarSetup.read(services.repository, localCli: services.remote == null);
+
+/// Whether [startSidecar] starts a run on its own after a chapter.
+bool _runsAfterEachChapter(SidecarSetup setup) =>
+    setup.enabled &&
+    setup.settings.duties.isNotEmpty &&
+    setup.connection != null;
 
 /// [startSidecar] for a chapter that just changed, where a failure must not
 /// get in the author's way: it can be run again from the lore page.
@@ -89,14 +93,17 @@ void holdForSidecar(String branchId, Future<void> step) {
 /// Waits for this branch's sidecar runs, and for steps that may still start
 /// one, so the next chapter is written with what they record. [onWait] fires
 /// once when there is one to wait for; a failed run does not stop the
-/// writing.
+/// writing. With no run after each chapter, held steps start none and are not
+/// waited for.
 Future<void> awaitSidecar(
   AppServices services,
   String branchId, {
   VoidCallback? onWait,
   Duration limit = const Duration(minutes: 3),
 }) async {
-  final starting = [...?_starting[branchId]];
+  final starting = _runsAfterEachChapter(await _setup(services))
+      ? [...?_starting[branchId]]
+      : const <Future<void>>[];
   Future<List<GenerationTask>> running() async => [
     for (final task in await services.repository.listTasks(
       branchId: branchId,
