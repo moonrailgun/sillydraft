@@ -1,6 +1,6 @@
 # HTML 界面渲染验证（酒馆助手兼容）
 
-对照对象：[JS-Slash-Runner（酒馆助手）](https://github.com/N0VI028/JS-Slash-Runner) `main` 分支的 `src/panel/render/iframe.ts`、`src/iframe/adjust_iframe_height.js`、`src/iframe/predefine.js`、`src/util/is_frontend.ts`、`src/function/chat_message.ts` 以及 `@types/function/*.d.ts` 的接口声明。本页记录 SillyDraft 内置实现与其对应关系、沙箱边界和已验证范围；未列出的接口视为不支持。
+对照对象：[JS-Slash-Runner（酒馆助手）](https://github.com/N0VI028/JS-Slash-Runner/tree/a0f3a180344cff38a4b3e75041d5a94380b877d6) 提交 `a0f3a180344cff38a4b3e75041d5a94380b877d6`（2026-10-13；本页编写和最后更新时 `main` 都在这个提交）的 `src/panel/render/iframe.ts`、`src/iframe/adjust_iframe_height.js`、`src/iframe/predefine.js`、`src/util/is_frontend.ts`、`src/function/chat_message.ts` 以及 `@types/function/*.d.ts` 的接口声明。本页记录 SillyDraft 内置实现与其对应关系、沙箱边界和已验证范围；未列出的接口视为不支持。
 
 ## 渲染规则
 

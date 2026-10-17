@@ -1,6 +1,6 @@
 # MVU 变量框架验证（MagVarUpdate 兼容）
 
-对照对象：[MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) `master` 分支的 `src/function/update_variables.ts`、`src/function/initvar/variable_init.ts`、`src/function/schema.ts`、`src/function/update/structured_update.ts`、`src/function/request/filter_prompts.ts`、`src/function/global/index.ts` 及其 `tests/`；[酒馆助手](https://github.com/N0VI028/JS-Slash-Runner) `src/function/macro_like.ts` 的 `get_*_variable` / `format_*_variable` 宏；酒馆助手文档《变量管理器》。SillyDraft 内置这些行为，不运行 MVU 的脚本库。
+对照对象：[MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate/tree/54be11b09f21b1c4266e2d54b6f1ba9a3598db05) 提交 `54be11b09f21b1c4266e2d54b6f1ba9a3598db05`（2026-10-06；本页编写时 `master` 与默认分支 `beta` 都在这个提交）的 `src/function/update_variables.ts`、`src/function/initvar/variable_init.ts`、`src/function/schema.ts`、`src/function/update/structured_update.ts`、`src/function/request/filter_prompts.ts`、`src/function/global/index.ts` 及其 `tests/`；[酒馆助手](https://github.com/N0VI028/JS-Slash-Runner) `src/function/macro_like.ts` 的 `get_*_variable` / `format_*_variable` 宏；酒馆助手文档《变量管理器》。SillyDraft 内置这些行为，不运行 MVU 的脚本库。
 
 ## 对应关系
 

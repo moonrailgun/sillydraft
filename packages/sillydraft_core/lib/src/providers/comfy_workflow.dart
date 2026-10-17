@@ -86,7 +86,8 @@ final class ComfyWorkflow extends JsonSource {
   }
 
   /// Standard core widgets follow ComfyUI's object_info input order.
-  /// See Comfy-Org/workflow_templates scripts/comfyui_node_compat/workflow.py.
+  /// See Comfy-Org/workflow_templates scripts/comfyui_node_compat/workflow.py
+  /// at 58aa5c7600544d07bfbd49eac71eba8647d47868.
   static Map<String, dynamic> parseCanvas(
     Map<String, dynamic> canvas,
     Map<String, dynamic> definitions,
