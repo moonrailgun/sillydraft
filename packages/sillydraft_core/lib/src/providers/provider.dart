@@ -183,6 +183,17 @@ final class ModelConnection extends JsonSource {
   String get command => raw['command'] as String? ?? '';
 }
 
+/// The editor also needs tool calls: OpenAI-compatible or a local CLI.
+bool connectionServes(ModelConnection connection, String role) =>
+    switch (role) {
+      'editor' =>
+        connection.supportsText &&
+            (connection.protocol == ModelProtocol.openAICompatible ||
+                connection.protocol.isLocalCli),
+      'image' => connection.supportsImages,
+      _ => connection.supportsText,
+    };
+
 final class ProviderRequest extends JsonSource {
   ProviderRequest({
     List<Map<String, dynamic>> messages = const [],

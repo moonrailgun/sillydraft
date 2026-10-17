@@ -476,13 +476,8 @@ final class AppServices {
 
   /// A phone's list leaves out the desktop's local subscriptions, which
   /// run only there (see [RemoteHost]).
-  Future<List<ModelConnection>> connections() async {
-    final setting = await repository.getSetting('connections');
-    return (setting?['items'] as List? ?? [])
-        .map((v) => ModelConnection.fromJson(v as Map<String, dynamic>))
-        .where((c) => remote == null || !c.protocol.isLocalCli)
-        .toList();
-  }
+  Future<List<ModelConnection>> connections() =>
+      repository.modelConnections(localCli: remote == null);
 
   Future<void> saveConnection(
     ModelConnection connection, {
@@ -515,19 +510,8 @@ final class AppServices {
     await secrets.delete('endpoint/$id');
   }
 
-  Future<ModelConnection?> connectionFor(String role) async {
-    final all = (await connections())
-        .where((c) => connectionServes(c, role))
-        .toList();
-    if (all.isEmpty) return null;
-    final roles = await repository.getSetting('modelRoles');
-    final connection =
-        all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;
-    final model = roles?['${role}Model'];
-    return connection.id == roles?[role] && connection.models.contains(model)
-        ? connection.withModel(model as String)
-        : connection;
-  }
+  Future<ModelConnection?> connectionFor(String role) =>
+      repository.connectionFor(role, localCli: remote == null);
 
   void registerDraft(Object owner, Future<void> Function() flush) =>
       _drafts[owner] = flush;
@@ -603,17 +587,6 @@ final roleConnectionProvider = FutureProvider.family<ModelConnection?, String>((
   ref.watch(repositoryContentChangesProvider);
   return ref.watch(servicesProvider).connectionFor(role);
 });
-
-/// The editor also needs tool calls: OpenAI-compatible or a local CLI.
-bool connectionServes(ModelConnection connection, String role) =>
-    switch (role) {
-      'editor' =>
-        connection.supportsText &&
-            (connection.protocol == ModelProtocol.openAICompatible ||
-                connection.protocol.isLocalCli),
-      'image' => connection.supportsImages,
-      _ => connection.supportsText,
-    };
 
 /// macOS, Windows or Linux: hosts a library for phones and runs local CLIs.
 bool get desktopPlatform =>

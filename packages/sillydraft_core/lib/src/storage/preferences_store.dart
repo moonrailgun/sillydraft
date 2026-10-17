@@ -28,6 +28,36 @@ extension PreferenceOperations on StoryRepository {
   Future<void> removeSetting(String key) =>
       _write(() => _execute('DELETE FROM app_settings WHERE key = ?', [key]));
 
+  /// The model connections in settings; without [localCli], those that run
+  /// a local command-line tool are left out (only a desktop runs them).
+  Future<List<ModelConnection>> modelConnections({bool localCli = true}) async {
+    final setting = await getSetting('connections');
+    return (setting?['items'] as List? ?? [])
+        .map((v) => ModelConnection.fromJson(v as Map<String, dynamic>))
+        .where((c) => localCli || !c.protocol.isLocalCli)
+        .toList();
+  }
+
+  /// The connection [role] uses: the one `modelRoles` assigns it, with the
+  /// model chosen for it, else the first of [modelConnections] that serves
+  /// the role; null when none does.
+  Future<ModelConnection?> connectionFor(
+    String role, {
+    bool localCli = true,
+  }) async {
+    final all = (await modelConnections(localCli: localCli))
+        .where((c) => connectionServes(c, role))
+        .toList();
+    if (all.isEmpty) return null;
+    final roles = await getSetting('modelRoles');
+    final connection =
+        all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;
+    final model = roles?['${role}Model'];
+    return connection.id == roles?[role] && connection.models.contains(model)
+        ? connection.withModel(model as String)
+        : connection;
+  }
+
   Future<void> setReadingProgress({
     required String branchId,
     required String chapterId,
