@@ -577,7 +577,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(
-                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['chapterId'] == null ? '' : ' · 正文章节'}',
+                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选', 'sidecar': '旁路整理'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['chapterId'] == null ? '' : ' · 正文章节'}',
                 ),
               ),
             const SizedBox(height: 24),
