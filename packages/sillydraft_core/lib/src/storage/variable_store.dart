@@ -124,6 +124,62 @@ extension VariableOperations on StoryRepository {
     );
   }
 
+  /// Brings back the variables [chapter] had at the version it was just
+  /// restored to, as MVU keeps them per message swipe: the newest record
+  /// made with the first version on [lineage] that has one, or without any
+  /// what the chapters before it hand down. Later chapters keep their own
+  /// records, as ST leaves later messages alone.
+  Future<void> _restoreVariables(
+    String branchId,
+    Chapter chapter,
+    List<String> lineage,
+  ) async {
+    final records = await _rows(
+      '''SELECT * FROM variable_revisions WHERE branch_id = ? AND chapter_id = ?
+      ORDER BY version DESC''',
+      [branchId, chapter.id],
+    );
+    // A chapter that never had variables of its own has none to restore.
+    if (records.isEmpty) return;
+    Map<String, Object?>? record;
+    for (final id in lineage) {
+      record = records.where((r) => r['revision_id'] == id).firstOrNull;
+      if (record != null) break;
+    }
+    final BranchVariables restored;
+    if (record != null) {
+      restored = BranchVariables(
+        version: 0,
+        local: (jsonDecode(record['local_json'] as String) as Map)
+            .cast<String, String>(),
+        global: (jsonDecode(record['global_json'] as String) as Map)
+            .cast<String, String>(),
+      );
+    } else {
+      final chapters = (await getStory(branchId)).chapters;
+      final at = chapters.indexWhere((s) => s.id == chapter.id);
+      restored = at == 0
+          ? BranchVariables(version: 0)
+          : await _variablesAt(branchId, throughChapterId: chapters[at - 1].id);
+    }
+    final current = await _variablesAt(branchId, throughChapterId: chapter.id);
+    bool same(Map<String, String> a, Map<String, String> b) =>
+        a.length == b.length && a.entries.every((e) => b[e.key] == e.value);
+    // An unchanged state is not written, so it cannot fail a generation that
+    // is waiting to commit its own.
+    if (same(current.local, restored.local) &&
+        same(current.global, restored.global)) {
+      return;
+    }
+    await _setBranchVariables(
+      branchId: branchId,
+      chapter: chapter,
+      expectedVersion: current.version,
+      local: restored.local,
+      global: restored.global,
+    );
+  }
+
   Future<void> _forkSideData(
     StorySnapshot source,
     String branchId,

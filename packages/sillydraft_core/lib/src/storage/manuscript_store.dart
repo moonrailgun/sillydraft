@@ -179,15 +179,21 @@ extension ManuscriptOperations on StoryRepository {
       branchId: branchId,
       chapterId: chapterId,
     );
-    final matching = history.where((r) => r.id == revisionId);
-    if (matching.isEmpty) throw const StoryNotFound('当前分支的历史版本');
-    return _saveChapter(
+    final at = history.indexWhere((r) => r.id == revisionId);
+    if (at < 0) throw const StoryNotFound('当前分支的历史版本');
+    final chapter = await _saveChapter(
       branchId: branchId,
       chapterId: chapterId,
       expectedRevisionId: expectedRevisionId,
-      content: matching.single.content,
+      content: history[at].content,
       reason: 'restore:$revisionId',
     );
+    // The history runs from the current version back, so the restored
+    // version comes first, then the versions it was made from.
+    await _restoreVariables(branchId, chapter, [
+      for (final r in history.skip(at)) r.id,
+    ]);
+    return chapter;
   });
 
   Future<List<GenerationTask>> activeChapterTasks({

@@ -21,6 +21,7 @@
 | 更新后 `display_data` = 完整数据且变更路径替换为显示串，`delta_data` 只含变更；数据有变动则重新调和 schema | 相同 |
 | 角色卡自带 `registerMvuSchema`（MVU Zod）脚本时，schema 变为 `any`，结构校验交给脚本 | 不运行脚本；检测到该脚本时结构校验默认关闭（schema `{"type":"any"}`），变量管理器可手动开关（`writing/<分支>` 的 `mvuSchemaChecks`） |
 | 收到回复后：从上一条含变量的消息取数据，执行本条消息中的命令，去掉 `<status_current_variable>` 块，末尾追加 `<StatusPlaceHolderImpl/>`，写入本条消息 | 生成完成时从上一章的记录（第一章为初值）执行整章正文中的命令；写入正文时随其他变量一起提交，生成期间正文或变量有变化则不写入。追加续写时整章只保留一个占位符 |
+| 变量按楼层的 swipe 保存，切换 swipe 即换成该 swipe 的变量；改动前面的楼层不重算后面的楼层 | 章节版本相当于 swipe：从版本历史恢复时，该章变量回到那个版本写入的记录（那个版本及其前身都没有记录时沿用前面章节的状态），状态不变时不写入；后面章节的记录不变（`restoreRevision`） |
 | 发送提示词时去掉 `\n<StatusPlaceHolderImpl/>`；“随AI输出”模式保留 `<UpdateVariable>`（由角色卡的仅提示词正则移除） | `PromptCompiler` 去掉历史中的占位符；`<UpdateVariable>` 交给正则 |
 | `{{get_message_variable::路径}}`、`{{get_chat_variable}}`、`{{get_global_variable}}`、`{{get_character_variable}}`、`{{get_preset_variable}}`：字符串原样，其余 JSON；`{{format_*_variable::路径}}` 输出 YAML（多行按宏所在列缩进），`_quoted` 变体字符串加双引号；去掉 `$` 开头的键 | `MacroEngine`：`message`/`chat` 读当前章局部变量，`global` 读分支共享变量；角色/预设作用域暂为空表 |
 | 额外模型解析、工具调用、`[mvu_plot]` / `[mvu_update]` 条目按阶段过滤、通知设置 | 未实现；始终按“随AI输出”处理，`[mvu_update]` 条目照常进入提示词 |
@@ -34,13 +35,14 @@
 - 不执行角色卡脚本：MVU Zod 的 `prefault`/`clamp` 等 zod 规则不生效，只关闭结构校验。
 - 表达式求值不含 mathjs 的高等运算；日期字符串不参与减法。
 - 角色/预设作用域变量来自界面写入的 `htmlVariables/<分支>`，提示词宏中暂不读取。
-- 变量管理器保存时校验分支变量版本，界面打开后别处（写入正文、HTML 界面）写入的变化会让保存被拒绝而不是被覆盖；楼层页按需读取每一章的变量。
+- 变量管理器保存时校验分支变量版本，界面打开后别处（写入正文、恢复版本、HTML 界面）写入的变化会让保存被拒绝而不是被覆盖；楼层页按需读取每一章的变量。
 
 ## 验证
 
 | 证据 | 内容 |
 | --- | --- |
 | `packages/sillydraft_core/test/mvu_test.dart` | 参数拆分、取值优先级、路径修正、宽松 JSON/YAML；脚本命令与 JSON Patch 提取、思考块忽略、分号要求；`set` 配对值与数字转换、`insert` 可扩展/模板/必需键、`delete` 变体、`add` 数字与日期、`move`、`any` schema；初值合并、包裹去除、开场覆盖；从角色卡创建时初始化、schema 脚本检测、生成→采纳→变量写入→占位符唯一→下一次提示词包含最新状态且不含占位符、重新处理与重新读取初值、桥接解析；开场 `<initvar>` 覆盖在重新处理与写作请求中保留、章内选区改写后占位符唯一且空行不累积、`{{lastMessage}}` 不含占位符 |
+| `packages/sillydraft_core/test/chapter_snapshot_test.dart` | 每章写入后各有状态快照、按章分叉；恢复版本时该章状态随版本来回切换、恢复到写作前的空白版本时沿用前一章、后面章节不受影响 |
 | `packages/sillydraft_core/test/macro_variable_test.dart` | `get_*_variable` / `format_*_variable` 宏 |
 | `test/variables_flow_test.dart` | 变量管理器：MVU 状态卡、JSON 编辑保存、无效 JSON 报错、重新处理、按楼层查看 |
 | `packages/sillydraft_core/test/mvu_review_test.dart` | 审查后补充：复数 `status_current_variables` 与任意大小写占位符的清理；结构校验开关对已存储记录生效；角色卡解绑后以已存记录为基准；`reloadInitVar` 无条目返回空、条目损坏报错；界面写入不含 `stat_data` 的变量表时保留 MVU 记录 |

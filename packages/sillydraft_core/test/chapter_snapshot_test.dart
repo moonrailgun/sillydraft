@@ -156,6 +156,93 @@ void main() {
     expect((await repo.getStory(fork.id)).chapters, hasLength(2));
   });
 
+  test(
+    'restoring a chapter brings back the story state of that version',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      await repo.storeResource(
+        id: 'card',
+        kind: ResourceKind.character,
+        name: '道渊',
+        filename: 'card.json',
+        sourceHash: 'fixture',
+        encryptedSource: [],
+        data: _card(),
+      );
+      final branchId = (await repo.createNovelFromCard(
+        resourceId: 'card',
+        title: '道渊',
+      )).activeBranchId;
+      final card = const CardImporter().decode(
+        Uint8List.fromList(utf8.encode(jsonEncode(_card()))),
+        'card.json',
+      );
+      final replies = [
+        "下山历练。\n_.set('主角.生命', 100, 70);//遇袭",
+        "闭关突破。\n_.set('主角.境界', '凡人', '筑基');//突破",
+        "重写下山。\n_.set('主角.生命', 100, 40);//重伤",
+      ];
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => _Replies(c, replies),
+      );
+      addTearDown(runner.close);
+      final service = WritingService(repository: repo, runner: runner);
+      final mvu = MvuService(repo);
+      Future<Chapter> write(Chapter chapter, {bool rewrite = false}) async {
+        final task = await service.generate(
+          branchId: branchId,
+          chapterId: chapter.id,
+          connection: ModelConnection(
+            id: 'local',
+            name: 'Test',
+            baseUrl: 'http://localhost:1234/v1',
+            model: 'm',
+          ),
+          brief: '写',
+          append: !rewrite,
+          rewrite: rewrite,
+          card: card,
+          expectedRevisionId: chapter.revisionId,
+          autoAccept: true,
+        );
+        expect((await runner.wait(task.id)).status, TaskStatus.completed);
+        return repo.getChapter(branchId: branchId, chapterId: chapter.id);
+      }
+
+      Future<Map> stateAt(Chapter s) async =>
+          (await mvu.storedAt(branchId, chapterId: s.id))!.statData['主角']
+              as Map;
+      final blank = await repo.createChapter(branchId: branchId, title: '第2章');
+      Future<Chapter> restore(String revisionId) async => repo.restoreRevision(
+        branchId: branchId,
+        chapterId: blank.id,
+        expectedRevisionId: (await repo.getChapter(
+          branchId: branchId,
+          chapterId: blank.id,
+        )).revisionId,
+        revisionId: revisionId,
+      );
+
+      final first = await write(blank);
+      final three = await write(
+        await repo.createChapter(branchId: branchId, title: '第3章'),
+      );
+      final rewritten = await write(first, rewrite: true);
+      expect((await stateAt(rewritten))['生命'], 40);
+
+      // Back to the first reply: its state comes back with it, and the chapter
+      // after keeps its own, as ST leaves later messages alone.
+      expect((await stateAt(await restore(first.revisionId)))['生命'], 70);
+      expect((await stateAt(three))['生命'], 70);
+      expect((await stateAt(three))['境界'], '筑基');
+      // Before any reply the chapter had no state of its own.
+      expect((await stateAt(await restore(blank.revisionId)))['生命'], 100);
+      expect((await stateAt(await restore(rewritten.revisionId)))['生命'], 40);
+    },
+  );
+
   test('a changed chapter leaves an auto-accepted result for review', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);
