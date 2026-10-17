@@ -51,31 +51,44 @@ void startSidecarQuietly(
   AppServices services, {
   required String branchId,
   required String chapterId,
-}) => unawaited(
-  startSidecar(
-    services,
-    branchId: branchId,
-    chapterId: chapterId,
-  ).then((_) {}, onError: (_) {}),
+}) => holdForSidecar(
+  branchId,
+  startSidecar(services, branchId: branchId, chapterId: chapterId),
 );
 
-/// Waits for this branch's sidecar runs, so the next chapter is written with
-/// what they record. [onWait] fires once when there is one to wait for; a
-/// failed run does not stop the writing.
+/// Background steps per branch that may yet start a sidecar task.
+final _starting = <String, Set<Future<void>>>{};
+
+/// Runs [step], which may start a sidecar on [branchId], in the background:
+/// until it ends, [awaitSidecar] waits for it, so the next chapter cannot
+/// slip in before the sidecar task exists. A failure is dropped; the sidecar
+/// can be run again from the lore page.
+void holdForSidecar(String branchId, Future<void> step) {
+  final steps = _starting.putIfAbsent(branchId, () => {});
+  final quiet = step.then((_) {}, onError: (_) {});
+  steps.add(quiet);
+  unawaited(quiet.whenComplete(() => steps.remove(quiet)));
+}
+
+/// Waits for this branch's sidecar runs, and for steps that may still start
+/// one, so the next chapter is written with what they record. [onWait] fires
+/// once when there is one to wait for; a failed run does not stop the
+/// writing.
 Future<void> awaitSidecar(
   AppServices services,
   String branchId, {
   VoidCallback? onWait,
   Duration limit = const Duration(minutes: 3),
 }) async {
-  final running = [
+  final starting = [...?_starting[branchId]];
+  Future<List<GenerationTask>> running() async => [
     for (final task in await services.repository.listTasks(
       branchId: branchId,
       activeOnly: true,
     ))
       if (task.kind == TaskKind.sidecar) task,
   ];
-  if (running.isEmpty) return;
+  if (starting.isEmpty && (await running()).isEmpty) return;
   onWait?.call();
   final done = Completer<void>();
   void finish() {
@@ -86,7 +99,14 @@ Future<void> awaitSidecar(
   // setting if slow local models need longer.
   final timer = Timer(limit, finish);
   unawaited(
-    Future.wait([for (final task in running) services.runner.wait(task.id)])
+    Future.wait(starting)
+        // Listed again: a step that just ended may have started a run.
+        .then((_) => running())
+        .then(
+          (runs) => Future.wait([
+            for (final task in runs) services.runner.wait(task.id),
+          ]),
+        )
         .then((_) {}, onError: (_) {})
         .whenComplete(finish),
   );

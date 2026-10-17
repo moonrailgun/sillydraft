@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -65,7 +63,9 @@ Future<GenerationTask> writeChapter(
       onBudgetDrop?.call(d['message'] as String);
     }
   }
-  unawaited(_afterWritten(services, task));
+  // Held from now, so a next chapter started the moment this one is
+  // written still waits for its sidecar.
+  holdForSidecar(chapter.branchId, _afterWritten(services, task));
   return task;
 }
 

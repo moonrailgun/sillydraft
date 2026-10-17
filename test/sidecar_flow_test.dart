@@ -216,6 +216,44 @@ void main() {
     );
   });
 
+  testWidgets(
+    'a chapter started the moment the one before is written waits for its '
+    'sidecar',
+    (tester) async {
+      final log = <String>[];
+      final gate = Completer<void>();
+      final d = await _desk(tester, log: log, sidecarGate: gate.future);
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      final second = await d.services.repository.createChapter(
+        branchId: d.branchId,
+        name: '夜航',
+      );
+      final task = await writeChapter(d.ref, d.first, brief: '写渡口');
+      var waited = 0;
+      late Future<GenerationTask> next;
+      // Before the first chapter's sidecar task exists.
+      unawaited(
+        d.services.runner.wait(task.id).then((_) {
+          next = writeChapter(
+            d.ref,
+            second,
+            brief: '写夜航',
+            onWaitSidecar: () => waited++,
+          );
+        }),
+      );
+      await _settle(tester);
+      expect(waited, 1);
+      expect(log, ['writing', 'sidecar']);
+      gate.complete();
+      await _settle(tester);
+      await next;
+      expect(log, ['writing', 'sidecar', 'writing', 'sidecar']);
+    },
+  );
+
   testWidgets('a failed sidecar does not hold the writing back', (
     tester,
   ) async {
