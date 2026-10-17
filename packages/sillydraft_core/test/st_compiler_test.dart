@@ -44,6 +44,7 @@ PresetInput input(
   String type = 'normal',
   int? contextWindow,
   int? maxOutputTokens,
+  WorldInfoBudget worldInfoBudget = const WorldInfoBudget(),
 }) => PresetInput(
   preset: preset,
   branchId: 'main',
@@ -59,6 +60,7 @@ PresetInput input(
   generationType: type,
   contextWindow: contextWindow,
   maxOutputTokens: maxOutputTokens,
+  worldInfoBudget: worldInfoBudget,
 );
 
 void main() {
@@ -286,7 +288,10 @@ void main() {
         '1': {'uid': 1, 'constant': true, 'content': 'other lore'},
       }, branchId: 'other'),
     ];
-    CompiledPrompt compile(int contextWindow) => PromptCompiler().compile(
+    CompiledPrompt compile(
+      int contextWindow, [
+      WorldInfoBudget budget = const WorldInfoBudget(),
+    ]) => PromptCompiler().compile(
       input(
         chat([p('worldInfoBefore', '', marker: true)]),
         card: card,
@@ -303,6 +308,7 @@ void main() {
         books: books,
         contextWindow: contextWindow,
         maxOutputTokens: 2000,
+        worldInfoBudget: budget,
       ),
     );
     final roomy = compile(4000);
@@ -314,18 +320,72 @@ void main() {
       roomy.diagnostics.where((d) => d.code.startsWith('world_book')),
       isEmpty,
     );
-    // 25% of 400: the long entry overflows, which ends recursion too.
+    // 25% of 400: the long entry overflows, which ends recursion too. One
+    // summary says why and what to raise, the entries follow it.
     final tight = compile(2400);
     expect(tight.messages.single.content, 'harbor');
     expect(
       tight.diagnostics
-          .where((d) => d.code == 'world_book_budget')
-          .map((d) => d.message),
-      ['世界书条目 2 超出所有世界书共用的预算（100 token，即提示词上限的 25%），未放入'],
+          .where((d) => d.code.startsWith('world_book_budget'))
+          .map((d) => (d.code, d.message)),
+      [
+        (
+          'world_book_budget_summary',
+          '世界书预算不够，1 个条目未放入。本次预算 100 token，'
+              '是提示词上限 400 token（上下文 2400 − 回复长度 2000）的 25%。'
+              '可在「设置 › 世界书预算」调高比例；预设的回复长度越大，提示词上限越小，预算也越小。',
+        ),
+        ('world_book_budget', '世界书条目 2 超出世界书预算（100 token），未放入'),
+      ],
+    );
+    // The author's setting: half of 400 holds both entries.
+    expect(
+      compile(2400, const WorldInfoBudget(percent: 50)).messages.single.content,
+      roomy.messages.single.content,
+    );
+    // A cap under the share is the budget, and the summary names it.
+    final capped = compile(4000, const WorldInfoBudget(cap: 100));
+    expect(capped.messages.single.content, 'harbor');
+    expect(
+      capped.diagnostics
+          .where((d) => d.code == 'world_book_budget_summary')
+          .single
+          .message,
+      '世界书预算不够，1 个条目未放入。本次预算 100 token，受「预算上限」限制'
+      '（提示词上限 2000 token 的 25% 本是 500 token）。'
+      '可在「设置 › 世界书预算」调高或取消预算上限（0 为不限）。',
     );
   });
 
   group('world info budget', () {
+    test('the share of the prompt size, then the cap, as ST computes it', () {
+      // world-info.js L4736-4741: Math.round(percent × maxPrompt / 100) || 1,
+      // then a positive cap under which it must stay.
+      const fresh = WorldInfoBudget();
+      expect((fresh.percent, fresh.cap), (25, 0));
+      expect(fresh.tokens(400), 100);
+      expect(fresh.tokens(2), 1, reason: '0.5 rounds up');
+      expect(fresh.tokens(1), 1, reason: 'Math.round(0.25) || 1');
+      expect(const WorldInfoBudget(percent: 50).tokens(401), 201);
+      expect(const WorldInfoBudget(percent: 50, cap: 150).tokens(400), 150);
+      expect(const WorldInfoBudget(percent: 50, cap: 300).tokens(400), 200);
+      expect(const WorldInfoBudget(percent: 100, cap: 0).tokens(400), 400);
+      // Saved under ST's `world_info_settings` names; a fresh install's
+      // values when absent, and a percent over 100 reset as ST migrates it.
+      expect(const WorldInfoBudget(percent: 40, cap: 8000).toJson(), {
+        'world_info_budget': 40,
+        'world_info_budget_cap': 8000,
+      });
+      final read = WorldInfoBudget.fromJson({
+        'world_info_budget': 40,
+        'world_info_budget_cap': 8000,
+      });
+      expect((read.percent, read.cap), (40, 8000));
+      final absent = WorldInfoBudget.fromJson(null);
+      expect((absent.percent, absent.cap), (25, 0));
+      expect(WorldInfoBudget.fromJson({'world_info_budget': 250}).percent, 25);
+    });
+
     WorldBookResult activate(
       List<WorldBook> books, {
       required int? budget,
@@ -368,6 +428,7 @@ void main() {
               // 15.2 → 16, not under 12: overflows, its macros still ran.
               {
                 'uid': 3,
+                'comment': '乙条',
                 'constant': true,
                 'content': '{{setvar::x::1}}乙乙乙',
                 'order': 80,
@@ -418,11 +479,9 @@ void main() {
       expect(result.before, '己\n忽略\n戊\n甲甲');
       expect(result.after, '丁');
       expect(result.diagnostics.map((d) => (d.code, d.message)), [
-        for (final id in ['3', '4'])
-          (
-            'world_book_budget',
-            '世界书条目 $id 超出所有世界书共用的预算（12 token，即提示词上限的 25%），未放入',
-          ),
+        // Named by its comment when it has one.
+        for (final id in ['3「乙条」', '4 '])
+          ('world_book_budget', '世界书条目 $id超出世界书预算（12 token），未放入'),
       ]);
       expect(macros.local, {'x': '1'});
       // No request size: no budget.

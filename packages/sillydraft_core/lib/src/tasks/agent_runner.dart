@@ -704,6 +704,11 @@ extension _AgentExecution on TaskRunner {
           ...result.result,
           if (result.error.isNotEmpty) 'error': result.error,
           'accepted': false,
+          // Entries the world info budget left out, for the author to hear.
+          for (final d
+              in (child.input['compiled'] as Map)['diagnostics'] as List)
+            if (d['code'] == 'world_book_budget_summary')
+              'worldBookBudget': d['message'],
         };
       } finally {
         remove();

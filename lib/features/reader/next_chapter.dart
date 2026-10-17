@@ -9,6 +9,7 @@ import '../../app/widgets.dart';
 import '../agent/agent_providers.dart';
 import '../lore/sidecar.dart';
 import '../resources/writing_profile.dart';
+import '../settings/world_info_budget.dart';
 
 /// The brief that writes the next chapter along [direction].
 String chapterBrief(Map direction) =>
@@ -26,6 +27,10 @@ Future<GenerationTask> writeChapter(
   required String brief,
   bool rewrite = false,
   VoidCallback? onWaitSidecar,
+
+  /// Told the summary when the world info budget left entries out; the
+  /// write goes on regardless.
+  ValueChanged<String>? onBudgetDrop,
 }) async {
   final services = ref.read(servicesProvider);
   final connection = await services.connectionFor('writing');
@@ -37,25 +42,29 @@ Future<GenerationTask> writeChapter(
   if (rewrite && !brief.startsWith(rewriteInstruction)) {
     brief = '$rewriteInstruction$brief';
   }
-  final task = await services.writing.startPrepared(
-    await services.writing.prepare(
-      branchId: chapter.branchId,
-      chapterId: chapter.id,
-      connection: connection,
-      brief: brief,
-      append: !rewrite,
-      rewrite: rewrite,
-      preset: profile.preset,
-      card: profile.card,
-      userName: profile.userName,
-      persona: profile.persona,
-      worldBooks: profile.books,
-      globalRegex: profile.regex,
-      selectedOrderId: profile.selectedOrderId,
-      expectedRevisionId: chapter.revisionId,
-      autoAccept: true,
-    ),
+  final draft = await services.writing.prepare(
+    branchId: chapter.branchId,
+    chapterId: chapter.id,
+    connection: connection,
+    brief: brief,
+    append: !rewrite,
+    rewrite: rewrite,
+    preset: profile.preset,
+    card: profile.card,
+    userName: profile.userName,
+    persona: profile.persona,
+    worldBooks: profile.books,
+    globalRegex: profile.regex,
+    selectedOrderId: profile.selectedOrderId,
+    expectedRevisionId: chapter.revisionId,
+    autoAccept: true,
   );
+  final task = await services.writing.startPrepared(draft);
+  for (final d in draft.compiled['diagnostics'] as List) {
+    if (d['code'] == 'world_book_budget_summary') {
+      onBudgetDrop?.call(d['message'] as String);
+    }
+  }
   unawaited(_afterWritten(services, task));
   return task;
 }
@@ -106,6 +115,7 @@ Future<Chapter> startNextChapter(
   required String name,
   required String brief,
   VoidCallback? onWaitSidecar,
+  ValueChanged<String>? onBudgetDrop,
 }) async {
   final services = ref.read(servicesProvider), repo = services.repository;
   // No chapter for a request that cannot run.
@@ -127,7 +137,13 @@ Future<Chapter> startNextChapter(
   } else {
     chapter = await repo.createChapter(branchId: story.branch.id, name: name);
   }
-  await writeChapter(ref, chapter, brief: brief, onWaitSidecar: onWaitSidecar);
+  await writeChapter(
+    ref,
+    chapter,
+    brief: brief,
+    onWaitSidecar: onWaitSidecar,
+    onBudgetDrop: onBudgetDrop,
+  );
   return chapter;
 }
 
@@ -180,6 +196,7 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
       brief: task.input['brief'] as String? ?? '',
       rewrite: task.kind == TaskKind.rewrite,
       onWaitSidecar: () => toast(context, sidecarWaitNotice),
+      onBudgetDrop: (summary) => showWorldInfoBudgetNotice(context, summary),
     );
   });
 

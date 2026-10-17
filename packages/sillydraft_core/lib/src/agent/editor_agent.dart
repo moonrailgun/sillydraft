@@ -183,6 +183,9 @@ final class EditorAgent {
           maxOutputTokens: connection.maxOutputTokens,
           selectedOrderId: selectedOrderId,
           worldBooks: worldBooks,
+          worldInfoBudget: WorldInfoBudget.fromJson(
+            await repository.getSetting(WorldInfoBudget.settingKey),
+          ),
           globalRegex: globalRegex,
           localVariables: variables.local,
           globalVariables: variables.global,

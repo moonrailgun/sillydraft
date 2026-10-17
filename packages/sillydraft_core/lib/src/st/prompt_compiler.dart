@@ -68,6 +68,7 @@ final class PresetInput {
     Map<String, String> globalVariables = const {},
     List<Map<String, dynamic>> globalRegex = const [],
     List<PromptMessage>? conversation,
+    this.worldInfoBudget = const WorldInfoBudget(),
   }) : env = envOf(
          card: card?.raw,
          user: userName,
@@ -135,6 +136,9 @@ final class PresetInput {
   /// the editing assistant. Its last user message is the current input.
   final List<PromptMessage>? conversation;
   final List<ScopedWorldBook> worldBooks;
+
+  /// The author's world info budget setting, for all [worldBooks] together.
+  final WorldInfoBudget worldInfoBudget;
   final Map<String, String> localVariables, globalVariables;
   final String _globalRegex;
   List<Map<String, dynamic>> get globalRegex =>
@@ -348,6 +352,7 @@ final class PromptCompiler {
       'scenario': macros.render('{{charScenario}}'),
       'personaDescription': input.persona,
     };
+    final context = input.env.maxContext, response = input.env.maxResponse;
     final scanned = WorldBookEngine().activate(
       input.worldBooks,
       characterBook: card?.worldBook,
@@ -365,12 +370,9 @@ final class PromptCompiler {
       seed: input.randomSeed,
       // script.js `Generate` L4560, L4635: the scan gets the prompt size,
       // `getMaxPromptTokens` (what `{{maxPrompt}}` gives).
-      budget: switch ((input.env.maxContext, input.env.maxResponse)) {
-        (final num context, final num response) => worldInfoBudget(
-          context - response,
-        ),
-        _ => null,
-      },
+      budget: context == null || response == null
+          ? null
+          : input.worldInfoBudget.tokens(context - response),
       generationType: input.generationType,
       // L4625-4633 `globalScanData`, the same card fields.
       scanData: (field) => switch (field) {
@@ -383,6 +385,18 @@ final class PromptCompiler {
         _ => '',
       },
     );
+    final dropped = scanned.diagnostics
+        .where((d) => d.code == 'world_book_budget')
+        .length;
+    if (dropped > 0) {
+      diagnostics.add(
+        input.worldInfoBudget.overflow(
+          dropped,
+          context: context!,
+          response: response!,
+        ),
+      );
+    }
     diagnostics.addAll(scanned.diagnostics);
     // world-info.js L5202-5217: highest order first, each entry goes
     // through the world info regex (one at a depth with its depth); empty

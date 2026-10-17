@@ -118,6 +118,53 @@ void main() {
   });
 
   test(
+    'the world info budget setting reaches the prompt and the task',
+    () async {
+      final books = [
+        ScopedWorldBook(
+          WorldBook.fromJson({
+            'entries': {
+              '1': {'uid': 1, 'constant': true, 'content': '雾港的旧灯塔'},
+            },
+          }),
+        ),
+      ];
+      Future<PreparedWriting> prepare() => service.prepare(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '继续',
+        worldBooks: books,
+      );
+      List<Object?> codes(PreparedWriting draft) => [
+        for (final d in draft.compiled['diagnostics'] as List) d['code'],
+      ];
+      final fresh = await prepare();
+      expect(fresh.input['request'].toString(), contains('雾港的旧灯塔'));
+      expect(fresh.input['worldInfoBudget'], {
+        'world_info_budget': 25,
+        'world_info_budget_cap': 0,
+      });
+      expect(codes(fresh), isNot(contains('world_book_budget_summary')));
+      await repository.setSetting(
+        WorldInfoBudget.settingKey,
+        const WorldInfoBudget(cap: 1).toJson(),
+      );
+      final capped = await prepare();
+      expect(capped.input['request'].toString(), isNot(contains('雾港的旧灯塔')));
+      expect(capped.input['worldInfoBudget'], {
+        'world_info_budget': 25,
+        'world_info_budget_cap': 1,
+      });
+      expect(
+        codes(capped),
+        containsAll(['world_book_budget_summary', 'world_book_budget']),
+      );
+      expect(capped.canRun, isTrue, reason: 'a warning, not a blocker');
+    },
+  );
+
+  test(
     'preview is frozen and selection rewrite preserves surrounding formatting',
     () async {
       chapter = await repository.saveChapter(

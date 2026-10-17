@@ -108,6 +108,75 @@ void main() {
       );
     },
   );
+  test(
+    'a chapter proposal tells of world book entries the budget left out',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '预算');
+      final chapter = await repo.createChapter(
+        branchId: novel.activeBranchId,
+        content: ManuscriptContent.plainText('故事正文'),
+      );
+      final conversation = await repo.createConversation(
+        branchId: novel.activeBranchId,
+      );
+      await repo.setSetting(
+        WorldInfoBudget.settingKey,
+        const WorldInfoBudget(cap: 1).toJson(),
+      );
+      Map? toolResult;
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+          if (request.tools.isEmpty) {
+            // The chapter request the tool starts.
+            yield const TextDelta('新段落');
+          } else if (request.messages.last['role'] != 'tool') {
+            yield ToolCallReady('w', 'propose_chapter', {
+              'chapterId': chapter.id,
+              'instructions': '续写',
+              'append': true,
+            });
+            yield const GenerationFinished('tool_calls');
+            return;
+          } else {
+            toolResult =
+                jsonDecode(request.messages.last['content'] as String) as Map;
+            yield const TextDelta('已提出正文候选。');
+          }
+          yield const GenerationFinished('stop');
+        }),
+      );
+      addTearDown(runner.close);
+      final task = await EditorAgent(repository: repo, runner: runner).send(
+        conversationId: conversation,
+        connection: ModelConnection(
+          id: 'test',
+          name: 'test',
+          baseUrl: 'http://localhost:1',
+          model: 'test',
+        ),
+        message: '续写一段',
+        worldBooks: [
+          ScopedWorldBook(
+            WorldBook.fromJson({
+              'entries': {
+                '1': {'uid': 1, 'constant': true, 'content': '雾港旧事'},
+              },
+            }),
+          ),
+        ],
+      );
+      expect((await runner.wait(task.id)).status, TaskStatus.completed);
+      expect(toolResult!['accepted'], false);
+      expect(
+        toolResult!['worldBookBudget'],
+        startsWith('世界书预算不够，1 个条目未放入。本次预算 1 token，受「预算上限」限制'),
+      );
+    },
+  );
+
   test('editor completes a tool round within its branch without writing manuscript', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);

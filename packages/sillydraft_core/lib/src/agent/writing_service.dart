@@ -241,6 +241,9 @@ final class WritingService {
     // output and display stages render the same time later.
     final clock = DateTime.now();
     final seed = Random.secure().nextInt(1 << 31);
+    final worldInfoBudget = WorldInfoBudget.fromJson(
+      await repository.getSetting(WorldInfoBudget.settingKey),
+    );
     final presetInput = PresetInput(
       preset: selectedPreset,
       branchId: branchId,
@@ -255,6 +258,7 @@ final class WritingService {
       contextWindow: connection.contextWindow,
       maxOutputTokens: connection.maxOutputTokens,
       worldBooks: worldBooks,
+      worldInfoBudget: worldInfoBudget,
       globalRegex: globalRegex,
       selectedOrderId: selectedOrderId,
       localVariables: localVariables,
@@ -331,6 +335,8 @@ final class WritingService {
         'clock': clock.toUtc().toIso8601String(),
         'utcOffset': clock.timeZoneOffset.inMinutes,
         'seed': seed,
+        // The world info budget it ran with (tasks without it: 25% / no cap).
+        'worldInfoBudget': worldInfoBudget.toJson(),
         'presetHash': sha256
             .convert(utf8.encode(jsonEncode(selectedPreset.exportJson())))
             .toString(),

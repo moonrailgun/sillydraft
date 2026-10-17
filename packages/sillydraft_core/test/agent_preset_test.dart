@@ -80,6 +80,11 @@ void main() {
         }),
       );
       addTearDown(runner.close);
+      // The world info budget setting applies here too.
+      await repo.setSetting(
+        WorldInfoBudget.settingKey,
+        const WorldInfoBudget(cap: 1).toJson(),
+      );
       final task = await EditorAgent(repository: repo, runner: runner).send(
         conversationId: conversation,
         connection: ModelConnection(
@@ -94,6 +99,15 @@ void main() {
           'card.json',
         ),
         chatPreset: _chatPreset(),
+        worldBooks: [
+          ScopedWorldBook(
+            WorldBook.fromJson({
+              'entries': {
+                '1': {'uid': 1, 'constant': true, 'content': '雾港旧事'},
+              },
+            }),
+          ),
+        ],
       );
       await runner.wait(task.id);
       final messages = seen!.messages;
@@ -115,6 +129,9 @@ void main() {
       final record = stored.input['agentPreset'] as Map<String, dynamic>;
       expect(record['name'], '雾港文风');
       expect(record['droppedParameters'], ['assistant_prefill']);
+      expect([
+        for (final d in record['diagnostics'] as List) d['code'],
+      ], contains('world_book_budget_summary'));
     },
   );
 

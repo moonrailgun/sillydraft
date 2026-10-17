@@ -10,6 +10,7 @@ import '../presets/preset_screen.dart';
 import '../resources/writing_profile.dart';
 import '../settings/settings_screen.dart';
 import '../settings/model_select.dart';
+import '../settings/world_info_budget.dart';
 
 class WritingRequestScreen extends ConsumerStatefulWidget {
   const WritingRequestScreen({
@@ -136,6 +137,44 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Entries the world info budget left out: one warning saying why, a way
+  /// to raise the budget and check again, and the entries themselves.
+  Widget _budgetAlert(String summary, List<String> entries) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: FAlert(
+      key: const Key('world-book-budget'),
+      icon: const Icon(FLucideIcons.bookOpen),
+      title: Text(summary),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          FButton(
+            variant: FButtonVariant.outline,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: _busy
+                ? null
+                : () async {
+                    await showWorldInfoBudgetDialog(context);
+                    if (mounted) await _preview();
+                  },
+            prefix: const Icon(FLucideIcons.slidersHorizontal),
+            child: const Text('调整世界书预算'),
+          ),
+          FAccordion(
+            children: [
+              FAccordionItem(
+                title: Text('未放入的条目（${entries.length}）'),
+                child: SelectableText(entries.join('\n')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -298,21 +337,29 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                 ),
               ),
               for (final d in draft.compiled['diagnostics'] as List)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: FAlert(
-                    variant: d['severity'] == 'error'
-                        ? FAlertVariant.destructive
-                        : FAlertVariant.primary,
-                    icon: Icon(
-                      d['severity'] == 'error'
-                          ? FLucideIcons.circleAlert
-                          : FLucideIcons.info,
+                if (d['code'] == 'world_book_budget_summary')
+                  _budgetAlert(d['message'] as String, [
+                    for (final e in draft.compiled['diagnostics'] as List)
+                      if (e['code'] == 'world_book_budget')
+                        e['message'] as String,
+                  ])
+                // Listed under the budget summary instead.
+                else if (d['code'] != 'world_book_budget')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: FAlert(
+                      variant: d['severity'] == 'error'
+                          ? FAlertVariant.destructive
+                          : FAlertVariant.primary,
+                      icon: Icon(
+                        d['severity'] == 'error'
+                            ? FLucideIcons.circleAlert
+                            : FLucideIcons.info,
+                      ),
+                      title: Text(d['message'] as String),
+                      subtitle: Text('${d['code']} · ${d['path']}'),
                     ),
-                    title: Text(d['message'] as String),
-                    subtitle: Text('${d['code']} · ${d['path']}'),
                   ),
-                ),
               const SizedBox(height: 8),
               FAccordion(
                 children: [

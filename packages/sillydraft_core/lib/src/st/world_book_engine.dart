@@ -35,22 +35,85 @@ final class WorldBookResult {
       .join('\n');
 }
 
-/// ST 1.19.0 (06bde939…) world-info.js `checkWorldInfo` L4736-4741: one
-/// budget for every book's entries, `world_info_budget` percent (ST's default
-/// 25) of the prompt size, `Math.round`ed, `|| 1`; `world_info_budget_cap` is
-/// 0 (none) by default. A book's own `token_budget` is never read.
-int worldInfoBudget(num maxPrompt) {
-  final budget = (25 * maxPrompt / 100 + 0.5).floor();
-  return budget == 0 ? 1 : budget;
+/// The world info budget, one for every book's entries: ST 1.19.0
+/// (06bde939…) World Info settings `world_info_budget` and
+/// `world_info_budget_cap`, a global setting as in ST. A book's own
+/// `token_budget` is never read.
+final class WorldInfoBudget {
+  const WorldInfoBudget({this.percent = 25, this.cap = 0});
+
+  /// The setting as saved, under ST's `world_info_settings` names; a fresh
+  /// install's values (default/content/settings.json) when absent, and a
+  /// percent over 100 reset to 25 as world-info.js `setWorldInfoSettings`
+  /// (L924-925, L938-939, L946-948) reads and migrates them.
+  factory WorldInfoBudget.fromJson(Map<String, dynamic>? json) {
+    final percent = switch (json?['world_info_budget']) {
+      final num value => value.toInt(),
+      _ => 25,
+    };
+    return WorldInfoBudget(
+      percent: percent > 100 ? 25 : percent,
+      cap: switch (json?['world_info_budget_cap']) {
+        final num value => value.toInt(),
+        _ => 0,
+      },
+    );
+  }
+
+  /// The global setting it is saved under.
+  static const settingKey = 'worldInfo';
+
+  /// index.html L4730-4745: "Context %" (1-100) of the prompt size, and
+  /// "Budget Cap" in tokens (0-65536, 0 = disabled).
+  final int percent, cap;
+
+  Map<String, dynamic> toJson() => {
+    'world_info_budget': percent,
+    'world_info_budget_cap': cap,
+  };
+
+  int _share(num maxPrompt) {
+    final budget = (percent * maxPrompt / 100 + 0.5).floor();
+    return budget == 0 ? 1 : budget;
+  }
+
+  /// world-info.js `checkWorldInfo` L4736-4741: [percent] of [maxPrompt],
+  /// `Math.round`ed, `|| 1`, then no more than a positive [cap].
+  int tokens(num maxPrompt) {
+    final budget = _share(maxPrompt);
+    return cap > 0 && budget > cap ? cap : budget;
+  }
+
+  /// One warning for the [dropped] entries the budget left out of a request
+  /// on [context] with [response] tokens of reply: what set the budget and
+  /// which setting raises it. The entries' own warnings follow it.
+  CompatibilityDiagnostic overflow(
+    int dropped, {
+    required num context,
+    required num response,
+  }) {
+    final maxPrompt = context - response, budget = tokens(maxPrompt);
+    final share = _share(maxPrompt);
+    final why = share > budget
+        ? '受「预算上限」限制（提示词上限 ${maxPrompt.round()} token 的 $percent% '
+              '本是 $share token）。可在「设置 › 世界书预算」调高或取消预算上限（0 为不限）。'
+        : '是提示词上限 ${maxPrompt.round()} token（上下文 ${context.round()} − '
+              '回复长度 ${response.round()}）的 $percent%。可在「设置 › 世界书预算」调高比例；'
+              '预设的回复长度越大，提示词上限越小，预算也越小。';
+    return CompatibilityDiagnostic(
+      'world_book_budget_summary',
+      '世界书预算不够，$dropped 个条目未放入。本次预算 $budget token，$why',
+    );
+  }
 }
 
-// The world info settings of a fresh ST install, which SillyDraft does not
-// let a work change: default/content/settings.json `world_info_settings`
+// The other world info settings of a fresh ST install, which SillyDraft does
+// not let a work change: default/content/settings.json `world_info_settings`
 // (world-info.js `setWorldInfoSettings` L917-947), the rest at their module
 // defaults (L69-82): `world_info_min_activations` and
 // `world_info_max_recursion_steps` 0, which leave the scan unbounded,
 // `world_info_use_group_scoring` off. `world_info_include_names` (on) is
-// PromptCompiler's, the budget [worldInfoBudget]'s.
+// PromptCompiler's.
 const _scanDepth = 2;
 const _recursive = true;
 const _caseSensitive = false;
@@ -77,8 +140,8 @@ final class WorldBookEngine {
   /// [messages], oldest first, as script.js `Generate` L4624 gives them.
   /// [characterBook] is the card's lore and [books] the rest (ST's global
   /// lore; `world_info_character_strategy` character first). [budget] (see
-  /// [worldInfoBudget]) applies to all of them together; null (no request
-  /// size) leaves the scan unlimited. [character] is the card's name (ST's
+  /// [WorldInfoBudget.tokens]) applies to all of them together; null (no
+  /// request size) leaves the scan unlimited. [character] is the card's name (ST's
   /// file name for it), null without a card; [scanData] gives ST's
   /// `globalScanData` texts by field name.
   WorldBookResult activate(
@@ -99,7 +162,8 @@ final class WorldBookEngine {
     void drop(WorldBookEntry entry) => diagnostics.add(
       CompatibilityDiagnostic(
         'world_book_budget',
-        '世界书条目 ${entry.id} 超出所有世界书共用的预算（$budget token，即提示词上限的 25%），未放入',
+        '世界书条目 ${entry.id}${entry.comment.isEmpty ? ' ' : '「${entry.comment}」'}'
+            '超出世界书预算（$budget token），未放入',
       ),
     );
     // getSortedEntries L4590-4644 (`character_first`): the character's

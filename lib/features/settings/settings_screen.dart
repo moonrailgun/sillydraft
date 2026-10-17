@@ -16,6 +16,7 @@ import '../skills/skills_screen.dart';
 import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
 import 'model_select.dart';
+import 'world_info_budget.dart';
 
 final connectionsProvider = FutureProvider<List<ModelConnection>>((ref) {
   ref.watch(repositoryChangesProvider);
@@ -265,6 +266,12 @@ class SettingsScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
+              Text('世界书预算', style: heading),
+              const SizedBox(height: 8),
+              const Text(worldInfoBudgetHelp),
+              const SizedBox(height: 12),
+              const WorldInfoBudgetFields(),
               const SizedBox(height: 24),
               FTileGroup(
                 children: [

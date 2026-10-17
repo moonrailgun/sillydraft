@@ -434,6 +434,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a one-tap write tells of entries the budget left out', (
+    tester,
+  ) async {
+    final book = await _open(tester);
+    final repo = book.services.repository;
+    await repo.storeResource(
+      id: 'book',
+      kind: ResourceKind.worldBook,
+      name: '灯塔设定',
+      filename: 'book.json',
+      sourceHash: 'fixture',
+      encryptedSource: [],
+      data: {
+        'name': '灯塔设定',
+        'entries': {
+          '1': {'uid': 1, 'constant': true, 'content': '旧灯塔'},
+        },
+      },
+    );
+    await repo.setSetting('writing/${book.branchId}', {
+      'worldBookIds': ['book'],
+    });
+    await repo.setSetting(
+      WorldInfoBudget.settingKey,
+      const WorldInfoBudget(cap: 1).toJson(),
+    );
+    final pick = find.byKey(const Key('direction-continue-0'));
+    await tester.ensureVisible(pick);
+    await tester.pumpAndSettle();
+    await tester.tap(pick);
+    await tester.pumpAndSettle();
+    // Written all the same; the notice says why and how to raise it.
+    final story = await repo.getStory(book.branchId);
+    expect(story.chapters.last.content.text, contains('她守在灯下。'));
+    expect(
+      find.textContaining('世界书预算不够，1 个条目未放入。本次预算 1 token，受「预算上限」限制'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('world-book-budget-notice')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('世界书预算不够'), findsNothing);
+    await tester.enterText(find.byKey(const Key('world-info-budget-cap')), '0');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(
+      WorldInfoBudget.fromJson(
+        await repo.getSetting(WorldInfoBudget.settingKey),
+      ).cap,
+      0,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a write that cannot start says why in plain words', (
     tester,
   ) async {

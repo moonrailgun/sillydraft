@@ -9,6 +9,7 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../branches/branch_screen.dart';
 import '../lore/sidecar.dart';
+import '../settings/world_info_budget.dart';
 import 'next_chapter.dart';
 
 /// The latest story-direction run on a branch, and whether the story it
@@ -179,6 +180,7 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
       name: '${direction['title']}',
       brief: brief ?? chapterBrief(direction),
       onWaitSidecar: () => toast(context, sidecarWaitNotice),
+      onBudgetDrop: (summary) => showWorldInfoBudgetNotice(context, summary),
     );
     if (mounted) setState(() => _adjusting = null);
     widget.onOpenChapter?.call(chapter.id);
