@@ -60,6 +60,45 @@ extension DisplayOperations on StoryRepository {
     );
   }
 
+  /// The preset a branch writes with, from its writing [profile]: the
+  /// chosen one (as customised for the branch), bundled with the context,
+  /// instruct, system prompt and reasoning templates chosen beside it;
+  /// null without any. A chat preset cannot take templates.
+  Future<ImportedPreset?> writingPreset(Map<String, dynamic> profile) async {
+    final override = (profile['presetOverrides'] as Map?)?[profile['presetId']];
+    ImportedPreset? preset;
+    if (override is Map<String, dynamic>) {
+      preset = PresetImporter().decode(override);
+    } else if (profile['presetId'] case final String id) {
+      final resource = await getResource(id);
+      if (resource.kind != ResourceKind.preset) {
+        throw const FormatException('此资源不是预设');
+      }
+      preset = PresetImporter().decode(resource.data);
+    }
+    final parts = <String, dynamic>{
+      for (final MapEntry(:key, :value) in const {
+        'contextId': 'context',
+        'instructId': 'instruct',
+        'systemPromptId': 'sysprompt',
+        'reasoningId': 'reasoning',
+      }.entries)
+        if (profile[key] case final String id)
+          value: (await getResource(id)).data,
+    };
+    if (parts.isEmpty) return preset;
+    if (preset?.kind == PresetKind.chat ||
+        preset?.kind == PresetKind.promptPack) {
+      throw const FormatException('聊天预设不能与文本补全格式组件混用。请清除格式组件或选用文本补全预设。');
+    }
+    return PresetImporter().decode({
+      ...?preset?.kind == PresetKind.bundle ? preset?.raw : null,
+      if (preset != null && preset.kind != PresetKind.bundle)
+        'preset': preset.raw,
+      ...parts,
+    });
+  }
+
   Future<Map<String, dynamic>?> _resourceData(Object? id) async {
     if (id is! String) return null;
     try {

@@ -44,37 +44,7 @@ class WritingContext {
   ) async {
     final data =
         await services.repository.getSetting('writing/$branchId') ?? {};
-    final override = (data['presetOverrides'] as Map?)?[data['presetId']];
-    ImportedPreset? preset = override is Map<String, dynamic>
-        ? PresetImporter().decode(override)
-        : data['presetId'] is String
-        ? await services.library.preset(data['presetId'] as String)
-        : null;
-    final parts = <String, dynamic>{};
-    for (final entry in {
-      'contextId': 'context',
-      'instructId': 'instruct',
-      'systemPromptId': 'sysprompt',
-      'reasoningId': 'reasoning',
-    }.entries) {
-      if (data[entry.key] is String) {
-        parts[entry.value] = (await services.repository.getResource(
-          data[entry.key] as String,
-        )).data;
-      }
-    }
-    if (parts.isNotEmpty) {
-      if (preset?.kind == PresetKind.chat ||
-          preset?.kind == PresetKind.promptPack) {
-        throw const FormatException('聊天预设不能与文本补全格式组件混用。请清除格式组件或选用文本补全预设。');
-      }
-      preset = PresetImporter().decode({
-        ...?preset?.kind == PresetKind.bundle ? preset?.raw : null,
-        if (preset != null && preset.kind != PresetKind.bundle)
-          'preset': preset.raw,
-        ...parts,
-      });
-    }
+    final preset = await services.repository.writingPreset(data);
     final books = <ScopedWorldBook>[];
     for (final id in (data['worldBookIds'] as List? ?? [])) {
       final resource = await services.repository.getResource(id as String);
