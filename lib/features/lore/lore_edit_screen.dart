@@ -78,7 +78,9 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(repositoryProvider);
-      var provenance = widget.entry?.provenance ?? {'type': 'manual'};
+      // A copy: a save that fails leaves the open entry as it was.
+      var provenance = {...?widget.entry?.provenance};
+      if (provenance.isEmpty) provenance = {'type': 'manual'};
       if (_rechecked && provenance['chapterId'] is String) {
         final source = await repo.getChapter(
           branchId: widget.branchId,
