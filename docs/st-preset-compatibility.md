@@ -4,7 +4,7 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 导入、编译、资源库、手机条目编辑与正文候选闭环已接入应用。源码基线为 ST `release` 分支的 `1.19.0`，提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`，提交日期为 2026-09-14，核查日期为 2026-10-13。后续升级按提交维护兼容记录，不把浮动分支作为测试依据。[版本依据](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/package.json)
 
-实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入及指令序列化函数，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
+实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入、指令序列化与推理强度解析函数，并读取推理强度的模型名单，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
 
 显示专用正则已接入候选预览和独立阅读器。阅读器使用当前分支的显示规则，调整后已有章节立即重新渲染；生成章节仍使用任务中冻结的时钟、随机种子、环境宏取值和宏变量，手动编辑继承此前生成的宏上下文。候选预览及历史对比保留任务中冻结的规则。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
@@ -176,6 +176,8 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
 
 **回复长度与上下文长度按 ST 的预设字段读取。** 聊天补全预设的回复长度是 `openai_max_tokens`。文本补全预设按 ST 保存的格式：回复长度是 `genamt`，`max_length` 是上下文长度（ST 保存时写入、载入时读回）；NovelAI 自带的预设没有 `genamt`，此时 `max_length` 是回复长度、`max_context` 是上下文长度。回复长度作为请求的最大输出 token 发送，预设未设置时用连接的最大输出 token。上下文长度一律取模型连接的「上下文 token 上限」：预设中的 `openai_max_context`、`max_length`、`max_context` 都不发送、也不参与写作前的预算检查；ST 不从预设读取的 `truncation_length` 同样不用。[保存字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/preset-manager.js#L744-L747)、[载入字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/script.js#L8121-L8136)、[NovelAI 预设](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/nai-settings.js#L177-L186)
+
+**推理强度 `reasoning_effort` 只在 ST 会发送时发送。** OpenAI 兼容连接对应 ST 的自定义（Custom）聊天补全来源，按 ST 1.19.0 分两步处理。客户端 `getReasoningEffort`：`auto`（ST 默认值）表示“不设置，由模型决定”，不发送；`min` 发送为 `low`，`max` 发送为 `high`；模型名为 `koboldcpp/…` 时分别为 `minimal`、`xhigh`。服务端只把结果发给 `OPENAI_REASONING_EFFORT_MODELS` 中的 OpenAI 推理模型（o1、o3、o4-mini、gpt-5 系列等，模型名须完全一致）和 `koboldcpp/` 模型，其中 `gpt-5.3-chat-latest` 固定为 `medium`；其他模型不发送，ST 也不提示。文本补全不发送，ST 的文本补全请求没有这个字段。名单外的模型需要推理强度时，在连接的“后端支持的额外参数”中加入 `reasoning_effort`，预设中的值会原样发送（包括 `auto`），相当于 ST 自定义来源的 `custom_include_body`。模型名单与对照用例由 `capture_st_reference.mjs` 从固定提交生成（`test/fixtures/st/reasoning-effort-reference.json`），`provider_test.dart` 校验实现与之一致。[客户端解析](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/openai.js#L2545-L2664)、[服务端过滤](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/backends/chat-completions.js#L2599-L2607)、[模型名单](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/constants.js#L461-L507)
 
 不支持的参数显示为未生效。模型能力不足导致关键语义无法实现时，用户可以换连接或明确采用兼容降级；不默默转成另一种采样行为。
 

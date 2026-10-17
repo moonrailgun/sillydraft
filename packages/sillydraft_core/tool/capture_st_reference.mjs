@@ -69,3 +69,50 @@ await fs.writeFile('test/fixtures/st/text-format-reference.json', JSON.stringify
   expected: formattedStory + ctx.chat_start + '\n' + lastLine + formattedTail,
 }, null, 2) + '\n');
 console.log('Captured ST text sequence formatting');
+
+// reasoning_effort for a Custom (OpenAI-compatible) chat completion: the
+// client's getReasoningEffort, then the server filter in chat-completions.js.
+const constantsSource = await (await fetch(base + 'src/constants.js')).text();
+const serverSource = await (await fetch(base + 'src/endpoints/backends/chat-completions.js')).text();
+function literal(text, name) {
+  const marker = `export const ${name} = `;
+  const at = text.indexOf(marker);
+  if (at < 0) throw new Error(`Pinned constant missing: ${name}`);
+  const from = at + marker.length;
+  const end = text.indexOf(text[from] === '[' ? '\n];' : '\n};', from);
+  return vm.runInNewContext(`(${text.slice(from, end + 2)})`);
+}
+const effortStart = source.indexOf('function getReasoningEffort(');
+if (effortStart < 0) throw new Error('Pinned function missing: getReasoningEffort');
+const effortBody = source.slice(effortStart, source.indexOf('\n}\n', effortStart) + 3);
+const filterStart = serverSource.indexOf('// A few of OpenAIs reasoning models support reasoning effort');
+if (filterStart < 0) throw new Error('Pinned reasoning effort filter missing');
+const filter = serverSource.slice(filterStart, serverSource.indexOf('\n\n', filterStart));
+const models = literal(constantsSource, 'OPENAI_REASONING_EFFORT_MODELS');
+const fixed = literal(constantsSource, 'OPENAI_FIXED_REASONING_EFFORT');
+const effortContext = vm.createContext({
+  chat_completion_sources: literal(source, 'chat_completion_sources'),
+  reasoning_effort_types: literal(source, 'reasoning_effort_types'),
+  model_list: [],
+  CHAT_COMPLETION_SOURCES: literal(constantsSource, 'CHAT_COMPLETION_SOURCES'),
+  OPENAI_REASONING_EFFORT_MODELS: models,
+  OPENAI_FIXED_REASONING_EFFORT: fixed,
+  OPENAI_REASONING_EFFORT_MAP: literal(constantsSource, 'OPENAI_REASONING_EFFORT_MAP'),
+});
+vm.runInContext(effortBody, effortContext, {timeout: 1000});
+vm.runInContext(`function sentEffort(request) { const bodyParams = {};\n${filter}\nreturn bodyParams.reasoning_effort; }`, effortContext, {timeout: 1000});
+const custom = effortContext.chat_completion_sources.CUSTOM;
+const cases = ['gpt-5', 'gpt-5.3-chat-latest', 'gpt-4o', 'koboldcpp/llama', 'claude-sonnet-4-5'].flatMap(model =>
+  Object.values(effortContext.reasoning_effort_types).map(effort => {
+    const client = effortContext.getReasoningEffort({chat_completion_source: custom, reasoning_effort: effort}, model);
+    const sent = effortContext.sentEffort({body: {chat_completion_source: custom, model, reasoning_effort: client}});
+    return {model, effort, sent: sent ?? null};
+  }));
+await fs.writeFile('test/fixtures/st/reasoning-effort-reference.json', JSON.stringify({
+  commit,
+  functionSha256: createHash('sha256').update(effortBody).digest('hex'),
+  filterSha256: createHash('sha256').update(filter).digest('hex'),
+  assumptions: ['Custom chat completion source', 'No custom_include_body or custom_exclude_body'],
+  models, fixed, cases,
+}, null, 2) + '\n');
+console.log('Captured ST reasoning effort:', models.length, 'models,', cases.length, 'cases');

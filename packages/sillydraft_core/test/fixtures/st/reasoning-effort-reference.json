@@ -1,0 +1,199 @@
+{
+  "commit": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "functionSha256": "50a02c3865523aed58b787172faa78ce7a3fa3803a02df28c3a84a00c59283fe",
+  "filterSha256": "57dbcdcc4017233b44166cb4f1f4723c85dce88b2d7661e6ec4178cb5b6ef1de",
+  "assumptions": [
+    "Custom chat completion source",
+    "No custom_include_body or custom_exclude_body"
+  ],
+  "models": [
+    "o1",
+    "o3-mini",
+    "o3-mini-2025-01-31",
+    "o4-mini",
+    "o4-mini-2025-04-16",
+    "o3",
+    "o3-2025-04-16",
+    "gpt-5",
+    "gpt-5-2025-08-07",
+    "gpt-5-mini",
+    "gpt-5-mini-2025-08-07",
+    "gpt-5-nano",
+    "gpt-5-nano-2025-08-07",
+    "gpt-5.1",
+    "gpt-5.1-2025-11-13",
+    "gpt-5.1-chat-latest",
+    "gpt-5.2",
+    "gpt-5.2-2025-12-11",
+    "gpt-5.2-chat-latest",
+    "gpt-5.3-chat-latest",
+    "gpt-5.4",
+    "gpt-5.4-2026-03-05",
+    "gpt-5.4-mini",
+    "gpt-5.4-mini-2026-03-17",
+    "gpt-5.4-nano",
+    "gpt-5.4-nano-2026-03-17",
+    "gpt-5.5",
+    "gpt-5.5-2026-04-23",
+    "gpt-5.6",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-6-astra"
+  ],
+  "fixed": {
+    "gpt-5.3-chat-latest": "medium"
+  },
+  "cases": [
+    {
+      "model": "gpt-5",
+      "effort": "auto",
+      "sent": null
+    },
+    {
+      "model": "gpt-5",
+      "effort": "low",
+      "sent": "low"
+    },
+    {
+      "model": "gpt-5",
+      "effort": "medium",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-5",
+      "effort": "high",
+      "sent": "high"
+    },
+    {
+      "model": "gpt-5",
+      "effort": "min",
+      "sent": "low"
+    },
+    {
+      "model": "gpt-5",
+      "effort": "max",
+      "sent": "high"
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "auto",
+      "sent": null
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "low",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "medium",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "high",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "min",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-5.3-chat-latest",
+      "effort": "max",
+      "sent": "medium"
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "auto",
+      "sent": null
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "low",
+      "sent": null
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "medium",
+      "sent": null
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "high",
+      "sent": null
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "min",
+      "sent": null
+    },
+    {
+      "model": "gpt-4o",
+      "effort": "max",
+      "sent": null
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "auto",
+      "sent": null
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "low",
+      "sent": "low"
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "medium",
+      "sent": "medium"
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "high",
+      "sent": "high"
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "min",
+      "sent": "minimal"
+    },
+    {
+      "model": "koboldcpp/llama",
+      "effort": "max",
+      "sent": "xhigh"
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "auto",
+      "sent": null
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "low",
+      "sent": null
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "medium",
+      "sent": null
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "high",
+      "sent": null
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "min",
+      "sent": null
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "effort": "max",
+      "sent": null
+    }
+  ]
+}

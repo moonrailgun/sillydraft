@@ -384,4 +384,69 @@ void main() {
       expect(events.whereType<TextDelta>().single.text, '正文');
     },
   );
+
+  test('reasoning_effort matches pinned ST output for a Custom source', () {
+    final raw = jsonDecode(
+      File('test/fixtures/st/reasoning-effort-reference.json')
+          .readAsStringSync(),
+    ) as Map<String, dynamic>;
+    expect(stReasoningEffortModels.toList(), raw['models']);
+    expect(stFixedReasoningEffort, raw['fixed']);
+    for (final c in (raw['cases'] as List).cast<Map<String, dynamic>>()) {
+      expect(
+        stReasoningEffort(c['effort'], c['model'] as String),
+        c['sent'],
+        reason: '${c['model']} ${c['effort']}',
+      );
+    }
+  });
+
+  test('reasoning_effort reaches only the models ST sends it to', () async {
+    final sent = <Map<String, dynamic>>[];
+    handler = (r) async {
+      sent.add(
+        jsonDecode(await utf8.decoder.bind(r).join()) as Map<String, dynamic>,
+      );
+      r.response.headers.contentType = ContentType.json;
+      r.response.write(
+        jsonEncode({
+          'choices': [
+            {
+              'index': 0,
+              'message': {'role': 'assistant', 'content': '雨'},
+              'finish_reason': 'stop',
+            },
+          ],
+        }),
+      );
+      await r.response.close();
+    };
+    final effort = ProviderRequest(
+      messages: [
+        {'role': 'user', 'content': '写小说'},
+      ],
+      parameters: {'reasoning_effort': 'max'},
+    );
+    for (final (model, extra) in [
+      ('cursor-model', <String>[]),
+      ('gpt-5', <String>[]),
+      ('cursor-model', ['reasoning_effort']),
+    ]) {
+      final p = OpenAICompatibleProvider(
+        config: ModelConnection(
+          id: 'test',
+          name: 'local',
+          baseUrl: 'http://127.0.0.1:${server.port}/v1',
+          model: model,
+          extraParameters: extra,
+        ),
+        apiKey: '',
+      );
+      await p.generate(effort).toList();
+      p.close();
+    }
+    expect(sent.map((b) => b['reasoning_effort']), [null, 'high', 'max']);
+    expect(sent.first, isNot(contains('reasoning_effort')));
+    expect(provider.validateParameters(effort), isEmpty);
+  });
 }

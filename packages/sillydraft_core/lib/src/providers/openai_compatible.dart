@@ -6,6 +6,68 @@ import '../st/import_types.dart';
 import 'provider.dart';
 import 'sse.dart';
 
+/// ST 1.19.0 `src/constants.js` `OPENAI_REASONING_EFFORT_MODELS`: the models a
+/// Custom chat completion source sends `reasoning_effort` to. Kept in sync
+/// with `test/fixtures/st/reasoning-effort-reference.json`.
+const stReasoningEffortModels = {
+  'o1',
+  'o3-mini',
+  'o3-mini-2025-01-31',
+  'o4-mini',
+  'o4-mini-2025-04-16',
+  'o3',
+  'o3-2025-04-16',
+  'gpt-5',
+  'gpt-5-2025-08-07',
+  'gpt-5-mini',
+  'gpt-5-mini-2025-08-07',
+  'gpt-5-nano',
+  'gpt-5-nano-2025-08-07',
+  'gpt-5.1',
+  'gpt-5.1-2025-11-13',
+  'gpt-5.1-chat-latest',
+  'gpt-5.2',
+  'gpt-5.2-2025-12-11',
+  'gpt-5.2-chat-latest',
+  'gpt-5.3-chat-latest',
+  'gpt-5.4',
+  'gpt-5.4-2026-03-05',
+  'gpt-5.4-mini',
+  'gpt-5.4-mini-2026-03-17',
+  'gpt-5.4-nano',
+  'gpt-5.4-nano-2026-03-17',
+  'gpt-5.5',
+  'gpt-5.5-2026-04-23',
+  'gpt-5.6',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'gpt-6-astra',
+};
+
+/// ST `OPENAI_FIXED_REASONING_EFFORT`: models that accept only one effort.
+const stFixedReasoningEffort = {'gpt-5.3-chat-latest': 'medium'};
+
+/// The `reasoning_effort` ST sends for a Custom chat completion, or null when
+/// it sends none: `getReasoningEffort` in `public/scripts/openai.js` (auto is
+/// left out, min and max narrowed), then the filter in
+/// `src/endpoints/backends/chat-completions.js` that only lets the listed
+/// OpenAI reasoning models and `koboldcpp/` ones receive it.
+String? stReasoningEffort(Object? effort, String model) {
+  final kobold = RegExp(r'^koboldcpp/.+$').hasMatch(model);
+  final value = switch (effort) {
+    'auto' => null,
+    'min' => kobold ? 'minimal' : 'low',
+    'max' => kobold ? 'xhigh' : 'high',
+    final String other when other.isNotEmpty => other,
+    _ => null,
+  };
+  if (value == null || kobold) return value;
+  return stReasoningEffortModels.contains(model)
+      ? stFixedReasoningEffort[model] ?? value
+      : null;
+}
+
 /// Shared OpenAI-compatible wire protocol; credentials are injected at runtime,
 /// absent from connection records, task snapshots and normal error messages.
 final class OpenAICompatibleProvider implements ModelProvider {
@@ -37,9 +99,10 @@ final class OpenAICompatibleProvider implements ModelProvider {
     'seed',
     'stop',
     'logit_bias',
-    'reasoning_effort',
   };
   static const _internal = {
+    // Sent only where ST sends it, see stReasoningEffort.
+    'reasoning_effort',
     'openai_max_context',
     'max_length',
     'max_context',
@@ -161,6 +224,17 @@ final class OpenAICompatibleProvider implements ModelProvider {
               config.extraParameters.contains(e.key))
             e.key: e.value,
       };
+      // ST text completions never send it; a connection that enables the
+      // parameter itself passes the preset value through unchanged.
+      if (request.completionText == null) {
+        final effort = stReasoningEffort(
+          request.parameters['reasoning_effort'],
+          config.model,
+        );
+        if (effort != null) {
+          parameters.putIfAbsent('reasoning_effort', () => effort);
+        }
+      }
       if (parameters.containsKey('max_tokens') &&
           config.outputTokenParameter != 'max_tokens') {
         parameters[config.outputTokenParameter] = parameters.remove(
