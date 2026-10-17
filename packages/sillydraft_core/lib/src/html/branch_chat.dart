@@ -510,8 +510,10 @@ final class PreviewChatBackend implements TavernChatBackend {
       ..addAll(variables);
   }
 
+  /// The chat before the novel exists holds the opening alone.
   MacroEngine _macros() => MacroEngine(
     env: context.env,
+    values: context.chatMacros(1, _text, greeting: greetingIndex),
     clock: DateTime.now(),
     seed: 0,
     local: encodeVariables(chatVariables),

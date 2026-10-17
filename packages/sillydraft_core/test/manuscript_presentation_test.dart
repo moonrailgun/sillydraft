@@ -616,5 +616,61 @@ void main() {
         );
       },
     );
+
+    test('a card opening reads the chat that holds just it', () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      var cards = 0;
+      Future<String> opening(
+        Map<String, dynamic> data, {
+        int greeting = 0,
+      }) async {
+        final card = await repo.storeResource(
+          id: 'card${cards++}',
+          kind: ResourceKind.character,
+          name: '道渊',
+          filename: 'card.json',
+          sourceHash: 'fixture',
+          encryptedSource: [],
+          data: {
+            'spec': 'chara_card_v2',
+            'data': {'name': '道渊', ...data},
+          },
+        );
+        final novel = await repo.createNovelFromCard(
+          resourceId: card.id,
+          title: '道渊',
+          greetingIndex: greeting,
+        );
+        return (await repo.getStory(novel.activeBranchId))
+            .chapters
+            .single
+            .content
+            .text;
+      }
+
+      const chat =
+          '{{lastMessageId}}|{{allChatRange}}|{{lastSwipeId}}|'
+          '{{currentSwipeId}}|{{lastUserMessage}}|{{model}}|{{maxPrompt}}|'
+          '{{instructInput}}';
+      await connect(repo);
+      // script.js `getChatResult`: a new chat holds the greeting as
+      // `getFirstMessage` made it, the greetings its swipes; showing it
+      // resolves its macros (`messageFormatting`) against that chat.
+      final greetings = {
+        'first_mes': '开场',
+        'alternate_greetings': [chat, '又{{lastCharMessage}}'],
+      };
+      expect(await opening(greetings, greeting: 1), '0|0-0|3|2||m2|7000|\n');
+      expect(await opening(greetings, greeting: 2), '又又{{lastCharMessage}}\n');
+      // Without alternates the greeting has no swipes.
+      expect(await opening({'first_mes': chat}), '0|0-0||||m2|7000|\n');
+      // Without a connection the opening is still created.
+      await repo.removeSetting('connections');
+      expect(
+        await opening(greetings, greeting: 1),
+        '0|0-0|3|2||{{model}}|{{maxPrompt}}|\n',
+      );
+    });
   });
 }

@@ -32,6 +32,10 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   Object? _error;
   DateTime _openingClock = DateTime.now();
 
+  /// The connection writing uses: the opening's macros read its model and
+  /// token limits, as the new story's would.
+  ModelConnection? _connection;
+
   /// Card rules and metadata the HTML preview reads.
   DisplayContext _display = DisplayContext.empty;
 
@@ -87,6 +91,12 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
       if (!mounted) return;
       _persona = await ref.read(repositoryProvider).personaFor({});
       if (!mounted) return;
+      try {
+        _connection = await ref.read(servicesProvider).connectionFor('writing');
+      } catch (_) {
+        // Unreadable connection settings: the macros have no model.
+      }
+      if (!mounted) return;
       _title.text = '${card.name}的故事';
       _display = DisplayContext.fromCard(card.raw, cardId: widget.resourceId);
       setState(() => _card = card);
@@ -96,21 +106,22 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
     }
   }
 
-  MacroEngine _macros(CharacterCard card) => MacroEngine(
-    env: MacroEnv.of(
-      card: card.raw,
-      user: _persona.name,
-      persona: _persona.prompt,
-    ),
-    clock: _openingClock,
-    seed: 0,
+  /// What the opening reads: the card, persona, chosen greeting and the
+  /// writing connection, as createNovelFromCard renders it.
+  DisplayContext _context(CharacterCard card) => DisplayContext.fromCard(
+    card.raw,
+    cardId: widget.resourceId,
+    userName: _persona.name,
+    persona: _persona.prompt,
+    greetingIndex: _greeting,
+    connection: _connection,
   );
 
   void _refreshOpening() {
     final card = _card;
     if (card == null) return;
     _openingClock = DateTime.now();
-    final macros = _macros(card);
+    final macros = _context(card).greetingMacros(clock: _openingClock);
     _setOpening(macros.render(card.greetings[_greeting]));
     _edited = false;
     _error =
@@ -127,20 +138,25 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   void _updatePreview() {
     final card = _card;
     if (card == null) return;
-    _display = DisplayContext.fromCard(
-      card.raw,
-      cardId: widget.resourceId,
-      userName: _persona.name,
-      persona: _persona.prompt,
-      greetingIndex: _greeting,
-    );
+    final display = _display = _context(card);
+    // The chat holds just the opening as shown.
     final shown = ManuscriptPresentation.fromRules(
       ManuscriptContent.plainText(_opening.text),
-      rules: _display.rules,
-      macros: _macros(card),
+      rules: display.rules,
+      macros: MacroEngine(
+        env: display.env,
+        values: display.chatMacros(1, _opening.text),
+        clock: _openingClock,
+        seed: 0,
+      ),
       strict: false,
     ).content.text;
-    final greetings = [for (final g in card.greetings) _macros(card).render(g)];
+    final greetings = [
+      for (var i = 0; i < card.greetings.length; i++)
+        display
+            .greetingMacros(clock: _openingClock, greeting: i)
+            .render(card.greetings[i]),
+    ];
     final preview = _preview ??= PreviewChatBackend(
       greetings: greetings,
       greetingIndex: _greeting,

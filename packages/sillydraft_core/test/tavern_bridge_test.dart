@@ -637,6 +637,26 @@ void main() {
         throwsFormatException,
       );
     });
+
+    test('macros read the chat of the opening alone', () async {
+      final backend = PreviewChatBackend(
+        greetings: ['开场一', '开场二'],
+        greetingIndex: 1,
+        context: DisplayContext.fromCard({
+          'name': '道渊',
+          'first_mes': '开场一',
+          'alternate_greetings': ['开场二'],
+        }, greetingIndex: 1),
+      );
+      // No connection is set up, so the model stays as written.
+      expect(
+        await backend.substituteMacros(
+          '{{lastMessageId}}|{{lastMessage}}|{{lastSwipeId}}|'
+          '{{currentSwipeId}}|{{model}}',
+        ),
+        '0|开场二|2|2|{{model}}',
+      );
+    });
   });
 
   test('variable codec keeps strings and restores JSON values', () {

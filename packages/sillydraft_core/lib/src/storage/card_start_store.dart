@@ -56,15 +56,15 @@ extension CardStartOperations on StoryRepository {
     if (greetingIndex < 0 || greetingIndex >= card.greetings.length) {
       throw const FormatException('备用开场不存在');
     }
-    final macros = MacroEngine(
-      env: MacroEnv.of(
-        card: card.raw,
-        user: persona.name,
-        persona: persona.prompt,
-      ),
-      clock: openingClock ?? DateTime.now(),
-      seed: 0,
-    );
+    // The new branch has no writing preset yet; writing would use the
+    // default one with this connection.
+    final macros = DisplayContext.fromCard(
+      card.raw,
+      userName: persona.name,
+      persona: persona.prompt,
+      greetingIndex: greetingIndex,
+      connection: await _writingConnection(),
+    ).greetingMacros(clock: openingClock ?? DateTime.now());
     final rendered = macros.render(card.greetings[greetingIndex]);
     final opening = openingOverride ?? rendered;
     if (openingOverride == null &&
