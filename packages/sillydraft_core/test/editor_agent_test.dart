@@ -246,6 +246,70 @@ void main() {
     expect(await repo.listProposals(novel.activeBranchId), isEmpty);
   });
 
+  test('a replaced message drops itself and every later turn', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final novel = await repo.createNovel(title: '重问');
+    await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('故事正文'),
+    );
+    final conversation = await repo.createConversation(
+      branchId: novel.activeBranchId,
+    );
+    final connection = ModelConnection(
+      id: 'test',
+      name: 'Test',
+      baseUrl: 'http://localhost:1234',
+      model: 'test',
+    );
+    final replies = ['答一', '答二', '答三'];
+    final seen = <List<String>>[];
+    final runner = TaskRunner(
+      repository: repo,
+      providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+        seen.add([
+          for (final m in request.messages)
+            if (m['role'] != 'system') '${m['content']}',
+        ]);
+        yield TextDelta(replies[seen.length - 1]);
+        yield const GenerationFinished('stop');
+      }),
+    );
+    addTearDown(runner.close);
+    final agent = EditorAgent(repository: repo, runner: runner);
+    Future<void> send(String message, {String? replace}) async {
+      final task = await agent.send(
+        conversationId: conversation,
+        connection: connection,
+        message: message,
+        replaceMessageId: replace,
+      );
+      expect((await runner.wait(task.id)).status, TaskStatus.completed);
+    }
+
+    await send('问一');
+    await send('问二');
+    final second = (await repo.getAgentMessages(conversation))
+        .firstWhere((m) => m.content == '问二');
+    await send('问二改', replace: second.id);
+    expect(seen.last, ['问一', '答一', '问二改']);
+    expect(
+      [for (final m in await repo.getAgentMessages(conversation)) m.content],
+      ['问一', '答一', '问二改', '答三'],
+    );
+    final reply = (await repo.getAgentMessages(conversation)).last;
+    expect(
+      () => agent.send(
+        conversationId: conversation,
+        connection: connection,
+        message: '不能替换回复',
+        replaceMessageId: reply.id,
+      ),
+      throwsA(isA<StoryNotFound>()),
+    );
+  });
+
   test('a tool cannot read a chapter from a different project', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);

@@ -52,6 +52,11 @@ final class EditorAgent {
     /// A chapter sent along with [message] as its context, e.g. the one a
     /// selection was made in. It stays with the message for later turns.
     String? attachChapterId,
+
+    /// An earlier message of the author's that [message] replaces: it and
+    /// every later turn are removed first. Editing a message, or resending
+    /// the last one to regenerate the reply.
+    String? replaceMessageId,
   }) async {
     if (message.trim().isEmpty) throw ArgumentError('请输入创作要求');
     final branchId = await repository.conversationBranch(conversationId);
@@ -74,6 +79,12 @@ final class EditorAgent {
         ? null
         : chapters.where((s) => s.id == attachChapterId).firstOrNull ??
               (throw StateError('附带的章节不在本会话范围内'));
+    if (replaceMessageId != null) {
+      await repository.deleteAgentMessagesFrom(
+        conversationId,
+        replaceMessageId,
+      );
+    }
     final explicit = explicitSkill(message, skills);
     if (explicit != null) {
       await repository.appendAgentMessage(

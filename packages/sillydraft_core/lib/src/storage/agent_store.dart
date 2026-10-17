@@ -100,6 +100,25 @@ extension AgentOperations on StoryRepository {
           )
           .toList();
 
+  /// Removes the author's message [messageId] and everything after it, so the
+  /// turn can be asked again.
+  Future<void> deleteAgentMessagesFrom(
+    String conversationId,
+    String messageId,
+  ) => _write(() async {
+    final position =
+        (await _one(
+              "SELECT position FROM agent_messages WHERE id = ? AND conversation_id = ? AND role = 'user'",
+              [messageId, conversationId],
+              '会话消息',
+            ))['position']
+            as int;
+    await _execute(
+      'DELETE FROM agent_messages WHERE conversation_id = ? AND position >= ?',
+      [conversationId, position],
+    );
+  });
+
   Future<void> deleteConversation(String id) => _write(
     () => _execute('DELETE FROM agent_conversations WHERE id = ?', [id]),
   );

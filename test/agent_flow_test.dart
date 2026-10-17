@@ -41,7 +41,141 @@ class _StreamingProvider implements ModelProvider {
       [];
 }
 
+/// Answers every request at once with the next of [replies].
+class _ReplyProvider implements ModelProvider {
+  _ReplyProvider(this.config, this.replies);
+  @override
+  final ModelConnection config;
+  final Iterator<String> replies;
+  @override
+  Stream<ProviderEvent> generate(
+    ProviderRequest request, {
+    GenerationCancellation? cancellation,
+  }) async* {
+    replies.moveNext();
+    yield TextDelta(replies.current);
+    yield const GenerationFinished('stop');
+  }
+
+  @override
+  void close() {}
+  @override
+  Future<List<String>> listModels() async => ['test'];
+  @override
+  List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) =>
+      [];
+}
+
+/// An assistant panel answering with [replies], and its branch.
+Future<({StoryRepository repo, String branchId})> _replyingPanel(
+  WidgetTester tester,
+  List<String> replies,
+) async {
+  final repo = StoryRepository.memory();
+  final iterator = replies.iterator;
+  final services = AppServices(
+    repository: repo,
+    secrets: MemorySecrets(),
+    modelProviderFactory: (c) async => _ReplyProvider(c, iterator),
+  );
+  addTearDown(services.close);
+  await services.saveConnection(
+    ModelConnection(
+      id: 'test',
+      name: '测试模型',
+      baseUrl: 'http://localhost:1/v1',
+      model: 'test',
+    ),
+  );
+  final novel = await repo.createNovel(title: '重问');
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [servicesProvider.overrideWithValue(services)],
+      child: testHost(
+        AppScaffold(child: AgentPanel(branchId: novel.activeBranchId)),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (repo: repo, branchId: novel.activeBranchId);
+}
+
+Future<List<String>> _thread(StoryRepository repo, String branchId) async {
+  final id = (await repo.listConversations(branchId)).single['id'] as String;
+  return [for (final m in await repo.getAgentMessages(id)) m.content];
+}
+
 void main() {
+  testWidgets(
+    'regenerating drops the last reply; editing resends from there',
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    (tester) async {
+      final (:repo, :branchId) = await _replyingPanel(tester, [
+        '回复一',
+        '回复二',
+        '回复三',
+      ]);
+      final input = find.byKey(const Key('agent-input'));
+      await tester.enterText(input, '问题');
+      await tester.tap(findAction('发送给编辑助手'));
+      await tester.pumpAndSettle();
+      expect(find.text('回复一'), findsOneWidget);
+
+      await tester.tap(findAction('重新生成'));
+      await tester.pumpAndSettle();
+      expect(await _thread(repo, branchId), ['问题', '回复二']);
+
+      await tester.tap(findAction('修改'));
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<EditableText>(
+            find.descendant(of: input, matching: find.byType(EditableText)),
+          )
+          .controller;
+      expect(controller.text, '问题');
+      await tester.enterText(input, '改过的问题');
+      await tester.tap(findAction('发送给编辑助手'));
+      await tester.pumpAndSettle();
+      expect(await _thread(repo, branchId), ['改过的问题', '回复三']);
+      expect(find.text('回复二'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'on a phone, a long press offers the message actions',
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    (tester) async {
+      final copied = <Object?>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') copied.add(call.arguments);
+          return null;
+        },
+      );
+      await _replyingPanel(tester, ['新回复']);
+      final input = find.byKey(const Key('agent-input'));
+      await tester.enterText(input, '问题');
+      await tester.tap(findAction('发送给编辑助手'));
+      await tester.pumpAndSettle();
+      expect(findAction('重新生成'), findsNothing);
+
+      await tester.longPress(find.text('新回复'));
+      await tester.pumpAndSettle();
+      expect(find.text('重新生成'), findsOneWidget);
+      await tester.tap(find.text('复制'));
+      await tester.pumpAndSettle();
+      expect(copied, [
+        {'text': '新回复'},
+      ]);
+      expect(find.text('重新生成'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
   for (final enter in [
     LogicalKeyboardKey.enter,
     LogicalKeyboardKey.numpadEnter,

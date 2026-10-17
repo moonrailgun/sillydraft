@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart'
+    show
+        CupertinoTextSelectionToolbar,
+        CupertinoTextSelectionToolbarButton,
+        CupertinoTheme,
+        CupertinoThemeData;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -9,6 +15,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/services.dart';
+import '../../app/theme.dart' show touchPlatform;
 import '../../app/widgets.dart';
 import '../illustrations/asset_image.dart';
 import '../illustrations/illustration_detail.dart';
@@ -85,9 +92,13 @@ const _starterPrompts = [
 /// selection" from the reader, with the chapter it came from as context.
 /// Each instance is sent once.
 final class AgentRequest {
-  AgentRequest(this.message, {this.chapterId});
+  AgentRequest(this.message, {this.chapterId, this.replace});
   final String message;
   final String? chapterId;
+
+  /// The author's earlier message this one takes the place of, along with
+  /// every turn after it.
+  final String? replace;
 }
 
 /// The editing assistant for one story branch: conversation, manuscript
@@ -126,6 +137,12 @@ class _AgentState extends ConsumerState<AgentPanel> {
   late Future<void> _selecting;
   bool _sending = false;
   Object? _error;
+
+  /// The author's message being rewritten in the input, if any.
+  AgentMessage? _editing;
+
+  /// A message's actions on a phone, brought up by a long press.
+  final _menu = ContextMenuController();
   @override
   void initState() {
     super.initState();
@@ -144,6 +161,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   @override
   void dispose() {
+    _menu.remove();
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -194,8 +212,36 @@ class _AgentState extends ConsumerState<AgentPanel> {
     }
   }
 
+  /// [text] in place of the author's [message], which goes along with every
+  /// turn after it.
+  AgentRequest _replacing(AgentMessage message, String text) => AgentRequest(
+    text,
+    chapterId: switch (message.raw['attachment']) {
+      {'chapterId': final String id} => id,
+      _ => null,
+    },
+    replace: message.id,
+  );
+
+  /// Puts the author's [message] back in the input; sending it then asks
+  /// that turn again.
+  void _edit(AgentMessage message) {
+    setState(() {
+      _editing = message;
+      _input.text = message.content;
+      _input.selection = TextSelection.collapsed(
+        offset: message.content.length,
+      );
+    });
+    _inputFocus.requestFocus();
+  }
+
   /// Sends what the author typed, or [request] on their behalf.
   Future<void> _send([AgentRequest? request]) async {
+    final typed = request == null, editing = _editing;
+    if (typed && editing != null && editing.conversationId == _conversation) {
+      request = _replacing(editing, _input.text);
+    }
     final text = request?.message ?? _input.text;
     if (_sending || text.trim().isEmpty) return;
     setState(() {
@@ -237,9 +283,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
         focusChapterId: widget.focusChapterId ?? _chapter,
         imageConnection: await services.connectionFor('image'),
         attachChapterId: request?.chapterId,
+        replaceMessageId: request?.replace,
       );
       unawaited(_sidecarAfterRound(services, task).catchError((Object _) {}));
-      if (mounted && request == null) _input.clear();
+      if (mounted && typed) {
+        _input.clear();
+        _editing = null;
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e);
     } finally {
@@ -912,72 +962,102 @@ class _AgentState extends ConsumerState<AgentPanel> {
                     // Reversed so it opens at the latest message and stays
                     // there as a reply streams in; aligned to the top while
                     // short, like an unreversed list.
-                    builder: (messages) => Align(
-                      alignment: Alignment.topCenter,
-                      child: ListView(
-                        reverse: true,
-                        // ponytail: lays out every message, fine for chat-sized
-                        // threads; switch to a builder if threads get huge.
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.all(20),
-                        children: [
-                          if (active?.result['imageConfirmation']
-                              case final Map<String, dynamic> pending)
-                            _imageConfirmation(active!, pending)
-                          else if (task != null &&
-                              task.status != TaskStatus.completed)
-                            FCard(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    if (task.isActive)
-                                      const FProgress()
-                                    else
-                                      Text(
-                                        '编辑回复${taskStatusLabels[task.status]}',
-                                        style: TextStyle(color: colors.error),
-                                      ),
-                                    if (task.error.isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      SelectableText(task.error),
-                                    ],
-                                    if (task.isActive ||
-                                        task.partialText.isNotEmpty) ...[
-                                      const SizedBox(height: 12),
-                                      task.partialText.isEmpty
-                                          ? const SelectableText('编辑助手正在工作…')
-                                          : _markdown(task.partialText),
-                                    ],
-                                    const SizedBox(height: 8),
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: FButton(
-                                        variant: FButtonVariant.ghost,
-                                        size: FButtonSizeVariant.sm,
-                                        mainAxisSize: MainAxisSize.min,
-                                        onPress: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                TaskScreen(taskId: task.id),
-                                          ),
+                    builder: (messages) {
+                      final last = messages
+                          .where((m) => m.role == 'user')
+                          .lastOrNull;
+                      // Asks the last turn again once nothing is answering it.
+                      final regenerate =
+                          last == null || active != null || _sending
+                          ? null
+                          : () => _send(_replacing(last, last.content));
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        child: ListView(
+                          reverse: true,
+                          // ponytail: lays out every message, fine for chat-sized
+                          // threads; switch to a builder if threads get huge.
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.all(20),
+                          children: [
+                            if (active?.result['imageConfirmation']
+                                case final Map<String, dynamic> pending)
+                              _imageConfirmation(active!, pending)
+                            else if (task != null &&
+                                task.status != TaskStatus.completed)
+                              FCard(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (task.isActive)
+                                        const FProgress()
+                                      else
+                                        Text(
+                                          '编辑回复${taskStatusLabels[task.status]}',
+                                          style: TextStyle(color: colors.error),
                                         ),
-                                        child: const Text('查看工具与任务'),
+                                      if (task.error.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        SelectableText(task.error),
+                                      ],
+                                      if (task.isActive ||
+                                          task.partialText.isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        task.partialText.isEmpty
+                                            ? const SelectableText('编辑助手正在工作…')
+                                            : _markdown(task.partialText),
+                                      ],
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        children: [
+                                          FButton(
+                                            variant: FButtonVariant.ghost,
+                                            size: FButtonSizeVariant.sm,
+                                            mainAxisSize: MainAxisSize.min,
+                                            onPress: () => Navigator.push(
+                                              context,
+                                              MaterialPageRoute<void>(
+                                                builder: (_) =>
+                                                    TaskScreen(taskId: task.id),
+                                              ),
+                                            ),
+                                            child: const Text('查看工具与任务'),
+                                          ),
+                                          if (!task.isActive &&
+                                              regenerate != null)
+                                            FButton(
+                                              variant: FButtonVariant.ghost,
+                                              size: FButtonSizeVariant.sm,
+                                              mainAxisSize: MainAxisSize.min,
+                                              onPress: regenerate,
+                                              prefix: const Icon(
+                                                FLucideIcons.refreshCw,
+                                              ),
+                                              child: const Text('重试'),
+                                            ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          for (final message in messages.reversed)
-                            _message(message),
-                          if (messages.isEmpty) _starter(),
-                        ],
-                      ),
-                    ),
+                            for (final message in messages.reversed)
+                              _message(
+                                message,
+                                regenerate: message == messages.last
+                                    ? regenerate
+                                    : null,
+                                idle: active == null && !_sending,
+                              ),
+                            if (messages.isEmpty) _starter(),
+                          ],
+                        ),
+                      );
+                    },
                   ),
           ),
           Padding(
@@ -990,6 +1070,35 @@ class _AgentState extends ConsumerState<AgentPanel> {
                   constraints: BoxConstraints(maxHeight: bounds.maxHeight * .2),
                   child: SingleChildScrollView(child: _skillSuggestions()),
                 ),
+                if (_editing?.conversationId == _conversation &&
+                    _editing != null)
+                  Row(
+                    children: [
+                      Icon(
+                        FLucideIcons.pencil,
+                        size: 14,
+                        color: colors.mutedForeground,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '修改消息：发送后，这条消息之后的对话会被替换',
+                          style: context.theme.typography.body.xs.copyWith(
+                            color: colors.mutedForeground,
+                          ),
+                        ),
+                      ),
+                      IconAction(
+                        icon: FLucideIcons.x,
+                        tooltip: '取消修改',
+                        size: 14,
+                        onPress: () => setState(() {
+                          _editing = null;
+                          _input.clear();
+                        }),
+                      ),
+                    ],
+                  ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -1235,11 +1344,11 @@ class _AgentState extends ConsumerState<AgentPanel> {
   }
 
   /// The assistant's reply as Markdown, which is what chat models write.
-  Widget _markdown(String text) {
+  Widget _markdown(String text, {bool selectable = true}) {
     final theme = context.theme;
     return MarkdownBody(
       data: text,
-      selectable: true,
+      selectable: selectable,
       styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
         p: TextStyle(height: 1.6, color: theme.colors.foreground),
         a: TextStyle(color: theme.colors.primary),
@@ -1251,7 +1360,45 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
-  Widget _message(AgentMessage message) {
+  /// A message's actions in a bubble at [at], like the reader's selection
+  /// menu: a phone has no room to show them under every message.
+  void _showActions(
+    Offset at,
+    List<(IconData, String, VoidCallback?)> actions,
+  ) => _menu.show(
+    context: context,
+    contextMenuBuilder: (_) => TapRegion(
+      onTapOutside: (_) => _menu.remove(),
+      child: CupertinoTheme(
+        data: CupertinoThemeData(brightness: context.theme.colors.brightness),
+        child: CupertinoTextSelectionToolbar(
+          anchorAbove: at,
+          anchorBelow: at,
+          children: [
+            for (final (_, label, onPress) in actions)
+              CupertinoTextSelectionToolbarButton.text(
+                text: label,
+                onPressed: onPress == null
+                    ? null
+                    : () {
+                        _menu.remove();
+                        onPress();
+                      },
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  /// One entry of the thread. A text message offers copying it, editing it
+  /// when it is the author's, and [regenerate] on the last reply; [idle] is
+  /// whether a new turn may start.
+  Widget _message(
+    AgentMessage message, {
+    VoidCallback? regenerate,
+    bool idle = true,
+  }) {
     final metadata = message.raw;
     if (metadata['skill'] is String) {
       // A skill loaded into this conversation, by the author or the model.
@@ -1317,63 +1464,106 @@ class _AgentState extends ConsumerState<AgentPanel> {
     }
     final theme = context.theme;
     final mine = message.role == 'user';
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 760),
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: mine ? theme.colors.secondary : theme.colors.muted,
-          borderRadius: theme.style.borderRadius.lg,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              mine ? '你' : '编辑助手',
-              style: theme.typography.body.xs.copyWith(
-                color: theme.colors.mutedForeground,
-                fontWeight: FontWeight.w600,
-              ),
+    final actions = <(IconData, String, VoidCallback?)>[
+      (
+        FLucideIcons.copy,
+        '复制',
+        () {
+          Clipboard.setData(ClipboardData(text: message.content));
+          toast(context, '已复制');
+        },
+      ),
+      if (mine) (FLucideIcons.pencil, '修改', idle ? () => _edit(message) : null),
+      if (!mine && regenerate != null)
+        (FLucideIcons.refreshCw, '重新生成', regenerate),
+    ];
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 760),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: mine ? theme.colors.secondary : theme.colors.muted,
+        borderRadius: theme.style.borderRadius.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            mine ? '你' : '编辑助手',
+            style: theme.typography.body.xs.copyWith(
+              color: theme.colors.mutedForeground,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 8),
-            if (mine)
-              SelectableText(
-                message.content,
-                style: TextStyle(
-                  height: 1.6,
-                  color: theme.colors.secondaryForeground,
-                ),
-              )
-            else
-              _markdown(message.content),
-            if (metadata['attachment'] case {'title': final String title})
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      FLucideIcons.paperclip,
-                      size: 14,
-                      color: theme.colors.mutedForeground,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        '附：${title.isEmpty ? '未命名章节' : title}',
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.typography.body.xs.copyWith(
-                          color: theme.colors.mutedForeground,
-                        ),
+          ),
+          const SizedBox(height: 8),
+          // On a phone a long press brings up the actions, not a selection.
+          if (mine)
+            (touchPlatform ? Text.new : SelectableText.new)(
+              message.content,
+              style: TextStyle(
+                height: 1.6,
+                color: theme.colors.secondaryForeground,
+              ),
+            )
+          else
+            _markdown(message.content, selectable: !touchPlatform),
+          if (metadata['attachment'] case {'title': final String title})
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    FLucideIcons.paperclip,
+                    size: 14,
+                    color: theme.colors.mutedForeground,
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '附：${title.isEmpty ? '未命名章节' : title}',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.typography.body.xs.copyWith(
+                        color: theme.colors.mutedForeground,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Align(
+        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+        child: touchPlatform
+            ? GestureDetector(
+                onLongPressStart: (d) =>
+                    _showActions(d.globalPosition, actions),
+                child: bubble,
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: mine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  bubble,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (icon, label, onPress) in actions)
+                        IconAction(
+                          icon: icon,
+                          tooltip: label,
+                          size: 14,
+                          onPress: onPress,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }
