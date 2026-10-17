@@ -42,6 +42,8 @@ PresetInput input(
   List<ScopedWorldBook> books = const [],
   Map<String, String> locals = const {},
   String type = 'normal',
+  int? contextWindow,
+  int? maxOutputTokens,
 }) => PresetInput(
   preset: preset,
   branchId: 'main',
@@ -55,6 +57,8 @@ PresetInput input(
   clock: DateTime.utc(2026, 10, 13),
   randomSeed: 42,
   generationType: type,
+  contextWindow: contextWindow,
+  maxOutputTokens: maxOutputTokens,
 );
 
 void main() {
@@ -211,66 +215,256 @@ void main() {
     expect(result.messages.map((m) => m.content), ['known', 'brief']);
   });
 
-  test(
-    'world books recurse within budget and filter branch and availability',
-    () {
-      WorldBook book(List<Map<String, dynamic>> entries) => WorldBook.fromJson({
+  test('the card\'s book and the work\'s books are scanned together within a quarter of the prompt size', () {
+    // ST scans every message as "name: text", recurses across all books
+    // and ignores a book's own `token_budget` and `recursive_scanning`.
+    final card = CardImporter().decode(
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode({
+            'name': '苏雾',
+            'character_book': {
+              'token_budget': 1,
+              'entries': [
+                {
+                  'id': 1,
+                  'keys': ['阿雨'],
+                  'content': 'harbor',
+                  'insertion_order': 100,
+                  'enabled': true,
+                  'position': 'before_char',
+                },
+                {
+                  'id': 2,
+                  'keys': ['lighthouse'],
+                  'content': '灯塔',
+                  'insertion_order': 50,
+                  'enabled': true,
+                  'position': 'before_char',
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+      'card.json',
+    );
+    ScopedWorldBook book(
+      Map<String, dynamic> entries, {
+      String branchId = 'main',
+      int from = 0,
+    }) => ScopedWorldBook(
+      WorldBook.fromJson({
         'entries': entries,
-        'recursive_scanning': true,
-        'token_budget': 50,
-      });
-      final books = [
-        ScopedWorldBook(
-          book([
+        'recursive_scanning': false,
+        'token_budget': 1,
+      }),
+      branchId: branchId,
+      availableFromPosition: from,
+    );
+    final books = [
+      book({
+        '1': {
+          'uid': 1,
+          'key': ['harbor'],
+          'content': 'lighthouse',
+          'order': 90,
+          'position': 0,
+        },
+        '2': {
+          'uid': 2,
+          'constant': true,
+          'content': List.filled(500, 'x').join(),
+          'order': 1,
+          'position': 0,
+        },
+      }),
+      book({
+        '1': {'uid': 1, 'constant': true, 'content': 'future lore'},
+      }, from: 9),
+      book({
+        '1': {'uid': 1, 'constant': true, 'content': 'other lore'},
+      }, branchId: 'other'),
+    ];
+    CompiledPrompt compile(int contextWindow) => PromptCompiler().compile(
+      input(
+        chat([p('worldInfoBefore', '', marker: true)]),
+        card: card,
+        position: 2,
+        history: const [
+          ContextChapter(
+            branchId: 'main',
+            position: 1,
+            chapterId: 's1',
+            revisionId: 'r1',
+            content: 'known',
+          ),
+        ],
+        books: books,
+        contextWindow: contextWindow,
+        maxOutputTokens: 2000,
+      ),
+    );
+    final roomy = compile(4000);
+    expect(
+      roomy.messages.single.content,
+      '${List.filled(500, 'x').join()}\n灯塔\nlighthouse\nharbor',
+    );
+    expect(
+      roomy.diagnostics.where((d) => d.code.startsWith('world_book')),
+      isEmpty,
+    );
+    // 25% of 400: the long entry overflows, which ends recursion too.
+    final tight = compile(2400);
+    expect(tight.messages.single.content, 'harbor');
+    expect(
+      tight.diagnostics
+          .where((d) => d.code == 'world_book_budget')
+          .map((d) => d.message),
+      ['世界书条目 2 超出所有世界书共用的预算（100 token，即提示词上限的 25%），未放入'],
+    );
+  });
+
+  group('world info budget', () {
+    WorldBookResult activate(
+      List<WorldBook> books, {
+      required int? budget,
+      MacroEngine? macros,
+      WorldBook? characterBook,
+    }) => WorldBookEngine().activate(
+      [for (final book in books) ScopedWorldBook(book)],
+      characterBook: characterBook,
+      branchId: 'main',
+      throughPosition: 0,
+      messages: const ['开场'],
+      macros:
+          macros ?? MacroEngine(values: {}, clock: DateTime.utc(2026), seed: 1),
+      seed: 1,
+      budget: budget,
+    );
+
+    test('one budget for all books stops at the first overflow', () {
+      final macros = MacroEngine(
+        values: {},
+        clock: DateTime.utc(2026),
+        seed: 1,
+      );
+      final result = activate(
+        [
+          WorldBook.fromJson({
+            'token_budget': 1,
+            'recursive_scanning': true,
+            'entries': [
+              // Running count (CJK 1.5, newline 0.34, rounded up) after the
+              // card's 丁: 6; the next book's 戊 (order 100) makes it 8.
+              {'uid': 1, 'constant': true, 'content': '甲甲', 'order': 100},
+              {
+                'uid': 2,
+                'constant': true,
+                'content': '忽略',
+                'order': 90,
+                'ignoreBudget': true,
+              },
+              // 15.2 → 16, not under 12: overflows, its macros still ran.
+              {
+                'uid': 3,
+                'constant': true,
+                'content': '{{setvar::x::1}}乙乙乙',
+                'order': 80,
+              },
+              // Would fit, but ST stops at the first overflow.
+              {'uid': 4, 'constant': true, 'content': '丙', 'order': 70},
+              // Recursion stops at an overflow.
+              {
+                'uid': 6,
+                'key': ['甲甲'],
+                'content': '递归',
+                'order': 10,
+                'ignoreBudget': true,
+              },
+            ],
+          }),
+          WorldBook.fromJson({
+            'entries': [
+              {'uid': 11, 'constant': true, 'content': '戊', 'order': 100},
+              {
+                'uid': 12,
+                'constant': true,
+                'content': '己',
+                'order': 50,
+                'ignoreBudget': true,
+              },
+            ],
+          }),
+        ],
+        budget: 12,
+        macros: macros,
+        // A card's book: `extensions.ignore_budget`. Scanned first, then the
+        // other books' entries together by order.
+        characterBook: WorldBook.fromJson({
+          'entries': [
             {
-              'id': 1,
-              'keys': ['brief'],
-              'content': 'harbor',
-              'insertion_order': 100,
-            },
-            {
-              'id': 2,
-              'keys': ['harbor'],
-              'content': 'lighthouse',
-              'insertion_order': 90,
-            },
-            {
-              'id': 3,
+              'id': 5,
+              'keys': <String>[],
               'constant': true,
-              'content': List.filled(500, 'x').join(),
-              'insertion_order': 1,
+              'enabled': true,
+              'content': '丁',
+              'insertion_order': 60,
+              'extensions': {'ignore_budget': true},
             },
-          ]),
-          branchId: 'main',
-        ),
-        ScopedWorldBook(
-          book([
-            {'constant': true, 'content': 'future lore'},
-          ]),
-          branchId: 'main',
-          availableFromPosition: 9,
-        ),
-        ScopedWorldBook(
-          book([
-            {'constant': true, 'content': 'other lore'},
-          ]),
-          branchId: 'other',
-        ),
-      ];
-      final result = PromptCompiler().compile(
-        input(
-          chat([p('worldInfoBefore', '', marker: true)]),
-          position: 2,
-          books: books,
-        ),
+          ],
+        }),
       );
-      expect(result.messages.single.content, 'lighthouse\nharbor');
+      expect(result.before, '己\n忽略\n戊\n甲甲');
+      expect(result.after, '丁');
+      expect(result.diagnostics.map((d) => (d.code, d.message)), [
+        for (final id in ['3', '4'])
+          (
+            'world_book_budget',
+            '世界书条目 $id 超出所有世界书共用的预算（12 token，即提示词上限的 25%），未放入',
+          ),
+      ]);
+      expect(macros.local, {'x': '1'});
+      // No request size: no budget.
       expect(
-        result.diagnostics.map((d) => d.code),
-        contains('world_book_budget'),
+        activate([
+          WorldBook.fromJson({
+            'token_budget': 1,
+            'entries': [
+              {'uid': 1, 'constant': true, 'content': '甲甲'},
+            ],
+          }),
+        ], budget: null).before,
+        '甲甲',
       );
-    },
-  );
+    });
+
+    test('equal orders keep the book order and land as ST places them', () {
+      const names = '甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥金木水火土日月星天地玄黄宇宙洪荒风云雷';
+      final result = activate(
+        [
+          WorldBook.fromJson({
+            'entries': [
+              for (final (i, name) in names.split('').indexed)
+                {'uid': i, 'constant': true, 'content': name},
+            ],
+          }),
+        ],
+        // Ten entries of 1.84 each fit under 20, the eleventh does not.
+        budget: 20,
+      );
+      // world-info.js L5202-5217: sorted by order (stably), each put at the
+      // start of its position, so equal orders end up reversed.
+      expect(
+        result.before,
+        names.split('').take(10).toList().reversed.join('\n'),
+      );
+      expect(
+        result.diagnostics.where((d) => d.code == 'world_book_budget').length,
+        names.length - 10,
+      );
+    });
+  });
 
   test('regex stage and scope order do not mutate source or display-only manuscript', () {
     Map<String, dynamic> rule(

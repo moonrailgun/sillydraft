@@ -8,9 +8,9 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 显示专用正则已接入候选预览和独立阅读器。阅读器使用当前分支的显示规则，调整后已有章节立即重新渲染；生成章节仍使用任务中冻结的时钟、随机种子、环境宏取值和宏变量，手动编辑继承此前生成的宏上下文。候选预览及历史对比保留任务中冻结的规则。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
-当前受测范围包括 V1/V2/V3、PNG、CHARX 导入，完整预设与提示词包区分，100001 顺序、关闭条目、角色覆盖、深度注入、条件和变量宏、正则阶段、默认 Handlebars 模板、文本指令序列及世界书递归。宏变量只在任务副本中变化，存储提交由候选采纳流程负责。模板 helper 与已识别的未实现世界书依赖会阻止无提示运行；未知宏和缺少结束 `}}` 的宏按 ST 保留原文，只提示、不阻止。
+当前受测范围包括 V1/V2/V3、PNG、CHARX 导入，完整预设与提示词包区分，100001 顺序、关闭条目、角色覆盖、深度注入、条件和变量宏、正则阶段、默认 Handlebars 模板、文本指令序列及世界书递归。宏变量只在任务副本中变化，存储提交由候选采纳流程负责。模板 helper 与世界书中未支持的位置（作者注前后、示例前后）会阻止无提示运行；未知宏和缺少结束 `}}` 的宏按 ST 保留原文，只提示、不阻止。
 
-限制仍需明确：token 预算为估算；随机宏按任务固定，`pick` 的种子不等同于 ST 聊天标识；世界书的定时、分组及自动化扩展尚未实现；浏览器脚本扩展不执行。模型参数诊断、输出处理、资源库 UI 与采纳时变量提交已接入。现有证据覆盖固定样本和本地模拟模型，不代表全部社区预设或真实模型行为等价。
+限制仍需明确：token 预算为估算；随机宏按任务固定，`pick` 的种子不等同于 ST 聊天标识；世界书的 sticky、cooldown 计时与快速回复自动化不生效（只提示）；浏览器脚本扩展不执行。模型参数诊断、输出处理、资源库 UI 与采纳时变量提交已接入。现有证据覆盖固定样本和本地模拟模型，不代表全部社区预设或真实模型行为等价。
 
 ## ComfyUI 工作流读取
 
@@ -97,6 +97,19 @@ ST 导出的预设通常不含 `name`，ST 以文件名作为预设名；SillyDr
 首版用稳定的章节记录构造历史消息，一段已采纳章节正文对应一个 assistant 消息；当前写作要求作为独立 user 消息。消息 ID 与章节及版本关联，不因屏幕分页、字号或段落自动换行而变化。编辑对话、工具日志、被拒绝候选和其他分支正文不进入该历史。
 
 深度在该消息视图上按 ST 规则计算，并在请求预览中展示。写“下一章”使用正常生成语义；继续补完同一段模型输出才使用 ST 的 `continue` 路径。其他生成操作逐项建立映射，不能仅根据界面上的“续写”二字决定触发类型。
+
+**世界书按 ST 的总预算放入。** ST 1.19.0 不读世界书自带的 `token_budget`：所有世界书触发的条目共用一个预算，即提示词上限（上下文长度减去回复长度，同 `{{maxPrompt}}`）的 `world_info_budget`（默认 25%），四舍五入，不设上限（`world_info_budget_cap` 默认 0）。SillyDraft 没有这两项设置，按 ST 默认值计算，提示词上限取本次请求的值。条目按扫描顺序（见下一段）检查；每个条目先求值宏、计入文字（之前递归轮次的文字不含 `preventRecursion` 条目），累计达到预算的那一条不放入，之后的条目也不再放入，只有“忽略预算”的条目（`ignoreBudget`，角色卡内置世界书为 `extensions.ignore_budget`）照常放入；达到预算后不再递归（仍在等待的 `delayUntilRecursion` 层级照常扫描）。每个未放入的条目记一条 `world_book_budget` 提示。放入提示词时插入顺序低的在前，同顺序的后触发者在前。`token_budget` 原样保留，导出不变。与 ST 的差异：token 数是估算，未绑定模型 tokenizer，接近预算时放入的条目可能与 ST 不同。[预算](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L4736-L4741)、[超出预算](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L5017-L5098)、[放入顺序](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L5202-L5217)、[传入提示词上限](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/script.js#L4559-L4635)
+
+**世界书按 ST `checkWorldInfo` 扫描。** ST 不读世界书自带的 `scan_depth`、`recursive_scanning`，全部用全局设置；SillyDraft 没有这些设置，取 ST 全新安装时的值（`default/content/settings.json`）：扫描最近 2 条消息、开启递归、不区分大小写、按整词匹配、消息带发送者名字，最少触发数与最大递归轮数为 0（不限制），分组评分关闭。扫描规则：
+- 角色卡世界书算角色资料，作品绑定的世界书算全局资料；按 `world_info_character_strategy` 的默认“角色优先”，先扫描角色卡世界书（按插入顺序从高到低），再把所有绑定世界书的条目合在一起按插入顺序排序（同顺序保持原次序）。递归跨书进行。
+- 扫描文字是最近的消息，每条为“名字: 内容”（用户消息用用户名，故事章节用角色名），去掉首尾空白，每条前加 `\x01`；条目的 `scanDepth` 覆盖深度，0 时什么都匹配不到（递归文字也不读）。条目勾选 `matchCharacterDescription` 等时依次追加用户人设、角色描述、性格、深度提示、场景或创作者备注的文字。
+- 关键词先求值宏、去掉首尾空白，为空则不匹配。`/…/flags` 形式按正则匹配（不受大小写与整词设置影响，`^` 不匹配消息开头，因为前面有 `\x01`）；不是有效正则时按普通文字匹配。整词匹配时，含空白的关键词按子串匹配，否则两侧必须是开头、结尾或 `\W`（ASCII 以外的字符都算 `\W`，所以中文关键词实际按子串匹配）。次要关键词按 AND ANY、NOT ALL、NOT ANY、AND ALL 逻辑判断。
+- 每一轮先找出可触发的条目，再按包含分组取舍：分组内有 `groupOverride` 的取插入顺序最高者，否则按 `groupWeight` 抽取，开启分组评分的条目先按命中关键词数淘汰；分组已有条目在提示词中时其余条目不再放入。然后掷概率（角色卡条目的 `useProbability` 默认开启）、求值内容并计入预算。触发条目中没有 `preventRecursion` 的内容进入下一轮的扫描文字；递归轮次跳过 `excludeRecursion` 条目；`delayUntilRecursion` 条目等到对应的递归层级才扫描。
+- `@@activate`、`@@dont_activate` 开头的条目直接触发或不触发，这些行不进入内容；`triggers` 限定生成类型；`delay` 在消息数少于该值时不触发；`characterFilter` 的名字按角色卡名比较，角色没有标签。
+- 角色卡内置世界书按 ST 导入时的 `convertCharacterBook` 读取：缺少 `enabled` 的条目为关闭，`extensions.position` 优先，否则 `before_char` 在角色前、其余在角色后，递归、扫描深度、大小写、整词、分组、概率等字段取自 `extensions`，顶层的 `case_sensitive` 不读。条目带 `keys` 或 `insertion_order` 时按这种格式读，否则按 ST 世界书文件的原字段读（其中的 `extensions` 是导入时的副本，ST 不读）。原始数据原样保留，导出不变。
+- 放入提示词时每个条目各自经过世界信息正则（深度条目带其深度），结果为空的不放入。
+
+与 ST 的差异：ST 在聊天元数据中记录 sticky、cooldown 的计时，SillyDraft 不在请求之间保留，每次都按 ST 新聊天的状态扫描（这些条目照常触发），并记一条 `world_book_timed_effect` 提示；`automationId` 在 ST 中触发同名的快速回复，SillyDraft 没有快速回复，记一条 `world_book_automation` 提示；作者注前后、示例前后位置的条目照常触发并计入预算与递归，但不放入提示词，记一条错误；没有聊天、人设绑定的世界书，也没有扩展或命令强制触发的条目；作者注与扩展提示词不进入扫描文字（ST 全新安装时也不进入）；分组名为纯数字时 ST 按 JavaScript 对象的键序先处理，SillyDraft 按出现次序。[扫描](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L4709-L5282)、[扫描文字与匹配](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L199-L474)、[合并排序](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L4590-L4644)、[包含分组](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L5292-L5475)、[角色卡世界书](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/world-info.js#L5617-L5674)、[消息带名字](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/script.js#L4624-L4635)
 
 用户可以直接按导入预设生成，也可以创建“小说适配副本”，显式调整叙事视角、篇幅与正文格式。适配改动可比较、撤回，不静默把“扮演角色”替换成“小说旁白”。即便按原预设运行，小说提供的历史也与某个现成 ST 聊天记录不同，不承诺产出相同文字。
 

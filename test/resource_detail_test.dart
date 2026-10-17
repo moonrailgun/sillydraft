@@ -155,6 +155,7 @@ void main() {
                 'keys': ['灯塔'],
                 'content': '灯塔在港口尽头',
                 'comment': '灯塔',
+                'enabled': true,
               },
             ],
           },

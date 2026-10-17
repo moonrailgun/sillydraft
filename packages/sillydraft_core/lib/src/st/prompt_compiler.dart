@@ -338,56 +338,84 @@ final class PromptCompiler {
         ),
       );
     }
-    final world = WorldBookEngine().activate(
-      [
-        if (card?.worldBook != null) ScopedWorldBook(card!.worldBook!),
-        ...input.worldBooks,
-      ],
-      branchId: input.branchId,
-      throughPosition: input.throughPosition,
-      messages: history.map((m) => m.content).toList(),
-      macros: macros,
-      seed: input.randomSeed,
-    );
-    diagnostics.addAll(world.diagnostics);
     final markers = <String, String>{
-      'worldInfoBefore': regex.apply(
-        world.before,
-        placement: 5,
-        stage: RegexStage.prompt,
-        macros: macros,
-      ),
-      'worldInfoAfter': regex.apply(
-        world.after,
-        placement: 5,
-        stage: RegexStage.prompt,
-        macros: macros,
-      ),
       // ST 1.19.0 script.js `Generate` takes these from
-      // `getCharacterCardFields()`, the values of the env macros; the prompt
-      // builders resolve their macros once more.
+      // `getCharacterCardFields()` (L4460, before world info is scanned),
+      // the values of the env macros; the prompt builders resolve their
+      // macros once more.
       'charDescription': macros.render('{{charDescription}}'),
       'charPersonality': macros.render('{{charPersonality}}'),
       'scenario': macros.render('{{charScenario}}'),
       'personaDescription': input.persona,
     };
+    final scanned = WorldBookEngine().activate(
+      input.worldBooks,
+      characterBook: card?.worldBook,
+      character: card?.name,
+      branchId: input.branchId,
+      throughPosition: input.throughPosition,
+      // script.js `Generate` L4624: each message after its sender's name
+      // (`world_info_include_names`, on in a fresh install).
+      messages: [
+        for (final m in history)
+          '${m.role == 'user' ? input.env.user : input.env.char}: '
+              '${m.content}',
+      ],
+      macros: macros,
+      seed: input.randomSeed,
+      // script.js `Generate` L4560, L4635: the scan gets the prompt size,
+      // `getMaxPromptTokens` (what `{{maxPrompt}}` gives).
+      budget: switch ((input.env.maxContext, input.env.maxResponse)) {
+        (final num context, final num response) => worldInfoBudget(
+          context - response,
+        ),
+        _ => null,
+      },
+      generationType: input.generationType,
+      // L4625-4633 `globalScanData`, the same card fields.
+      scanData: (field) => switch (field) {
+        'personaDescription' => macros.render('{{persona}}'),
+        'characterDescription' => markers['charDescription']!,
+        'characterPersonality' => markers['charPersonality']!,
+        'scenario' => markers['scenario']!,
+        'characterDepthPrompt' => macros.render('{{charDepthPrompt}}'),
+        'creatorNotes' => macros.render('{{creatorNotes}}'),
+        _ => '',
+      },
+    );
+    diagnostics.addAll(scanned.diagnostics);
+    // world-info.js L5202-5217: highest order first, each entry goes
+    // through the world info regex (one at a depth with its depth); empty
+    // ones are left out.
+    final world = WorldBookResult(
+      [
+        for (final activated in scanned.entries.reversed)
+          if (regex.apply(
+                activated.content,
+                placement: 5,
+                stage: RegexStage.prompt,
+                macros: macros,
+                depth: activated.entry.position == 4
+                    ? activated.entry.depth
+                    : null,
+              )
+              case final content when content.isNotEmpty)
+            ActivatedWorldEntry(activated.entry, content),
+      ].reversed.toList(),
+      scanned.diagnostics,
+    );
+    markers['worldInfoBefore'] = world.before;
+    markers['worldInfoAfter'] = world.after;
     // script.js `Generate` L4664-4679: once world info is scanned and the
     // card fields above are read, `{{outlet::name}}` gives the outlet
-    // entries of this request (world-info.js L5203-5258: highest order
-    // first, each through the world info regex, empty ones left out); before
-    // that, the previous request's, which SillyDraft does not keep, so none
-    // (as on a chat's first request).
+    // entries of this request (highest order first); before that, the
+    // previous request's, which SillyDraft does not keep, so none (as on a
+    // chat's first request).
     final outlets = <String, List<String>>{};
     for (final activated in world.entries.reversed) {
       final name = activated.entry.outletName;
       if (activated.entry.position != 7 || name.isEmpty) continue;
-      final content = regex.apply(
-        activated.content,
-        placement: 5,
-        stage: RegexStage.prompt,
-        macros: macros,
-      );
-      if (content.isNotEmpty) (outlets[name] ??= []).add(content);
+      (outlets[name] ??= []).add(activated.content);
     }
     macros.outlets.addAll({
       for (final MapEntry(:key, :value) in outlets.entries)

@@ -1918,6 +1918,7 @@ void main() {
           {
             'id': 3,
             'constant': true,
+            'enabled': true,
             'content': '丙',
             'position': 'after_char',
             'insertion_order': 5,
