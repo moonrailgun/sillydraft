@@ -45,9 +45,7 @@ extension LoreOperations on StoryRepository {
       if (skipStaleVersions || ignoreSidecarOf != null) {
         final source = provenance(row);
         if ((skipStaleVersions && stale(source)) ||
-            (ignoreSidecarOf != null &&
-                source['type'] == 'sidecar' &&
-                source['chapterId'] == ignoreSidecarOf)) {
+            (ignoreSidecarOf != null && sidecarOwns(source, ignoreSidecarOf))) {
           continue;
         }
       }

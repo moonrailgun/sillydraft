@@ -45,6 +45,15 @@ final class LoreEntry extends JsonSource {
       raw['provenance'] as Map<String, dynamic>;
 }
 
+/// Whether [provenance] marks a note the sidecar wrote from [chapterId] and
+/// still owns: one the author has reviewed is theirs, so a rewrite of that
+/// chapter keeps it and the sidecar is not told to redo it, while its
+/// source revision still marks it stale.
+bool sidecarOwns(Map<String, dynamic> provenance, String chapterId) =>
+    provenance['type'] == 'sidecar' &&
+    provenance['chapterId'] == chapterId &&
+    provenance['reviewedAt'] == null;
+
 final class LoreConflict implements Exception {
   const LoreConflict([this.message = '资料已经更新，请重新打开后再保存。']);
   final String message;

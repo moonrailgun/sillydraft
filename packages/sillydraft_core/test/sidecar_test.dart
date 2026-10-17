@@ -658,6 +658,50 @@ void main() {
     },
   );
 
+  test('a sidecar note the author reviewed is theirs to keep', () async {
+    final b = await _book([]);
+    final (_, v2) = await sidecarOver(b);
+    final edited = await b.repo.saveChapter(
+      branchId: b.chapter.branchId,
+      chapterId: b.chapter.id,
+      expectedRevisionId: b.chapter.revisionId,
+      content: ManuscriptContent.plainText('雨夜，林岚在渡口救下落水者。'),
+    );
+    // The lore page's "已对照最新正文复核": the same source, now reviewed.
+    final reviewed = await b.repo.saveLoreEntry(
+      branchId: b.novel.activeBranchId,
+      id: v2.id,
+      expectedRevisionId: v2.revisionId,
+      kind: LoreKind.character,
+      name: '林岚',
+      content: '雨夜救下落水者',
+      atChapterId: b.chapter.id,
+      provenance: {
+        ...v2.provenance,
+        'revisionId': edited.revisionId,
+        'reviewedAt': '2026-10-18T00:00:00.000Z',
+      },
+    );
+    final rewrite = await written(b, b.chapter.id, rewrite: true);
+    expect(rewrite.revisions, [reviewed.revisionId]);
+    expect(rewrite.prompt, contains('雨夜救下落水者'));
+    await b.repo.saveChapter(
+      branchId: b.chapter.branchId,
+      chapterId: b.chapter.id,
+      expectedRevisionId: edited.revisionId,
+      content: ManuscriptContent.plainText('改写后：渡口空无一人。'),
+    );
+    // Still tied to its chapter for review, but not the sidecar's to redo.
+    final listed = (await b.repo.listLore(b.novel.activeBranchId)).single;
+    expect(sidecarIndexEntry(listed, b.chapter.id), {
+      'id': v2.id,
+      'kind': 'character',
+      'name': '林岚',
+      'certainty': 'fact',
+      'sourceStale': true,
+    });
+  });
+
   test('notes gone stale give way to the version before them', () async {
     final b = await _book([]);
     final (v1, _) = await sidecarOver(b);

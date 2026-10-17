@@ -107,9 +107,7 @@ Map<String, dynamic> sidecarIndexEntry(LoreEntry entry, String chapterId) => {
   'name': entry.name,
   'certainty': entry.certainty.name,
   if (entry.sourceStale) 'sourceStale': true,
-  if (entry.provenance['type'] == 'sidecar' &&
-      entry.provenance['chapterId'] == chapterId)
-    'fromThisChapter': true,
+  if (sidecarOwns(entry.provenance, chapterId)) 'fromThisChapter': true,
   if (entry.data['user'] == true) 'user': true,
 };
 
