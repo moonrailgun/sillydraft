@@ -136,6 +136,19 @@ extension TaskOperations on StoryRepository {
     return getTask(id, snapshots: false);
   }, tasksOnly: true);
 
+  /// Sets a sidecar run's [transcript] whatever state the task is in:
+  /// cancelling marks the task before its run stops.
+  Future<void> saveTaskTranscript(
+    String id,
+    List<Map<String, dynamic>> transcript,
+  ) => _write(
+    () => _execute(
+      "UPDATE generation_tasks SET result_json = json_set(result_json, '\$.transcript', json(?)), updated_at = ? WHERE id = ?",
+      [jsonEncode(transcript), _now(), id],
+    ),
+    tasksOnly: true,
+  );
+
   Future<int> recoverInterruptedTasks() => _write(() async {
     final rows = await _rows(
       "SELECT id FROM generation_tasks WHERE status IN ('queued','running')",

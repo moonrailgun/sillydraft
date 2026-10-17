@@ -211,9 +211,9 @@ extension _AgentExecution on TaskRunner {
   }
 
   /// Rounds of model output and tool calls until the model answers without
-  /// any. [record] keeps each message durable as it lands: the conversation
-  /// for the editor, the task's transcript for the sidecar. [name] is what
-  /// errors call the run.
+  /// any. [record] takes each message as it lands: the editor appends it to
+  /// its conversation, the sidecar keeps it for the task's transcript.
+  /// [name] is what errors call the run.
   Future<void> _toolLoop(
     GenerationTask task,
     ModelProvider provider,

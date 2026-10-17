@@ -144,7 +144,11 @@ List<Map<String, dynamic>> _sidecarTools(Set<SidecarDuty> duties) => [
 
 extension _SidecarExecution on TaskRunner {
   /// The sidecar's tool loop. With no conversation to keep its messages,
-  /// they are saved on the task as its transcript.
+  /// they are saved on the task as its transcript once the run ends, however
+  /// it ends. SQLite rewrites the whole task row on each progress save, so a
+  /// transcript saved as it grew cost the square of its size.
+  // ponytail: a run killed mid-way keeps its lore writes but not its
+  // transcript; a table of task messages would keep both.
   Future<void> _executeSidecar(
     GenerationTask task,
     ModelProvider provider,
@@ -154,25 +158,25 @@ extension _SidecarExecution on TaskRunner {
   ) async {
     final duties = _sidecarDuties(task);
     final transcript = <Map<String, dynamic>>[];
-    await _toolLoop(
-      task,
-      provider,
-      cancel,
-      output,
-      reasoning,
-      tools: _sidecarTools(duties),
-      execute: (call) => _sidecarTool(task, duties, call),
-      record: (role, content, metadata) async {
-        transcript.add({'role': role, 'content': content, ...metadata});
-        await repository.updateTask(
-          task.id,
-          status: TaskStatus.running,
-          result: {'transcript': transcript},
-        );
-      },
-      overflow: '本章与资料超出整理模型的上下文限制',
-      name: '旁路整理',
-    );
+    try {
+      await _toolLoop(
+        task,
+        provider,
+        cancel,
+        output,
+        reasoning,
+        tools: _sidecarTools(duties),
+        execute: (call) => _sidecarTool(task, duties, call),
+        record: (role, content, metadata) async =>
+            transcript.add({'role': role, 'content': content, ...metadata}),
+        overflow: '本章与资料超出整理模型的上下文限制',
+        name: '旁路整理',
+      );
+    } finally {
+      if (transcript.isNotEmpty) {
+        await repository.saveTaskTranscript(task.id, transcript);
+      }
+    }
   }
 
   Map<String, dynamic> _sidecarProvenance(GenerationTask task) => {

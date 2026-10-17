@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor;
+import 'package:drift/native.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
@@ -22,12 +25,16 @@ typedef _Book = ({
 });
 
 /// A one-chapter book whose model plays [script], one reply per request, and
-/// answers plainly once it runs out. [gate] holds every reply until it opens.
+/// answers plainly once it runs out. [gate] holds every reply until it opens;
+/// [spy] sees every statement the book's database runs.
 Future<_Book> _book(
   List<List<ProviderEvent>> script, {
   Completer<void>? gate,
+  QueryInterceptor? spy,
 }) async {
-  final repo = StoryRepository.memory();
+  final repo = spy == null
+      ? StoryRepository.memory()
+      : StoryRepository.connect(NativeDatabase.memory().interceptWith(spy));
   addTearDown(repo.close);
   final novel = await repo.createNovel(title: '雾港');
   final chapter = await repo.createChapter(
@@ -80,6 +87,25 @@ Future<GenerationTask> _start(_Book b, Set<SidecarDuty> duties) =>
 
 Future<GenerationTask> _run(_Book b, Set<SidecarDuty> duties) async =>
     b.runner.wait((await _start(b, duties)).id);
+
+/// Bytes of the values written to task rows. SQLite rewrites a whole row on
+/// every update, so this is also what the rows' readers re-read.
+final class _TaskWrites extends QueryInterceptor {
+  var bytes = 0;
+  @override
+  Future<void> runCustom(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    if (statement.contains('UPDATE generation_tasks')) {
+      for (final value in args.whereType<String>()) {
+        bytes += utf8.encode(value).length;
+      }
+    }
+    return executor.runCustom(statement, args);
+  }
+}
 
 /// What each tool call answered, in order, from the task's transcript.
 List<Map<String, dynamic>> _toolResults(GenerationTask task) => [
@@ -544,6 +570,76 @@ void main() {
         {'role': 'assistant', 'content': '已整理'},
       ]);
     }
+  });
+
+  test('a sidecar run writes its transcript once, not as it grows', () async {
+    final spy = _TaskWrites();
+    final script = <List<ProviderEvent>>[];
+    final b = await _book(script, spy: spy);
+    final note = await b.repo.saveLoreEntry(
+      branchId: b.novel.activeBranchId,
+      kind: LoreKind.location,
+      name: '渡口',
+      content: '渡' * 2000,
+    );
+    for (var round = 0; round < 6; round++) {
+      script.add([
+        for (var i = 0; i < 4; i++)
+          ToolCallReady('r$round$i', 'read_lore', {'id': note.id}),
+        const GenerationFinished('tool_calls'),
+      ]);
+    }
+    final task = await _run(b, {SidecarDuty.memory});
+    expect(task.status, TaskStatus.completed, reason: task.error);
+    expect(_toolResults(task), hasLength(24));
+    final transcript = utf8.encode(jsonEncode(task.result['transcript']));
+    // Saved with each of its 31 messages and every progress save, it wrote
+    // 24 times its size.
+    expect(spy.bytes, lessThan(2 * transcript.length));
+  });
+
+  test('a cancelled sidecar run keeps the messages it had', () async {
+    final b = await _book([]);
+    final asked = Completer<void>();
+    var replies = 0;
+    final runner = TaskRunner(
+      repository: b.repo,
+      providerFactory: (c) async => ScriptProvider(c, (_, cancel) async* {
+        if (replies++ == 0) {
+          yield ToolCallReady('l', 'list_lore', {});
+          yield const GenerationFinished('tool_calls');
+          return;
+        }
+        asked.complete();
+        final stop = Completer<void>();
+        cancel.onCancel(stop.complete);
+        await stop.future;
+        cancel.check();
+      }),
+    );
+    addTearDown(runner.close);
+    final task = await _start(
+      (
+        repo: b.repo,
+        runner: runner,
+        novel: b.novel,
+        chapter: b.chapter,
+        requests: b.requests,
+      ),
+      {SidecarDuty.memory},
+    );
+    await asked.future;
+    // Cancelling marks the task before its run stops.
+    await runner.cancel(task.id);
+    final done = await runner.wait(task.id);
+    expect(done.status, TaskStatus.cancelled);
+    expect(
+      [
+        for (final m in (done.result['transcript'] as List).cast<Map>())
+          m['role'],
+      ],
+      ['assistant', 'tool'],
+    );
   });
 
   test('a sidecar run on a remote runner is never requeued', () async {
