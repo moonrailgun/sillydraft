@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:sillydraft_server/runner_server.dart';
+import 'package:sqlite3/sqlite3.dart' as sql;
 import 'package:test/test.dart';
 
 const token = 'local-test-token-never-a-provider-key';
@@ -167,7 +168,9 @@ void main() {
       expect(jsonEncode(models.data), isNot(contains(profile.baseUrl)));
       final gate = Completer<void>();
       script = (cancel) async* {
-        yield const TextDelta('雨落');
+        // Two quick deltas: the second is newer than the last saved progress.
+        yield const TextDelta('雨');
+        yield const TextDelta('落');
         await gateOrCancel(gate, cancel);
         yield const TextDelta('在港口');
         yield const GenerationFinished('stop');
@@ -215,7 +218,8 @@ void main() {
     () async {
       final gate = Completer<void>();
       script = (cancel) async* {
-        yield const TextDelta('保存的前半段');
+        yield const TextDelta('保存的');
+        yield const TextDelta('前半段');
         await gateOrCancel(gate, cancel);
         yield const GenerationFinished('stop');
       };
@@ -250,6 +254,94 @@ void main() {
             'completed',
       );
       expect(calls, 2);
+    },
+  );
+
+  test('streamed progress is saved apart from the frozen request', () async {
+    // A writing job's frozen request is hundreds of kilobytes.
+    final prompt = '雾港的灯在夜里亮着，' * 10000;
+    final start = Completer<void>(), streamed = Completer<void>();
+    final end = Completer<void>();
+    script = (cancel) async* {
+      await gateOrCancel(start, cancel);
+      for (var i = 0; i < 40; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        yield const TextDelta('字');
+      }
+      yield const ReasoningDelta('想');
+      streamed.complete();
+      await gateOrCancel(end, cancel);
+      throw StateError('upstream dropped');
+    };
+    await http('POST', 'v1/jobs', body: submission('streamed', text: prompt));
+    // While this reader is open nothing is checkpointed: the WAL keeps every
+    // page the streaming writes.
+    final reader = sql.sqlite3.open('${directory.path}/runner.sqlite');
+    addTearDown(reader.close);
+    reader
+      ..execute('BEGIN')
+      ..select('SELECT count(*) FROM jobs');
+    final wal = File('${directory.path}/runner.sqlite-wal');
+    final before = wal.lengthSync();
+    start.complete();
+    await streamed.future;
+    final written = wal.lengthSync() - before;
+    reader.execute('COMMIT');
+    // SQLite rewrites a whole row whose size changes: saved on the job row,
+    // every delta rewrote the request.
+    expect(written, lessThan(utf8.encode(prompt).length), reason: '$written');
+    // Readers see every delta, saved or not.
+    final live = (await http('GET', 'v1/jobs/streamed')).data;
+    expect((live['text'], live['reasoning']), ('字' * 40, '想'));
+    end.complete();
+    await until(
+      () async =>
+          (await http('GET', 'v1/jobs/streamed')).data['status'] == 'failed',
+    );
+    final failed = (await http('GET', 'v1/jobs/streamed')).data;
+    expect((failed['text'], failed['reasoning']), ('字' * 40, '想'));
+  });
+
+  test(
+    'version 1 data is upgraded, crash progress kept, newer data refused',
+    () async {
+      await http('POST', 'v1/jobs', body: submission('old-job'));
+      await until(
+        () async =>
+            (await http('GET', 'v1/jobs/old-job')).data['status'] ==
+            'completed',
+      );
+      await server.close();
+      final path = '${directory.path}/runner.sqlite';
+      // Version 1 is version 2 without the table of streamed progress.
+      sql.sqlite3.open(path)
+        ..execute('DROP TABLE job_progress')
+        ..execute('PRAGMA user_version = 1')
+        ..close();
+      server = await open();
+      expect((await http('GET', 'v1/jobs/old-job')).data['text'], '新的远程正文');
+      await server.close();
+      // A process killed mid-stream leaves its last saved progress behind.
+      sql.sqlite3.open(path)
+        ..execute('''INSERT INTO jobs(id,fingerprint,profile,kind,input_json,connection_json,status,created_at,updated_at)
+          VALUES('killed','f','writer','text','{}','{}','running',0,0)''')
+        ..execute(
+          "INSERT INTO job_progress(job_id,text,reasoning) VALUES('killed','半截','想')",
+        )
+        ..close();
+      server = await open();
+      final killed = (await http('GET', 'v1/jobs/killed')).data;
+      expect(
+        (killed['status'], killed['text'], killed['reasoning']),
+        ('interrupted', '半截', '想'),
+      );
+      await server.close();
+      final db = sql.sqlite3.open(path);
+      expect(db.select('PRAGMA user_version').single.values.single, 2);
+      expect(db.select('SELECT * FROM job_progress'), isEmpty);
+      db.execute('PRAGMA user_version = 3');
+      db.close();
+      await expectLater(open(), throwsStateError);
     },
   );
 

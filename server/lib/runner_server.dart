@@ -45,6 +45,11 @@ final class RunnerServer {
   final int maxConcurrent, maxRequestBytes;
   final _running = <String, Future<void>>{};
   final _cancel = <String, GenerationCancellation>{};
+
+  /// Running text jobs' output so far: readers see every delta, while
+  /// [_saveProgress] stores it at most every [_saveEvery].
+  final _live = <String, ({StringBuffer text, StringBuffer reasoning})>{};
+  static const _saveEvery = Duration(milliseconds: 250);
   bool _closing = false;
   Future<void>? _closeFuture;
   Uri get uri => Uri(
@@ -100,7 +105,7 @@ final class RunnerServer {
       db.execute('PRAGMA journal_mode = WAL');
       final version =
           db.select('PRAGMA user_version').single.values.single as int;
-      if (version > 1) throw StateError('服务数据版本较新，请升级执行器');
+      if (version > 2) throw StateError('服务数据版本较新，请升级执行器');
       db.execute('''CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, profile TEXT NOT NULL,
         kind TEXT NOT NULL, input_json TEXT NOT NULL, connection_json TEXT NOT NULL,
@@ -108,13 +113,14 @@ final class RunnerServer {
         result_json TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '',
         image BLOB, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )''');
-      db.execute('PRAGMA user_version = 1');
+      // Version 2 adds this table ([_saveProgress]); 1 → 2 only creates it.
+      db.execute('''CREATE TABLE IF NOT EXISTS job_progress (
+        job_id TEXT PRIMARY KEY, text TEXT NOT NULL, reasoning TEXT NOT NULL
+      )''');
+      db.execute('PRAGMA user_version = 2');
       // A process restart cannot prove whether an upstream accepted a request.
       // Preserve work and require a new explicit job rather than retry billing.
-      db.execute(
-        "UPDATE jobs SET status = 'interrupted', error = '服务进程中断，已有结果已保留', updated_at = ? WHERE status IN ('queued','running')",
-        [DateTime.now().millisecondsSinceEpoch],
-      );
+      _interrupt(db, '服务进程中断，已有结果已保留');
       final http = await HttpServer.bind(
         address ?? InternetAddress.loopbackIPv4,
         port,
@@ -161,10 +167,42 @@ final class RunnerServer {
     return difference == 0;
   }
 
+  /// A job's row, with the output of a running job ([_live]).
   Map<String, dynamic> _row(String id) {
     final rows = _db.select('SELECT * FROM jobs WHERE id = ?', [id]);
     if (rows.isEmpty) throw const _ApiError(404, '任务不存在');
-    return Map<String, dynamic>.from(rows.single);
+    final live = _live[id];
+    return {
+      ...rows.single,
+      if (live != null) ...{
+        'text': live.text.toString(),
+        'reasoning': live.reasoning.toString(),
+      },
+    };
+  }
+
+  /// Saves a running job's output beside its row: SQLite rewrites a whole
+  /// row whose size changes, and a job row carries its frozen request.
+  void _saveProgress(String id) {
+    final live = _live[id]!;
+    _db.execute('REPLACE INTO job_progress VALUES(?,?,?)', [
+      id,
+      live.text.toString(),
+      live.reasoning.toString(),
+    ]);
+  }
+
+  /// Marks unfinished jobs interrupted, moving saved progress onto their rows.
+  static void _interrupt(sql.Database db, String error) {
+    String saved(String column) =>
+        '$column = coalesce((SELECT p.$column FROM job_progress p '
+        'WHERE p.job_id = jobs.id), $column)';
+    db.execute(
+      "UPDATE jobs SET status = 'interrupted', error = ?, updated_at = ?, "
+      "${saved('text')}, ${saved('reasoning')} WHERE status IN ('queued','running')",
+      [error, DateTime.now().millisecondsSinceEpoch],
+    );
+    db.execute('DELETE FROM job_progress');
   }
 
   Map<String, dynamic> _packet(Map<String, dynamic> row) => {
@@ -237,16 +275,14 @@ final class RunnerServer {
             fingerprint = sha256
                 .convert(utf8.encode(_canonical(body)))
                 .toString();
-        final old = _db.select('SELECT * FROM jobs WHERE id = ?', [id]);
+        final old = _db.select('SELECT fingerprint FROM jobs WHERE id = ?', [
+          id,
+        ]);
         if (old.isNotEmpty) {
           if (old.single['fingerprint'] != fingerprint) {
             throw const _ApiError(409, '同一任务标识不能更换输入');
           }
-          await _json(
-            request.response,
-            200,
-            _packet(Map<String, dynamic>.from(old.single)),
-          );
+          await _json(request.response, 200, _packet(_row(id)));
           return;
         }
         _validate(body);
@@ -396,7 +432,8 @@ final class RunnerServer {
     final used =
         _db
                 .select(
-                  "SELECT coalesce(sum(length(input_json)+length(text)+length(reasoning)+coalesce(length(image),0)),0) AS bytes FROM jobs",
+                  "SELECT coalesce(sum(length(input_json)+length(text)+length(reasoning)+coalesce(length(image),0)),0)"
+                  " + (SELECT coalesce(sum(length(text)+length(reasoning)),0) FROM job_progress) AS bytes FROM jobs",
                 )
                 .single['bytes']
             as int;
@@ -405,11 +442,10 @@ final class RunnerServer {
     }
   }
 
+  /// Updates an unfinished job, saving its output so far ([_row]).
   void _update(
     String id, {
     String? status,
-    String? text,
-    String? reasoning,
     Map<String, dynamic>? result,
     String? error,
     Uint8List? image,
@@ -421,8 +457,8 @@ final class RunnerServer {
       WHERE id=? AND status IN ('queued','running')''',
       [
         status ?? old['status'],
-        text ?? old['text'],
-        reasoning ?? old['reasoning'],
+        old['text'],
+        old['reasoning'],
         result == null ? old['result_json'] : jsonEncode(result),
         error ?? old['error'],
         image ?? old['image'],
@@ -430,6 +466,8 @@ final class RunnerServer {
         id,
       ],
     );
+    // The row now holds the output.
+    _db.execute('DELETE FROM job_progress WHERE job_id = ?', [id]);
   }
 
   void _pump() {
@@ -519,6 +557,8 @@ final class RunnerServer {
           return;
         }
         final text = StringBuffer(), reasoning = StringBuffer();
+        _live[id] = (text: text, reasoning: reasoning);
+        final sinceSave = Stopwatch();
         GenerationFinished? finish;
         await for (final event in provider.generate(
           request,
@@ -538,7 +578,13 @@ final class RunnerServer {
           if (text.length > 1024 * 1024 || reasoning.length > 1024 * 1024) {
             throw const FormatException('输出过大');
           }
-          _update(id, text: text.toString(), reasoning: reasoning.toString());
+          // A finished, failed or stopped job saves all of it ([_update]).
+          if (!sinceSave.isRunning || sinceSave.elapsed >= _saveEvery) {
+            _saveProgress(id);
+            sinceSave
+              ..reset()
+              ..start();
+          }
         }
         cancel.check();
         if (finish == null ||
@@ -559,6 +605,7 @@ final class RunnerServer {
     } catch (_) {
       _update(id, status: 'failed', error: '模型执行未完成，请检查服务端模型配置；已有输出已保留');
     } finally {
+      _live.remove(id);
       provider?.close();
       imageProvider?.close();
     }
@@ -568,10 +615,8 @@ final class RunnerServer {
   Future<void> _close() async {
     _closing = true;
     await _http.close(force: true);
-    _db.execute(
-      "UPDATE jobs SET status='interrupted',error='服务进程关闭，已有结果已保留',updated_at=? WHERE status IN ('queued','running')",
-      [DateTime.now().millisecondsSinceEpoch],
-    );
+    _live.keys.forEach(_saveProgress);
+    _interrupt(_db, '服务进程关闭，已有结果已保留');
     for (final cancel in _cancel.values.toList()) {
       cancel.cancel();
     }
