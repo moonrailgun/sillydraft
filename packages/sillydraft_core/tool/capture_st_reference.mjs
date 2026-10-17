@@ -116,3 +116,12 @@ await fs.writeFile('test/fixtures/st/reasoning-effort-reference.json', JSON.stri
   models, fixed, cases,
 }, null, 2) + '\n');
 console.log('Captured ST reasoning effort:', models.length, 'models,', cases.length, 'cases');
+
+// Settings a text completion preset carries (textgen-settings.js); the
+// importer keeps the sampling ones as parameters.
+const textgenSource = await (await fetch(base + 'public/scripts/textgen-settings.js')).text();
+const settingNames = literal(textgenSource, 'setting_names');
+await fs.writeFile('test/fixtures/st/textgen-settings-reference.json', JSON.stringify({
+  commit, settingNames,
+}, null, 2) + '\n');
+console.log('Captured ST text completion settings:', settingNames.length);

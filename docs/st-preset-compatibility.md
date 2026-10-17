@@ -4,7 +4,7 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 导入、编译、资源库、手机条目编辑与正文候选闭环已接入应用。源码基线为 ST `release` 分支的 `1.19.0`，提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`，提交日期为 2026-09-14，核查日期为 2026-10-13。后续升级按提交维护兼容记录，不把浮动分支作为测试依据。[版本依据](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/package.json)
 
-实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入、指令序列化与推理强度解析函数，并读取推理强度的模型名单，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
+实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入、指令序列化与推理强度解析函数，并读取推理强度的模型名单和文本补全设置项，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
 
 显示专用正则已接入候选预览和独立阅读器。阅读器使用当前分支的显示规则，调整后已有章节立即重新渲染；生成章节仍使用任务中冻结的时钟、随机种子、环境宏取值和宏变量，手动编辑继承此前生成的宏上下文。候选预览及历史对比保留任务中冻结的规则。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
@@ -174,6 +174,8 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 **MVU 变量框架内置实现。** 社区角色卡常用 [MagVarUpdate（MVU）](https://github.com/MagicalAstrogy/MagVarUpdate) 维护状态：世界书 `[InitVar]` 条目给出初值，模型在回复末尾输出 `<UpdateVariable>` 中的 `_.set('路径', 旧值, 新值);//原因` 或 `<JSONPatch>` 命令，脚本把结果存为每条消息的 `stat_data`、`display_data`、`delta_data`、`schema`，并用 `{{get_message_variable::stat_data}}` / `{{format_message_variable::stat_data}}` 把状态送回提示词。SillyDraft 不运行该脚本，而是在核心包中实现同样的规则：从角色卡创建小说时初始化，生成候选时按上一章记录执行本章正文中的命令，采纳时提交；`<StatusPlaceHolderImpl/>` 追加到正文末尾供显示正则渲染状态栏，提示词中去掉。结构校验遵循 MVU 的 `$meta` 规则；角色卡自带 `registerMvuSchema` 脚本时默认关闭。额外模型解析、`[mvu_plot]` 分阶段过滤与 MVU Zod 的 zod 规则未实现。对应关系、差异与测试见 [MVU 验证](verification/mvu.md)。
 
 **模型参数和连接配置分别处理。** 兼容层识别温度、top-p、top-k、重复惩罚、输出限制、上下文预算、停止串、预填及后端专用采样参数。目标模型是否接受某个参数，由模型适配层判断；缺省、关闭值和数值范围不能统一猜测。
+
+**文本补全预设的参数按 ST 保存的设置项读取。** ST 1.19.0 `textgen-settings.js` 的 `setting_names` 是文本补全预设保存和载入的全部设置项。其中模型与状态检查设置（`custom_model`、`generic_model`、`bypass_status_check`）和 `extensions` 不是请求参数，其余都作为参数保留，包括 DRY、XTC、`nsigma`、`min_keep`、`guidance_scale`、`negative_prompt` 等。当前连接不发送的参数显示为未生效，需要时在“后端支持的额外参数”中启用。不在 `setting_names` 中的旧字段（如官方默认预设里的 `rep_pen_size`）ST 载入时不读取，这里也不作为参数。设置项名单由 `capture_st_reference.mjs` 生成（`test/fixtures/st/textgen-settings-reference.json`），`st_import_test.dart` 校验导入结果与之一致。[设置项名单](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/textgen-settings.js#L248-L323)
 
 **回复长度与上下文长度按 ST 的预设字段读取。** 聊天补全预设的回复长度是 `openai_max_tokens`。文本补全预设按 ST 保存的格式：回复长度是 `genamt`，`max_length` 是上下文长度（ST 保存时写入、载入时读回）；NovelAI 自带的预设没有 `genamt`，此时 `max_length` 是回复长度、`max_context` 是上下文长度。回复长度作为请求的最大输出 token 发送，预设未设置时用连接的最大输出 token。上下文长度一律取模型连接的「上下文 token 上限」：预设中的 `openai_max_context`、`max_length`、`max_context` 都不发送、也不参与写作前的预算检查；ST 不从预设读取的 `truncation_length` 同样不用。[保存字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/preset-manager.js#L744-L747)、[载入字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/script.js#L8121-L8136)、[NovelAI 预设](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/nai-settings.js#L177-L186)
 

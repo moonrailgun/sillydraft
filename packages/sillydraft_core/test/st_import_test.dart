@@ -300,4 +300,27 @@ void main() {
     expect(preset.parameters, isNot(contains('reverse_proxy')));
     expect(preset.exportJson()['extensions'], {'unrelated': 42});
   });
+
+  test(
+    'text completion presets keep every sampling setting pinned ST saves',
+    () {
+      // Model and status settings, and extensions, are not request parameters.
+      const notParameters = {
+        'custom_model',
+        'generic_model',
+        'bypass_status_check',
+        'extensions',
+      };
+      final names =
+          (fixture('textgen-settings-reference.json')['settingNames'] as List)
+              .cast<String>();
+      final preset = PresetImporter().decode({
+        for (final name in names) name: 1,
+      }, kindHint: PresetKind.textCompletion);
+      expect(
+        preset.parameters.keys.toSet(),
+        names.toSet().difference(notParameters),
+      );
+    },
+  );
 }
