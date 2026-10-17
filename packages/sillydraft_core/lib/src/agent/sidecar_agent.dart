@@ -61,7 +61,7 @@ enum SidecarDuty {
 /// The author's sidecar switches, stored under [key].
 final class SidecarSettings {
   const SidecarSettings({
-    this.enabled = true,
+    this.enabled,
     this.duties = const {
       SidecarDuty.characters,
       SidecarDuty.memory,
@@ -69,11 +69,11 @@ final class SidecarSettings {
     },
   });
 
-  /// Missing values are on, so a book keeps its notes from the first chapter.
+  /// Missing duties are on; a missing main switch stays unset.
   factory SidecarSettings.fromJson(Map<String, dynamic>? json) {
     final duties = json?['duties'] as Map? ?? const {};
     return SidecarSettings(
-      enabled: json?['enabled'] as bool? ?? true,
+      enabled: json?['enabled'] as bool?,
       duties: {
         for (final duty in SidecarDuty.values)
           if (duties[duty.name] as bool? ?? true) duty,
@@ -82,7 +82,10 @@ final class SidecarSettings {
   }
 
   static const key = 'sidecar';
-  final bool enabled;
+
+  /// Whether it runs after each chapter, as the author switched it; null
+  /// while they never have, and [SidecarSetup.enabled] decides.
+  final bool? enabled;
   final Set<SidecarDuty> duties;
 
   SidecarSettings copyWith({bool? enabled, Set<SidecarDuty>? duties}) =>
@@ -92,11 +95,58 @@ final class SidecarSettings {
       );
 
   Map<String, dynamic> toJson() => {
-    'enabled': enabled,
+    'enabled': ?enabled,
     'duties': {
       for (final duty in SidecarDuty.values) duty.name: duties.contains(duty),
     },
   };
+}
+
+/// How the sidecar runs in a library. A run costs up to eight model rounds,
+/// so it never spends them on the writing model unasked: on its own it runs
+/// only with an analysis model the author chose; the writing model stands in
+/// only when they switch it on or run it by hand.
+final class SidecarSetup {
+  const SidecarSetup(this.settings, {this.analysis, this.writing});
+
+  /// The switches and connections in [repository]; [localCli] as in
+  /// [PreferenceOperations.connectionFor].
+  static Future<SidecarSetup> read(
+    StoryRepository repository, {
+    bool localCli = true,
+  }) async {
+    // A tool loop, so like the editor it needs tool calls.
+    Future<ModelConnection?> withTools(String role) async {
+      final c = await repository.connectionFor(role, localCli: localCli);
+      return c != null && connectionServes(c, 'editor') ? c : null;
+    }
+
+    final roles = await repository.getSetting('modelRoles');
+    final analysis = await withTools('analysis');
+    return SidecarSetup(
+      SidecarSettings.fromJson(
+        await repository.getSetting(SidecarSettings.key),
+      ),
+      // Not the role's fallback to the first connection: that is no choice.
+      analysis: analysis?.id == roles?['analysis'] ? analysis : null,
+      writing: await withTools('writing'),
+    );
+  }
+
+  final SidecarSettings settings;
+
+  /// The analysis model the author chose, when it can call tools.
+  final ModelConnection? analysis;
+
+  /// The writing model, when it can call tools.
+  final ModelConnection? writing;
+
+  /// Whether it runs after each chapter: the author's switch, else whether
+  /// there is an [analysis] model.
+  bool get enabled => settings.enabled ?? analysis != null;
+
+  /// What a run uses: [analysis], else [writing]; null when neither can.
+  ModelConnection? get connection => analysis ?? writing;
 }
 
 /// An entry as the sidecar's lore index lists it: enough to decide what to

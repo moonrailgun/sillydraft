@@ -33,12 +33,22 @@ class _Echo implements ModelProvider {
 }
 
 void main() {
-  testWidgets('the sidecar switches save the author\'s choice', (tester) async {
+  Future<AppServices> switches(
+    WidgetTester tester, {
+    List<ModelConnection> connections = const [],
+    Map<String, dynamic>? roles,
+  }) async {
     final services = AppServices(
       repository: StoryRepository.memory(),
       secrets: MemorySecrets(),
     );
     addTearDown(services.close);
+    for (final c in connections) {
+      await services.saveConnection(c);
+    }
+    if (roles != null) {
+      await services.repository.setSetting('modelRoles', roles);
+    }
     await tester.pumpWidget(
       ProviderScope(
         overrides: [servicesProvider.overrideWithValue(services)],
@@ -46,26 +56,68 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return services;
+  }
+
+  Finder sidecarSwitch(String key) =>
+      find.descendant(of: find.byKey(Key(key)), matching: find.byType(FSwitch));
+  bool switchedOn(WidgetTester tester) =>
+      tester.widget<FSwitch>(sidecarSwitch('sidecar-enabled')).value;
+  ModelConnection model(String id, String name) => ModelConnection(
+    id: id,
+    name: name,
+    baseUrl: 'http://localhost:1/v1',
+    model: 'm',
+  );
+
+  testWidgets('the sidecar switches save the author\'s choice', (tester) async {
+    final services = await switches(tester);
     Future<SidecarSettings> stored() async => SidecarSettings.fromJson(
       await services.repository.getSetting(SidecarSettings.key),
     );
     Future<void> flip(String key) async {
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(Key(key)),
-          matching: find.byType(FSwitch),
-        ),
-      );
+      await tester.tap(sidecarSwitch(key));
       await tester.pumpAndSettle();
     }
 
+    expect(switchedOn(tester), isFalse);
     await flip('sidecar-projection');
     expect((await stored()).duties, {
       SidecarDuty.characters,
       SidecarDuty.memory,
     });
+    expect((await stored()).enabled, isNull);
+    await flip('sidecar-enabled');
+    expect((await stored()).enabled, isTrue);
+    expect(switchedOn(tester), isTrue);
     await flip('sidecar-enabled');
     expect((await stored()).enabled, isFalse);
+  });
+
+  testWidgets('a chosen analysis model turns the sidecar on and is named', (
+    tester,
+  ) async {
+    await switches(
+      tester,
+      connections: [model('w', '写作'), model('a', '整理')],
+      roles: {'writing': 'w', 'analysis': 'a'},
+    );
+    expect(switchedOn(tester), isTrue);
+    expect(find.text('默认开启：已选资料整理模型「整理 · m」，整理用它。'), findsOneWidget);
+  });
+
+  testWidgets('without an analysis model the sidecar is off and says what it '
+      'would use', (tester) async {
+    await switches(
+      tester,
+      connections: [model('a', '整理'), model('w', '写作')],
+      roles: {'writing': 'w'},
+    );
+    expect(switchedOn(tester), isFalse);
+    expect(
+      find.text('默认关闭：未选能调用工具的资料整理模型，开启或手动整理时改用写作模型「写作 · m」。'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the lore page labels sidecar notes and runs the sidecar', (

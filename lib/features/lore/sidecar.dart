@@ -10,40 +10,37 @@ import '../../app/widgets.dart';
 /// What the author sees while the next chapter waits for the sidecar.
 const sidecarWaitNotice = '等待上一章的旁路整理完成后再写…';
 
-/// Starts the sidecar on [chapterId] when the author keeps it on, or always
-/// when [manual]. Null when it does not run: switched off, or no model to
-/// run it with. It runs a tool loop, so like the editor it needs a
-/// connection that serves tool calls.
+/// Starts the sidecar on [chapterId] when it is on, or always when
+/// [manual]. Null when it does not run: switched off, or no model to run it
+/// with. [SidecarSetup] says which model that is.
 Future<GenerationTask?> startSidecar(
   AppServices services, {
   required String branchId,
   required String chapterId,
   bool manual = false,
 }) async {
-  final settings = SidecarSettings.fromJson(
-    await services.repository.getSetting(SidecarSettings.key),
-  );
-  if (!manual && (!settings.enabled || settings.duties.isEmpty)) return null;
-  final candidates = [
-    await services.connectionFor('analysis'),
-    await services.connectionFor('writing'),
-  ].nonNulls;
-  final connection = candidates
-      .where((c) => connectionServes(c, 'editor'))
-      .firstOrNull;
+  final setup = await _setup(services);
+  final duties = setup.settings.duties;
+  if (!manual && (!setup.enabled || duties.isEmpty)) return null;
+  final connection = setup.connection;
   if (connection == null) {
     if (!manual) return null;
     throw FormatException(
-      candidates.isEmpty ? '请先在设置里配置资料整理模型。' : '旁路整理需要支持工具调用的模型连接，远程执行器暂不支持。',
+      await services.connectionFor('writing') == null
+          ? '请先在设置里配置资料整理模型。'
+          : '旁路整理需要支持工具调用的模型连接，远程执行器暂不支持。',
     );
   }
   return services.sidecar.start(
     branchId: branchId,
     chapterId: chapterId,
     connection: connection,
-    duties: settings.duties,
+    duties: duties,
   );
 }
+
+Future<SidecarSetup> _setup(AppServices services) =>
+    SidecarSetup.read(services.repository, localCli: services.remote == null);
 
 /// [startSidecar] for a chapter that just changed, where a failure must not
 /// get in the author's way: it can be run again from the lore page.
@@ -114,11 +111,9 @@ Future<void> awaitSidecar(
   timer.cancel();
 }
 
-final sidecarSettingsProvider = FutureProvider<SidecarSettings>((ref) async {
+final sidecarSetupProvider = FutureProvider<SidecarSetup>((ref) {
   ref.watch(repositoryChangesProvider);
-  return SidecarSettings.fromJson(
-    await ref.watch(repositoryProvider).getSetting(SidecarSettings.key),
-  );
+  return _setup(ref.watch(servicesProvider));
 });
 
 /// The sidecar's switches on the settings page: on after each chapter, and
@@ -128,8 +123,9 @@ class SidecarSwitches extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => AsyncView(
-    value: ref.watch(sidecarSettingsProvider),
-    builder: (settings) {
+    value: ref.watch(sidecarSetupProvider),
+    builder: (setup) {
+      final settings = setup.settings;
       Future<void> save(SidecarSettings next) async {
         try {
           await ref
@@ -140,15 +136,25 @@ class SidecarSwitches extends ConsumerWidget {
         }
       }
 
+      String name(ModelConnection c) => '「${c.name} · ${c.model}」';
+      final analysis = setup.analysis, writing = setup.writing;
+      final note = analysis != null
+          ? '默认开启：已选资料整理模型${name(analysis)}，整理用它。'
+          : '默认关闭：未选能调用工具的资料整理模型，'
+                '${writing == null ? '写作模型也不能调用工具，无法整理。' : '开启或手动整理时改用写作模型${name(writing)}。'}';
       return FTileGroup(
         children: [
           FTile(
             key: const Key('sidecar-enabled'),
             prefix: const Icon(FLucideIcons.sparkles),
             title: const Text('写完一章后自动整理'),
-            subtitle: const Text('关闭后仍可在资料页手动整理'),
+            subtitle: Text(
+              note,
+              overflow: TextOverflow.visible,
+              softWrap: true,
+            ),
             suffix: FSwitch(
-              value: settings.enabled,
+              value: setup.enabled,
               onChange: (v) => save(settings.copyWith(enabled: v)),
             ),
           ),

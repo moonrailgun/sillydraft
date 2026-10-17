@@ -129,10 +129,17 @@ List<Map<String, dynamic>> _toolResults(GenerationTask task) => [
 ];
 
 void main() {
-  test('sidecar switches default to on and round-trip', () {
+  test('sidecar switches round-trip; the main one stays unset until set', () {
     final fresh = SidecarSettings.fromJson(null);
-    expect(fresh.enabled, isTrue);
+    expect(fresh.enabled, isNull);
     expect(fresh.duties, SidecarDuty.values.toSet());
+    // Switching a duty does not set the main switch for the author.
+    expect(
+      SidecarSettings.fromJson(
+        fresh.copyWith(duties: {SidecarDuty.memory}).toJson(),
+      ).enabled,
+      isNull,
+    );
     final back = SidecarSettings.fromJson(
       SidecarSettings(enabled: false, duties: {SidecarDuty.memory}).toJson(),
     );
@@ -145,6 +152,112 @@ void main() {
       {SidecarDuty.characters, SidecarDuty.projection},
     );
     expect(fresh.copyWith(enabled: false).duties, fresh.duties);
+  });
+
+  group('sidecar setup', () {
+    ModelConnection connection(
+      String id, [
+      ModelProtocol protocol = ModelProtocol.openAICompatible,
+    ]) => ModelConnection(
+      id: id,
+      name: id,
+      baseUrl: protocol.isLocalCli ? '' : 'http://localhost:1/v1',
+      model: 'm',
+      protocol: protocol,
+    );
+
+    Future<SidecarSetup> setup(
+      List<ModelConnection> connections, {
+      Map<String, dynamic>? roles,
+      Map<String, dynamic>? sidecar,
+      bool localCli = true,
+    }) async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      await repo.setSetting('connections', {
+        'items': [for (final c in connections) c.raw],
+      });
+      if (roles != null) await repo.setSetting('modelRoles', roles);
+      if (sidecar != null) await repo.setSetting(SidecarSettings.key, sidecar);
+      return SidecarSetup.read(repo, localCli: localCli);
+    }
+
+    test(
+      'it is on by default only with an analysis model the author chose',
+      () async {
+        // The analysis role falls back to the first connection; that is not a
+        // choice.
+        final unset = await setup([connection('a'), connection('w')]);
+        expect(unset.analysis, isNull);
+        expect(unset.enabled, isFalse);
+        final chosen = await setup(
+          [connection('w'), connection('a')],
+          roles: {'writing': 'w', 'analysis': 'a'},
+        );
+        expect(chosen.enabled, isTrue);
+        expect(chosen.connection?.id, 'a');
+        final gone = await setup([connection('w')], roles: {'analysis': 'x'});
+        expect(gone.enabled, isFalse);
+      },
+    );
+
+    test('an analysis model that cannot call tools does not count', () async {
+      for (final s in [
+        await setup(
+          [connection('w'), connection('a', ModelProtocol.anthropic)],
+          roles: {'analysis': 'a'},
+        ),
+        await setup(
+          [connection('w'), connection('r', ModelProtocol.sillyDraftRunner)],
+          roles: {'analysis': 'r'},
+        ),
+        // A phone cannot run the desktop's command-line tools.
+        await setup(
+          [connection('w'), connection('c', ModelProtocol.claudeCode)],
+          roles: {'analysis': 'c'},
+          localCli: false,
+        ),
+      ]) {
+        expect(s.analysis, isNull);
+        expect(s.enabled, isFalse);
+        expect(s.connection?.id, 'w');
+      }
+      final cli = await setup(
+        [connection('w'), connection('c', ModelProtocol.claudeCode)],
+        roles: {'analysis': 'c'},
+      );
+      expect(cli.enabled, isTrue);
+      expect(cli.connection?.id, 'c');
+    });
+
+    test('the author\'s switch wins over the default', () async {
+      final off = await setup(
+        [connection('a')],
+        roles: {'analysis': 'a'},
+        sidecar: {'enabled': false},
+      );
+      expect(off.enabled, isFalse);
+      final on = await setup([connection('w')], sidecar: {'enabled': true});
+      expect(on.enabled, isTrue);
+      expect(on.connection?.id, 'w');
+    });
+
+    test('the writing model stands in only when the author asks', () async {
+      // Off by default, so after a chapter nothing runs; a manual run, or
+      // switching it on, uses the writing model rather than the first one.
+      final s = await setup(
+        [connection('a'), connection('w')],
+        roles: {'writing': 'w'},
+      );
+      expect(s.enabled, isFalse);
+      expect(s.connection?.id, 'w');
+      final none = await setup(
+        [connection('w', ModelProtocol.anthropic)],
+        sidecar: {'enabled': true},
+      );
+      expect(none.enabled, isTrue);
+      expect(none.connection, isNull);
+    });
   });
 
   test('a sidecar run keeps its messages on the task', () async {

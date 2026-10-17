@@ -67,6 +67,7 @@ Future<_Desk> _desk(
   Future<void>? sidecarGate,
   bool sidecarFails = false,
   Map<String, dynamic>? sidecar,
+  Map<String, dynamic>? roles = const {'analysis': 'm'},
   ModelProtocol protocol = ModelProtocol.openAICompatible,
 }) async {
   final services = AppServices(
@@ -89,6 +90,9 @@ Future<_Desk> _desk(
   );
   if (sidecar != null) {
     await services.repository.setSetting(SidecarSettings.key, sidecar);
+  }
+  if (roles != null) {
+    await services.repository.setSetting('modelRoles', roles);
   }
   final novel = await services.repository.createNovel(title: '雾港');
   final first = await services.repository.createChapter(
@@ -150,10 +154,47 @@ void main() {
     expect(await _tasks(d, TaskKind.sidecar), isEmpty);
   });
 
+  testWidgets('without a chosen analysis model, writing starts no sidecar', (
+    tester,
+  ) async {
+    final log = <String>[];
+    final d = await _desk(tester, log: log, roles: null);
+    await writeChapter(d.ref, d.first, brief: '写渡口');
+    await _settle(tester);
+    expect(await _tasks(d, TaskKind.sidecar), isEmpty);
+    expect(log, ['writing']);
+  });
+
+  testWidgets(
+    'switched on without an analysis model, it uses the writing one',
+    (tester) async {
+      final d = await _desk(tester, roles: null, sidecar: {'enabled': true});
+      // Listed after the first, which the analysis role would fall back to.
+      await d.services.saveConnection(
+        ModelConnection(
+          id: 'w',
+          name: '写作',
+          baseUrl: 'http://localhost:1/v1',
+          model: 'm',
+        ),
+      );
+      await d.services.repository.setSetting('modelRoles', {'writing': 'w'});
+      await writeChapter(d.ref, d.first, brief: '写渡口');
+      await _settle(tester);
+      final run = (await _tasks(d, TaskKind.sidecar)).single;
+      expect(run.status, TaskStatus.completed, reason: run.error);
+      expect((run.input['connection'] as Map)['id'], 'w');
+    },
+  );
+
   testWidgets('a remote runner, without tool calls, starts no sidecar', (
     tester,
   ) async {
-    final d = await _desk(tester, protocol: ModelProtocol.sillyDraftRunner);
+    final d = await _desk(
+      tester,
+      protocol: ModelProtocol.sillyDraftRunner,
+      sidecar: {'enabled': true},
+    );
     await writeChapter(d.ref, d.first, brief: '写渡口');
     await _settle(tester);
     expect(
