@@ -4,7 +4,7 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 导入、编译、资源库、手机条目编辑与正文候选闭环已接入应用。源码基线为 ST `release` 分支的 `1.19.0`，提交 `06bde939fb1e9c4c8d8641d810f0a916b5bce127`，提交日期为 2026-09-14，核查日期为 2026-10-13。后续升级按提交维护兼容记录，不把浮动分支作为测试依据。[版本依据](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/package.json)
 
-实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入、指令序列化与推理强度解析函数，并读取推理强度的模型名单和文本补全设置项，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
+实现证据位于 `packages/sillydraft_core/test/st_import_test.dart`、`st_compiler_test.dart` 与宏的 `macro_engine_test.dart`。官方样本附有提交与 SHA-256 清单；`packages/sillydraft_core/tool/capture_st_reference.mjs` 从固定源码运行隔离的注入、指令序列化与推理强度解析函数，并读取推理强度的模型名单、文本补全设置项和 NovelAI 生图模型列表，生成对照数据。对照函数使用明确的空扩展环境，不等同于整个 ST 浏览器运行时。
 
 显示专用正则已接入候选预览和独立阅读器。阅读器使用当前分支的显示规则，调整后已有章节立即重新渲染；生成章节仍使用任务中冻结的时钟、随机种子、环境宏取值和宏变量，手动编辑继承此前生成的宏上下文。候选预览及历史对比保留任务中冻结的规则。可切换查看原正文，显示阶段的变量副作用不会提交。保存、导出及后续模型上下文仍使用正式正文，书签位置映射回原正文。对应 `manuscript_presentation_test.dart`、`reader_presentation_test.dart` 和三平台原生检查。
 
@@ -222,4 +222,4 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 
 NovelAI 文生图对齐固定基线 [SillyTavern 1.19.0 的 NovelAI 图片接口](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/novelai.js#L306)：Bearer 密钥、`/ai/generate-image`、`action: generate`、`params_version: 3`、单图 `n_samples: 1`、正负提示词的 V4 caption 结构，以及 ZIP 内 PNG 的返回格式。默认使用 V4.5 Full、1024×1024、28 步、引导强度 5；提示词原样发送，不隐式加入质量标签。
 
-只支持直连文生图与常用采样参数；不包含 NovelAI 文本后端、参考图编辑、Vibe Transfer、多角色定位、局部重绘、放大或 ST 生图扩展设置导入。取消仅终止等待，服务端可能继续执行和计费；不自动重试。常用模型列表为内置建议，不冒充服务端发现或连接验证。协议回归使用本地 HTTP 服务及 ZIP 图片，不调用付费模型。
+只支持直连文生图与常用采样参数；不包含 NovelAI 文本后端、参考图编辑、Vibe Transfer、多角色定位、局部重绘、放大或 ST 生图扩展设置导入。取消仅终止等待，服务端可能继续执行和计费；不自动重试。模型列表与 ST 生图扩展的 `loadNovelModels` 一致，包括顺序（第一项为新连接的默认模型）。列表由 `capture_st_reference.mjs` 生成对照（`test/fixtures/st/novelai-models-reference.json`），`novelai_image_test.dart` 校验。它只是可选项，不冒充服务端发现或连接验证，手填其他模型名照常可用。与 ST 的差异：ST 在 ddim 采样器或 V4 Full、V4 Curated 模型下强制关闭 `sm`、`sm_dyn`，这里不做这一步。[模型列表](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/stable-diffusion/index.js#L2457-L2488)、[强制关闭](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/extensions/stable-diffusion/index.js#L4015-L4019)协议回归使用本地 HTTP 服务及 ZIP 图片，不调用付费模型。

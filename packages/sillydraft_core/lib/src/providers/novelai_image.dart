@@ -24,13 +24,16 @@ final class NovelAIImageProvider implements ImageProvider {
   final String _apiKey;
   final Dio _client;
   static const _maxBytes = 32 * 1024 * 1024;
-  // Curated choices, not a live model discovery API; manual IDs remain valid.
+  // ST 1.19.0 stable-diffusion `loadNovelModels`, in its order (see
+  // test/fixtures/st/novelai-models-reference.json). Not a live model
+  // discovery API; manual IDs remain valid.
   static const models = [
     'nai-diffusion-4-5-full',
     'nai-diffusion-4-5-curated',
     'nai-diffusion-4-full',
     'nai-diffusion-4-curated-preview',
     'nai-diffusion-3',
+    'nai-diffusion-2',
     'nai-diffusion-furry-3',
   ];
 

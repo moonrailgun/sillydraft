@@ -125,3 +125,15 @@ await fs.writeFile('test/fixtures/st/textgen-settings-reference.json', JSON.stri
   commit, settingNames,
 }, null, 2) + '\n');
 console.log('Captured ST text completion settings:', settingNames.length);
+
+// NovelAI image models the stable-diffusion extension offers.
+const sdSource = await (await fetch(base + 'public/scripts/extensions/stable-diffusion/index.js')).text();
+const novelStart = sdSource.indexOf('async function loadNovelModels(');
+if (novelStart < 0) throw new Error('Pinned function missing: loadNovelModels');
+const novelContext = vm.createContext({});
+vm.runInContext(sdSource.slice(novelStart, sdSource.indexOf('\n}\n', novelStart) + 3), novelContext, {timeout: 1000});
+const novelModels = await novelContext.loadNovelModels();
+await fs.writeFile('test/fixtures/st/novelai-models-reference.json', JSON.stringify({
+  commit, models: novelModels,
+}, null, 2) + '\n');
+console.log('Captured ST NovelAI models:', novelModels.length);

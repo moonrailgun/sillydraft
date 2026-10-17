@@ -304,4 +304,13 @@ void main() {
       );
     },
   );
+
+  test('model choices match pinned ST in its order', () {
+    final raw = jsonDecode(
+      File('test/fixtures/st/novelai-models-reference.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    expect(NovelAIImageProvider.models, [
+      for (final m in raw['models'] as List) (m as Map)['value'],
+    ]);
+  });
 }
