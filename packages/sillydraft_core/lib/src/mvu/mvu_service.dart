@@ -119,9 +119,17 @@ final class MvuService {
     return card == null || !usesSchemaScript(card);
   }
 
+  /// MVU runs on a message of the chat ST has loaded: macros read that chat
+  /// and the live settings, here the branch's chapters as they are and its
+  /// writing profile.
   Future<MacroEngine> _macros(String branchId) async {
     final context = await repository.displayContext(branchId);
-    return MacroEngine(env: context.env, clock: _clock(), seed: 0);
+    return MacroEngine(
+      env: context.env,
+      values: await repository.chatMacros(branchId, context),
+      clock: _clock(),
+      seed: 0,
+    );
   }
 
   /// Whether structural checks apply, from the writing profile's

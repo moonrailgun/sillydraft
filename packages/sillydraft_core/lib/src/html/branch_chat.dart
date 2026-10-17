@@ -33,19 +33,33 @@ final class BranchChatBackend implements TavernChatBackend {
   /// Text past this budget is left out of the snapshot for older chapters.
   static const maxSnapshotTextBytes = 1536 * 1024;
 
-  MacroEngine _macros({
+  /// What a page's macros read: the branch's chat as it is now ([chat], by
+  /// default read from the branch) and its writing profile.
+  Future<MacroEngine> _macros({
     Map<String, String> local = const {},
     Map<String, String> global = const {},
-  }) => MacroEngine(
+    Map<String, String>? chat,
+  }) async => MacroEngine(
     env: context.env,
+    values: chat ?? await repository.chatMacros(branchId, context),
     clock: _clock(),
     seed: 0,
     local: local,
     global: global,
   );
 
-  List<String> renderedGreetings() => [
-    for (final greeting in context.greetings) _macros().render(greeting),
+  /// The card's greetings as the opening chapter of [chapters] would show
+  /// each: ST's `messageFormatting` (script.js L1805-1812) resolves message
+  /// 0 against the chat in which it is that greeting (the chosen swipe).
+  Future<List<String>> renderedGreetings(List<Chapter> chapters) async => [
+    for (final (i, greeting) in context.greetings.indexed)
+      (await _macros(
+        chat: context.chatMacros(
+          chapters.length,
+          chapters.length == 1 ? greeting : chapters.last.content.text,
+          greeting: i,
+        ),
+      )).render(greeting),
   ];
 
   /// Chapter text as a message: without the newline every document ends with.
@@ -58,7 +72,9 @@ final class BranchChatBackend implements TavernChatBackend {
   Future<Map<String, dynamic>> snapshot(int messageId) async {
     final story = await repository.getStory(branchId);
     final chapters = story.chapters;
-    final greetings = chapters.isEmpty ? const <String>[] : renderedGreetings();
+    final greetings = chapters.isEmpty
+        ? const <String>[]
+        : await renderedGreetings(chapters);
     final latest = await repository.getBranchVariables(branchId);
     // Per-chapter variables only for the chapters a page addresses by default:
     // the opening, its own and the latest. Each lookup projects the branch's
@@ -140,7 +156,7 @@ final class BranchChatBackend implements TavernChatBackend {
           ? change['message'] as String
           : null;
       if (text == null && swipe is num && index == 0) {
-        final greetings = renderedGreetings();
+        final greetings = await renderedGreetings(story.chapters);
         final swipes = change['swipes'] is List
             ? [
                 for (final s in change['swipes'] as List)
@@ -308,10 +324,10 @@ final class BranchChatBackend implements TavernChatBackend {
   @override
   Future<String> substituteMacros(String text) async {
     final variables = await repository.getBranchVariables(branchId);
-    return _macros(
+    return (await _macros(
       local: variables.local,
       global: variables.global,
-    ).render(text);
+    )).render(text);
   }
 
   @override
@@ -320,7 +336,7 @@ final class BranchChatBackend implements TavernChatBackend {
     final shown = ManuscriptPresentation.fromRules(
       ManuscriptContent.plainText(text),
       rules: context.rules,
-      macros: _macros(local: variables.local, global: variables.global),
+      macros: await _macros(local: variables.local, global: variables.global),
       strict: false,
     );
     return const HtmlEscape()
@@ -332,7 +348,8 @@ final class BranchChatBackend implements TavernChatBackend {
   Future<Map<String, dynamic>> mvuParseMessage(
     String message,
     Map<String, dynamic> data,
-  ) async => parseMvuMessage(message, data, substitute: _macros().render);
+  ) async =>
+      parseMvuMessage(message, data, substitute: (await _macros()).render);
 
   @override
   Future<Map<String, dynamic>?> mvuReloadInitVar(
@@ -343,7 +360,7 @@ final class BranchChatBackend implements TavernChatBackend {
     final loaded = MvuInit.load(
       record,
       await service.initEntries(branchId),
-      substitute: _macros().render,
+      substitute: (await _macros()).render,
     );
     if (!loaded) return null;
     MvuInit.finalizeSchema(record);

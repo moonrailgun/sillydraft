@@ -749,6 +749,27 @@ _.set('主角.好感度', 33, 40);//初见
       expect(text, contains('上一幕：她笑了。'));
     });
 
+    test('commands read the chat as it is now', () async {
+      // MVU runs on a message of the chat ST has loaded, whose macros read
+      // that chat (chat-macros.js).
+      final novel = await novelWith();
+      final branchId = novel.activeBranchId;
+      final chapter = await repo.createChapter(
+        branchId: branchId,
+        content: ManuscriptContent.plainText(
+          "<UpdateVariable>\n_.set('主角.姓名', '未知', "
+          "'第{{lastMessageId}}楼{{allChatRange}}');\n</UpdateVariable>",
+        ),
+      );
+      final result = await MvuService(repo)
+          .processChapter(branchId, chapter.id);
+      expect(result!.errors, isEmpty);
+      expect(
+        (await MvuService(repo).storedAt(branchId))!.statData['主角']['姓名'],
+        '第1楼0-1',
+      );
+    });
+
     test('the HTML bridge parses messages and reloads InitVar', () async {
       final novel = await novelWith();
       final backend = BranchChatBackend(

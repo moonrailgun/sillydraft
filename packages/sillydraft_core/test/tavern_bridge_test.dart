@@ -275,6 +275,43 @@ void main() {
       },
     );
 
+    test('macros read the branch chat and its writing connection', () async {
+      final (:repo, :novel) = await _cardNovel();
+      addTearDown(repo.close);
+      final branch = novel.activeBranchId;
+      await repo.setSetting('connections', {
+        'items': [
+          ModelConnection(
+            id: 'w',
+            name: '写作',
+            baseUrl: 'http://localhost:1/v1',
+            model: 'm',
+            contextWindow: 8000,
+            maxOutputTokens: 1000,
+          ).raw,
+        ],
+      });
+      final backend = BranchChatBackend(
+        repository: repo,
+        branchId: branch,
+        context: await repo.displayContext(branch),
+      );
+      const source =
+          '{{lastMessageId}}|{{lastSwipeId}}|{{currentSwipeId}}|'
+          '{{model}}|{{maxPrompt}}';
+      // The opening is the card's greeting, whose swipes are its greetings
+      // (script.js `getFirstMessage`).
+      expect(await backend.substituteMacros(source), '0|2|1|m|7000');
+      await repo.createChapter(
+        branchId: branch,
+        content: ManuscriptContent.plainText('第二章'),
+      );
+      expect(
+        await backend.substituteMacros('$source|{{lastCharMessage}}'),
+        '1|1|1|m|7000|第二章\n',
+      );
+    });
+
     test('variables round-trip through versioned branch variables', () async {
       final (:repo, :novel) = await _cardNovel();
       addTearDown(repo.close);
