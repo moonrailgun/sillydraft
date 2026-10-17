@@ -55,8 +55,9 @@ void main() {
     final image = await services.imageProvider(remote());
     addTearDown(text.close);
     addTearDown(image.close);
-    expect(text, isA<RemoteModelProvider>());
-    expect(image, isA<RemoteImageProvider>());
+    // Remote adapters, which alone confirm a job's cancellation.
+    expect(text, isA<RemoteJobControl>());
+    expect(image, isA<RemoteJobControl>());
     expect(await services.connectionFor('editor'), isNull);
     final direct = ModelConnection(
       id: 'direct',

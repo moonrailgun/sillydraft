@@ -347,6 +347,16 @@ final class AppServices {
 
   final ProviderFactory? _modelProviderFactory;
 
+  final _prices = StPriceBook();
+
+  /// Records every request this device sends to a model. A phone's go
+  /// through the desktop, which records them there.
+  late final _meter = UsageMeter(
+    repository,
+    // ST's list prices; the saved key goes only where it was saved.
+    price: (c) async => _prices.lookup(c, await savedKey(c)),
+  );
+
   /// A provider for a connection that may not be saved yet, such as the one
   /// being edited: [secret] is the key typed into the form, if any.
   Future<ModelProvider> draftProvider(
@@ -360,12 +370,14 @@ final class AppServices {
     final factory = _modelProviderFactory;
     if (factory != null) return factory(connection);
     if (connection.protocol.isLocalCli) {
-      return LocalCliProvider(config: connection);
+      return _meter.text(LocalCliProvider(config: connection));
     }
     final key = secret ?? await savedKey(connection);
-    return connection.protocol == ModelProtocol.sillyDraftRunner
-        ? RemoteModelProvider(config: connection, accessToken: key)
-        : OpenAICompatibleProvider(config: connection, apiKey: key);
+    return _meter.text(
+      connection.protocol == ModelProtocol.sillyDraftRunner
+          ? RemoteModelProvider(config: connection, accessToken: key)
+          : OpenAICompatibleProvider(config: connection, apiKey: key),
+    );
   }
 
   Future<ModelProvider> provider(ModelConnection connection) async {
@@ -374,13 +386,15 @@ final class AppServices {
     }
     await _checkEndpoint(connection);
     if (connection.protocol.isLocalCli) {
-      return LocalCliProvider(config: connection);
+      return _meter.text(LocalCliProvider(config: connection));
     }
     if (connection.protocol == ModelProtocol.sillyDraftRunner) {
       // Image tasks also use this adapter to confirm remote cancellation.
-      return RemoteModelProvider(
-        config: connection,
-        accessToken: await secrets.read('model/${connection.id}') ?? '',
+      return _meter.text(
+        RemoteModelProvider(
+          config: connection,
+          accessToken: await secrets.read('model/${connection.id}') ?? '',
+        ),
       );
     }
     if (!connection.supportsText) {
@@ -389,9 +403,11 @@ final class AppServices {
     if (connection.protocol != ModelProtocol.openAICompatible) {
       throw const FormatException('当前版本支持 OpenAI 兼容接口，请使用兼容端点');
     }
-    return OpenAICompatibleProvider(
-      config: connection,
-      apiKey: await secrets.read('model/${connection.id}') ?? '',
+    return _meter.text(
+      OpenAICompatibleProvider(
+        config: connection,
+        apiKey: await secrets.read('model/${connection.id}') ?? '',
+      ),
     );
   }
 
@@ -404,16 +420,18 @@ final class AppServices {
     }
     await _checkEndpoint(connection);
     final key = await secrets.read('model/${connection.id}') ?? '';
-    if (connection.protocol == ModelProtocol.comfyUI) {
-      return ComfyUIProvider(config: connection, apiKey: key);
-    }
-    if (connection.protocol == ModelProtocol.novelAI) {
-      return NovelAIImageProvider(config: connection, apiKey: key);
-    }
-    if (connection.protocol == ModelProtocol.sillyDraftRunner) {
-      return RemoteImageProvider(config: connection, accessToken: key);
-    }
-    return OpenAIImageProvider(config: connection, apiKey: key);
+    return _meter.image(switch (connection.protocol) {
+      ModelProtocol.comfyUI => ComfyUIProvider(config: connection, apiKey: key),
+      ModelProtocol.novelAI => NovelAIImageProvider(
+        config: connection,
+        apiKey: key,
+      ),
+      ModelProtocol.sillyDraftRunner => RemoteImageProvider(
+        config: connection,
+        accessToken: key,
+      ),
+      _ => OpenAIImageProvider(config: connection, apiKey: key),
+    });
   }
 
   /// Set once this library was first shared: from then on a connection
@@ -531,6 +549,7 @@ final class AppServices {
     } finally {
       await hosting.stop();
       await runner.close();
+      _prices.close();
       if (remote case final session?) {
         await session.close();
       } else {

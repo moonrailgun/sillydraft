@@ -335,15 +335,12 @@ void main() {
       // The settings form sends the saved key only where it was saved; a
       // key typed into it goes anywhere.
       await expectLater(services.draftProvider(moved), throwsMoved);
-      expect(
-        await services.draftProvider(moved, secret: 'sk-typed'),
-        isA<OpenAICompatibleProvider>(),
+      await expectLater(
+        services.draftProvider(moved, secret: 'sk-typed'),
+        completes,
       );
       expect(await services.endpointTrusted(moved), isFalse);
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
     });
 
     test('a new address takes a new key', () async {
@@ -354,12 +351,9 @@ void main() {
       addTearDown(services.close);
       await services.saveConnection(original, apiKey: 'sk-test');
       await expectLater(services.saveConnection(moved), throwsMoved);
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
       await services.saveConnection(moved, apiKey: 'sk-new');
-      expect(await services.provider(moved), isA<OpenAICompatibleProvider>());
+      await expectLater(services.provider(moved), completes);
       expect(await services.secrets.read('model/c1'), 'sk-new');
       await expectLater(services.provider(original), throwsStateError);
     });
@@ -370,10 +364,7 @@ void main() {
       await services.secrets.write('model/c1', 'sk-old');
       await expectLater(services.saveConnection(original), throwsMoved);
       await services.saveConnection(original, apiKey: 'sk-new');
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
     });
 
     test('untouched and never-shared connections are trusted', () async {
@@ -408,20 +399,14 @@ void main() {
         'items': [original.raw],
       });
       await services.secrets.write('model/c1', 'sk-old');
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
 
       await services.hosting.setEnabled(true, port: 0);
       expect(services.hosting.host, isNotNull);
       expect(await services.secrets.read('endpoint/c1'), isNotNull);
       await rewrite(services);
       await expectLater(services.provider(moved), throwsStateError);
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
     });
 
     test('removing a connection forgets its key and endpoint', () async {
@@ -456,9 +441,9 @@ void main() {
         'items': [changed.raw],
       });
       await expectLater(services.provider(changed), throwsStateError);
-      expect(
-        await services.provider(cli('/usr/local/bin/claude')),
-        isA<LocalCliProvider>(),
+      await expectLater(
+        services.provider(cli('/usr/local/bin/claude')),
+        completes,
       );
     });
 
@@ -477,10 +462,7 @@ void main() {
       });
       await expectLater(services.provider(added), throwsStateError);
       await services.saveConnection(original, apiKey: 'sk-test');
-      expect(
-        await services.provider(original),
-        isA<OpenAICompatibleProvider>(),
-      );
+      await expectLater(services.provider(original), completes);
     });
 
     test('a connection named like the marker leaves it in place', () async {

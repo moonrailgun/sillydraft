@@ -16,6 +16,7 @@ import '../skills/skills_screen.dart';
 import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
 import 'model_select.dart';
+import 'usage_screen.dart';
 import 'world_info_budget.dart';
 
 final connectionsProvider = FutureProvider<List<ModelConnection>>((ref) {
@@ -46,6 +47,10 @@ class SettingsScreen extends ConsumerWidget {
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
+    final usage = switch (ref.watch(usageProvider).value) {
+      final u? => usageSummary(u.months),
+      null => null,
+    };
     final version = ref.watch(appVersionProvider).value;
     final updates = ref.watch(servicesProvider).updateEndpoint != null;
     final autoUpdate =
@@ -275,6 +280,21 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 24),
               FTileGroup(
                 children: [
+                  FTile(
+                    key: const Key('settings-usage'),
+                    prefix: const Icon(FLucideIcons.receipt),
+                    title: const Text('用量与成本'),
+                    subtitle: usage == null
+                        ? null
+                        : _wrapped([usage.title, ?usage.note].join('\n')),
+                    suffix: const Icon(FLucideIcons.chevronRight),
+                    onPress: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const UsageScreen(),
+                      ),
+                    ),
+                  ),
                   FTile(
                     key: const Key('settings-skills'),
                     prefix: const Icon(FLucideIcons.puzzle),

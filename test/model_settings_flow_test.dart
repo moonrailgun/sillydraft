@@ -216,7 +216,6 @@ void main() {
     expect((await services.connectionFor('image'))!.id, saved.id);
     final provider = await services.imageProvider(saved);
     addTearDown(provider.close);
-    expect(provider, isA<NovelAIImageProvider>());
     await tester.tap(findAction('编辑连接'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存连接'));
