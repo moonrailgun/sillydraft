@@ -357,7 +357,8 @@ class _PresetPromptState extends State<PresetPromptEditor> {
     return ReorderableListView.builder(
       key: const PageStorageKey('preset-prompt-list'),
       buildDefaultDragHandles: false,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      // Hosts supply the side padding, like the other preset tabs.
+      padding: const EdgeInsets.only(bottom: 32),
       // The lifted entry casts a soft shadow instead of Material elevation.
       proxyDecorator: (child, _, _) => DecoratedBox(
         decoration: BoxDecoration(

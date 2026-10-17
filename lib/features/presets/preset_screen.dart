@@ -315,6 +315,9 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
     final assistant = _setting?[assistantUsesPresetKey] != false;
     final assistantCapable = chat || kind == PresetKind.promptPack;
     final regex = DisplayContext.regexRulesOf(_draft?['extensions']);
+    // Phones keep the controls above the tabs to short single lines.
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final gap = SizedBox(height: narrow ? 8 : 12);
     return PopScope(
       canPop: _pendingWrites == 0 && _saveError == null && !_busy,
       onPopInvokedWithResult: (didPop, _) async {
@@ -368,7 +371,9 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                               'preset:${_resource?.id}:${presets.length}',
                             ),
                             label: const Text('当前预设'),
-                            description: const Text('修改自动保存到当前分支，不影响预设库和其他分支'),
+                            description: narrow
+                                ? null
+                                : const Text('修改自动保存到当前分支，不影响预设库和其他分支'),
                             enabled: !_busy,
                             format: (id) => id == _none
                                 ? '不使用预设（SillyDraft 默认）'
@@ -396,7 +401,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          gap,
                           if (_resource == null)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 24),
@@ -409,11 +414,12 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                               key: const Key('assistant-uses-preset'),
                               enabled: assistantCapable,
                               title: _wrapped('助手对话也使用此预设'),
-                              subtitle: _wrapped(
-                                assistantCapable
-                                    ? '助手的身份与语气按预设组装；编辑规则与工具权限不变'
-                                    : '文本补全模板不能用于助手对话',
-                              ),
+                              // Narrow: only the reason it is unavailable.
+                              subtitle: !assistantCapable
+                                  ? _wrapped('文本补全模板不能用于助手对话')
+                                  : narrow
+                                  ? null
+                                  : _wrapped('助手的身份与语气按预设组装；编辑规则与工具权限不变'),
                               suffix: FSwitch(
                                 value: assistant && assistantCapable,
                                 enabled: assistantCapable,
@@ -423,7 +429,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                   ? () => _setAssistant(!assistant)
                                   : null,
                             ),
-                            const SizedBox(height: 12),
+                            gap,
                             Row(
                               children: [
                                 Expanded(
@@ -434,7 +440,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                         ? '正在自动保存…'
                                         : _customized
                                         ? '已自定义 · 已自动保存'
-                                        : '使用预设库原件 · 修改会自动保存',
+                                        : '使用预设库原件 · 修改自动保存到当前分支',
                                   ),
                                 ),
                                 if (_saveError != null)
@@ -456,7 +462,7 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            gap,
                             Expanded(
                               child: FTabs(
                                 key: ValueKey('preset-tabs:${_resource!.id}'),

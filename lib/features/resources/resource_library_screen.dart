@@ -652,10 +652,13 @@ class _ResourceEditState extends ConsumerState<ResourceEditScreen> {
           ),
           Expanded(
             child: _structured
-                ? PresetPromptEditor(
-                    value: jsonDecode(_text.text) as Map<String, dynamic>,
-                    onChanged: (value) =>
-                        _text.text = _jsonFormat.convert(value),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: PresetPromptEditor(
+                      value: jsonDecode(_text.text) as Map<String, dynamic>,
+                      onChanged: (value) =>
+                          _text.text = _jsonFormat.convert(value),
+                    ),
                   )
                 : Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

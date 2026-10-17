@@ -94,6 +94,13 @@ void main() {
     expect(find.byType(PresetPromptEditor), findsNothing);
     await tester.tap(find.text('提示词管理'));
     await tester.pumpAndSettle();
+    // A phone drops the long hints above the tabs and indents rows only once.
+    expect(find.text('修改自动保存到当前分支，不影响预设库和其他分支'), findsNothing);
+    expect(find.text('助手的身份与语气按预设组装；编辑规则与工具权限不变'), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('prompt-entry-0'))).dx,
+      tester.getTopLeft(find.byKey(const Key('assistant-uses-preset'))).dx,
+    );
     final editor = find.byType(PresetPromptEditor);
     void expectLazy() => expect(
       find
