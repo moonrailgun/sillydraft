@@ -71,8 +71,13 @@ Future<_Studio> _studio(Map<String, Map<String, dynamic>> graphs) async {
     r.response.headers.contentType = ContentType.json;
     final path = r.uri.path;
     if (r.method == 'GET' && path.startsWith('/userdata/')) {
-      reads.add(r.uri.pathSegments.last);
-      r.response.write(jsonEncode(graphs[r.uri.pathSegments.last]));
+      final name = r.uri.pathSegments.last;
+      reads.add(name);
+      if (graphs[name] case final graph?) {
+        r.response.write(jsonEncode(graph));
+      } else {
+        r.response.statusCode = 404;
+      }
     } else if (path == '/upload/image') {
       await r.drain<void>();
       uploads++;
@@ -248,10 +253,7 @@ void main() {
 
       final edited = await s.draw(connection, [s.first.id]);
       expect(edited.status, TaskStatus.completed, reason: edited.error);
-      expect(
-        s.reads,
-        containsAll(['workflows/文生图.json', 'workflows/图生图.json']),
-      );
+      expect(s.reads, ['workflows/图生图.json']);
       expect(prompts.single['6']['inputs']['text'], '两人在渡口');
       expect(prompts.single['10']['inputs']['image'], 'ref1.png');
       expect(prompts.single['11']['inputs']['image'], 'ref1.png');
@@ -362,4 +364,61 @@ void main() {
       );
     },
   );
+
+  test('a run reads only the workflow it uses, so a broken edit file fails only edits', () async {
+    final graphs = {'workflows/文生图.json': _textGraph};
+    final s = await _studio(graphs);
+    final connection = ModelConnection(
+      id: 'comfy',
+      name: 'ComfyUI',
+      baseUrl: s.url,
+      model: 'workflow',
+      protocol: ModelProtocol.comfyUI,
+      comfyWorkflow: ComfyWorkflow(
+        nodes: _textGraph,
+        promptInput: '6.text',
+        outputNode: '9',
+        filename: '文生图.json',
+      ),
+      comfyEditWorkflow: ComfyWorkflow(
+        nodes: _nodes,
+        promptInput: '6.text',
+        outputNode: '9',
+        imageInputs: ['10.image'],
+        filename: '图生图.json',
+      ),
+    );
+
+    final plain = await s.draw(connection, []);
+    expect(plain.status, TaskStatus.completed, reason: plain.error);
+    expect(s.reads, ['workflows/文生图.json']);
+
+    await expectLater(
+      s.draw(connection, [s.first.id]),
+      throwsA(
+        isA<ProviderException>().having(
+          (e) => e.message,
+          'message',
+          startsWith('图生图工作流 图生图.json：'),
+        ),
+      ),
+    );
+    graphs['workflows/图生图.json'] = {..._nodes}..remove('10');
+    await expectLater(
+      s.draw(connection, [s.first.id]),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          '图生图工作流 图生图.json：工作流输入 10.image 不存在或不是文本字段',
+        ),
+      ),
+    );
+    expect(s.reads, [
+      'workflows/文生图.json',
+      'workflows/图生图.json',
+      'workflows/图生图.json',
+    ]);
+    expect(s.prompts, hasLength(1));
+  });
 }

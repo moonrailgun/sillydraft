@@ -46,20 +46,27 @@ final class IllustrationService {
     );
   }
 
-  /// [connection] with its ComfyUI workflow re-read from the server, so a
-  /// run uses the nodes the author last saved there.
-  Future<ModelConnection> withLatestWorkflow(ModelConnection connection) async {
-    final saved = {
-      'comfyWorkflow': connection.comfyWorkflow,
-      'comfyEditWorkflow': connection.comfyEditWorkflow,
-    };
+  /// [connection] with the ComfyUI workflow a run uses re-read from the
+  /// server, so it runs the nodes the author last saved there. Runs with
+  /// [references] use the edit workflow when there is one; the other stays
+  /// as saved, so a broken file only fails the runs that need it.
+  Future<ModelConnection> withLatestWorkflow(
+    ModelConnection connection, {
+    bool references = false,
+  }) async {
+    final edit = references && connection.comfyEditWorkflow != null;
+    final workflow = edit
+        ? connection.comfyEditWorkflow
+        : connection.comfyWorkflow;
     if (connection.protocol != ModelProtocol.comfyUI ||
-        saved.values.every((w) => w == null || w.filename.isEmpty)) {
+        workflow == null ||
+        workflow.filename.isEmpty) {
       return connection;
     }
     final factory = runner.imageProviderFactory;
     if (factory == null) throw StateError('未配置生图执行器');
     final provider = await factory(connection);
+    final label = '${edit ? '图生图工作流' : '工作流'} ${workflow.filename}';
     try {
       if (provider is! WorkflowSource) {
         throw const ProviderException('comfy_workflow', '此执行器无法读取 ComfyUI 工作流');
@@ -67,13 +74,19 @@ final class IllustrationService {
       final source = provider as WorkflowSource;
       return ModelConnection.fromJson({
         ...connection.raw,
-        for (final MapEntry(:key, value: workflow) in saved.entries)
-          if (workflow != null && workflow.filename.isNotEmpty)
-            key: ComfyWorkflow.fromJson({
-              ...workflow.raw,
-              'nodes': await source.readWorkflow(workflow.filename),
-            }).raw,
+        edit ? 'comfyEditWorkflow' : 'comfyWorkflow': ComfyWorkflow.fromJson({
+          ...workflow.raw,
+          'nodes': await source.readWorkflow(workflow.filename),
+        }).raw,
       });
+    } on ProviderException catch (e) {
+      throw ProviderException(
+        e.code,
+        '$label：${e.message}',
+        statusCode: e.statusCode,
+      );
+    } on FormatException catch (e) {
+      throw FormatException('$label：${e.message}');
     } finally {
       provider.close();
     }
@@ -105,7 +118,10 @@ final class IllustrationService {
       references.add({'id': id, 'hash': asset.hash});
     }
     // Freeze before creating the task; resume keeps this exact snapshot.
-    connection = await withLatestWorkflow(connection);
+    connection = await withLatestWorkflow(
+      connection,
+      references: references.isNotEmpty,
+    );
     return runner.start(
       branchId: branchId,
       kind: TaskKind.illustration,
