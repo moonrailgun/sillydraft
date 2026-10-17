@@ -39,11 +39,11 @@ FThemeData appTheme(Brightness brightness) =>
         fontFamilyFallback: _cjkFallback,
       );
       // forui paints an off switch track and a hovered tile both in
-      // `secondary`, so a switch in a tile vanished on hover. Neutral-300 /
-      // neutral-700 stays visible on the card and its hover.
+      // `secondary`, so a switch in a tile vanished on hover. Neutral-400 /
+      // neutral-600 stays visible on the card and its hover.
       final offTrack = brightness == Brightness.dark
-          ? const Color(0xFF404040)
-          : const Color(0xFFD4D4D4);
+          ? const Color(0xFF525252)
+          : const Color(0xFFA3A3A3);
       return FThemeData(
         colors: colors,
         touch: touch,
@@ -61,6 +61,11 @@ FThemeData appTheme(Brightness brightness) =>
           trackColor: .delta([
             .base(offTrack),
             .exact({.disabled}, colors.disable(offTrack)),
+          ]),
+          // The dark on track (`primary`) is nearly the thumb's `foreground`;
+          // `primaryForeground` contrasts with it in both modes.
+          thumbColor: .delta([
+            .exact({.selected}, colors.primaryForeground),
           ]),
         ),
       );
