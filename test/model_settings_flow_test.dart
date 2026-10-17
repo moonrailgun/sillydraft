@@ -254,6 +254,40 @@ void main() {
     expect(find.text('first\nsecond'), findsOneWidget);
   });
 
+  testWidgets('a role with no saved choice can choose the model it falls '
+      'back to', (tester) async {
+    final services = await openSettings(tester);
+    await tester.enterText(
+      find.widgetWithText(FTextFormField, '模型名称'),
+      'first',
+    );
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    final id = (await services.connections()).single.id;
+    final analysis = find.byKey(const Key('role-analysis'));
+    await tester.ensureVisible(analysis);
+    expect(
+      find.descendant(
+        of: analysis,
+        matching: find.text('未指定（使用 我的模型 · first）'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('默认关闭'), findsOneWidget);
+    await tester.tap(analysis);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的模型 · first').last);
+    await tester.pumpAndSettle();
+    final roles = await services.repository.getSetting('modelRoles');
+    expect(roles?['analysis'], id);
+    expect(roles?['analysisModel'], 'first');
+    expect(
+      find.descendant(of: analysis, matching: find.text('我的模型 · first')),
+      findsOneWidget,
+    );
+    expect(find.text('默认开启：已选资料整理模型「我的模型 · first」，整理用它。'), findsOneWidget);
+  });
+
   testWidgets(
     'writing uses the chosen model and changing it invalidates the preview',
     (tester) async {

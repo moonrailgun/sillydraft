@@ -404,7 +404,9 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   /// Which connection a task role uses: the saved choice when that connection
-  /// still serves the role, otherwise the first one that does.
+  /// still serves the role. Without one the role falls back to the first that
+  /// does (as `connectionFor`), which the hint names but does not select, so
+  /// choosing it is a change that saves.
   Widget _roleSelect(
     WidgetRef ref, {
     required String label,
@@ -412,18 +414,17 @@ class SettingsScreen extends ConsumerWidget {
     required Map<String, dynamic> roles,
     required List<ModelConnection> connections,
   }) {
-    var current =
-        connections.where((c) => c.id == roles[role]).firstOrNull ??
-        connections.first;
-    if (current.id == roles[role] &&
-        current.models.contains(roles['${role}Model'])) {
-      current = current.withModel(roles['${role}Model'] as String);
+    var chosen = connections.where((c) => c.id == roles[role]).firstOrNull;
+    if (chosen != null && chosen.models.contains(roles['${role}Model'])) {
+      chosen = chosen.withModel(roles['${role}Model'] as String);
     }
+    final fallback = connections.first;
     return ConnectionModelSelect(
       key: Key('role-$role'),
       label: label,
       connections: connections,
-      value: current,
+      value: chosen,
+      hint: '未指定（使用 ${fallback.name} · ${fallback.model}）',
       onChange: (value) => ref.read(repositoryProvider).setSetting(
         'modelRoles',
         {...roles, role: value.id, '${role}Model': value.model},

@@ -12,12 +12,16 @@ class ConnectionModelSelect extends StatelessWidget {
     required this.value,
     required this.onChange,
     this.enabled = true,
+    this.hint,
   });
   final String label;
   final List<ModelConnection> connections;
   final ModelConnection? value;
   final ValueChanged<ModelConnection> onChange;
   final bool enabled;
+
+  /// Shown while [value] is null.
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +33,7 @@ class ConnectionModelSelect extends StatelessWidget {
     return FSelect<(String, String)>.rich(
       label: Text(label),
       enabled: enabled,
+      hint: hint,
       control: FSelectControl.lifted(
         value: choices.containsKey(selected) ? selected : null,
         onChange: (key) {
