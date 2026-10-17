@@ -330,6 +330,63 @@ void main() {
   });
 
   test(
+    'unknown and unclosed macros stay as written and the run proceeds',
+    () async {
+      script = (request, _) async* {
+        expect(request.messages.first['content'], '{{NPC}}登场 {{char');
+        yield const TextDelta('新正文');
+        yield const GenerationFinished('stop');
+      };
+      final task = await service.generate(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '写下一段',
+        append: true,
+        preset: PresetImporter().decode({
+          'name': 'npc',
+          'prompts': [
+            {
+              'identifier': 'main',
+              'role': 'system',
+              'content': '{{NPC}}登场 {{char',
+            },
+            {'identifier': 'chatHistory', 'marker': true},
+          ],
+          'prompt_order': [
+            {
+              'character_id': 100001,
+              'order': [
+                {'identifier': 'main', 'enabled': true},
+                {'identifier': 'chatHistory', 'enabled': true},
+              ],
+            },
+          ],
+        }),
+        globalRegex: [
+          {
+            'findRegex': '/新正文/g',
+            'replaceString': '{{NPC::x}} {{x',
+            'placement': [2],
+          },
+        ],
+      );
+      final diagnostics =
+          (task.input['compiled'] as Map)['diagnostics'] as List;
+      for (final code in ['unknown_macro', 'unclosed_macro']) {
+        expect(
+          diagnostics.where((d) => d['code'] == code).single,
+          containsPair('severity', 'warning'),
+        );
+      }
+      expect((await runner.wait(task.id)).status, TaskStatus.completed);
+      final proposal = (await repository.listProposals(novel.activeBranchId))
+          .single;
+      expect(proposal.content.text, '原文\n\n{{NPC::x}} {{x\n');
+    },
+  );
+
+  test(
     'stream failure saves partial output and explicit retry uses a new task ID',
     () async {
       var calls = 0;

@@ -592,13 +592,28 @@ void main() {
     expect(PromptCompiler().compile(novel).parameters['max_tokens'], 150);
   });
 
-  test('unsupported macros and template helpers prevent silent compatibility claims', () {
+  test('unknown macros stay as written and warn without blocking', () {
     final result = PromptCompiler().compile(
       input(chat([p('main', '{{extensionMagic::x}}')])),
     );
-    expect(result.diagnostics.map((d) => d.code), contains('unknown_macro'));
-    expect(result.canRun, isFalse);
+    final diagnostic = result.diagnostics.singleWhere(
+      (d) => d.code == 'unknown_macro',
+    );
+    expect(diagnostic.severity, DiagnosticSeverity.warning);
+    expect(result.canRun, isTrue);
     expect(result.messages.single.content, '{{extensionMagic::x}}');
+  });
+
+  test('unclosed macros stay as written and warn without blocking', () {
+    final result = PromptCompiler().compile(
+      input(chat([p('main', '{{char 的状态 {{user}}')])),
+    );
+    final diagnostic = result.diagnostics.singleWhere(
+      (d) => d.code == 'unclosed_macro',
+    );
+    expect(diagnostic.severity, DiagnosticSeverity.warning);
+    expect(result.canRun, isTrue);
+    expect(result.messages.single.content, '{{char 的状态 阿雨');
   });
 
   test('malformed setvar warns without blocking prompt compilation', () {

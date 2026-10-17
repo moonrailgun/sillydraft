@@ -516,7 +516,11 @@ final class MacroEngine {
   /// closing tags included, as in a variable shorthand's value.
   String _render(String source, int level, {bool pairs = true}) {
     if (level > 32) throw const FormatException('宏嵌套过深');
-    final tokens = [..._macrosIn(source, 0)];
+    final all = [..._macrosIn(source, 0)];
+    final tokens = [
+      for (final token in all)
+        if (token.end >= 0) token,
+    ];
     final kept = <int>{};
     final out = StringBuffer();
     var cursor = 0;
@@ -538,13 +542,18 @@ final class MacroEngine {
       out.write(value);
       if (out.length > 2 * 1024 * 1024) throw const FormatException('宏输出过长');
     }
-    // Only an unclosed macro stops the list; the rest stays text.
-    if (_next(source, tokens.isEmpty ? 0 : tokens.last.end) != null) {
+    // ST 1.19.0 MacroEngine `evaluate` (L131-133) only logs the parser's
+    // syntax warning; the unclosed macro stays text (see [_macrosIn]).
+    if (all.where((token) => token.end < 0).firstOrNull case final unclosed?) {
+      final rest = source.substring(unclosed.start).runes;
+      final excerpt = rest.length > 40
+          ? '${String.fromCharCodes(rest.take(40))}…'
+          : String.fromCharCodes(rest);
       diagnostics.add(
-        const CompatibilityDiagnostic(
+        CompatibilityDiagnostic(
           'unclosed_macro',
-          '宏缺少结束括号',
-          severity: DiagnosticSeverity.error,
+          '宏缺少结束的 }}；保留原文：$excerpt',
+          severity: DiagnosticSeverity.warning,
         ),
       );
     }
@@ -616,7 +625,9 @@ final class MacroEngine {
       );
       if (content.isNotEmpty) raw = '$raw}}${args.last}';
     }
-    if (def == null) return (_unknown(raw, '未支持的宏：${macro.name}'), end);
+    if (def == null) {
+      return (_unknown(raw, '未支持的宏 ${macro.name}；保留原文：{{$raw}}'), end);
+    }
     // MacroRegistry `isArgsValid` and `validateArgTypes`; every macro is
     // strictArgs, so a failure keeps the text with a warning.
     final problem = !def.accepts(args.length)
@@ -1269,6 +1280,8 @@ final class MacroEngine {
   (String, String?) _splitElse(String content) {
     var depth = 0;
     for (final token in _macrosIn(content, 0)) {
+      // Only top-level macros count; an unclosed one runs to the end.
+      if (token.end < 0) break;
       final macro = token.macro;
       final closing = macro.flags.contains('/');
       if (macro.name == 'if' && !closing && macro.spans.length == 1) {
@@ -1471,12 +1484,14 @@ final class MacroEngine {
     return '$pad${scalar(value)}';
   }
 
+  /// ST keeps an unregistered macro as `{{rawInner}}` and reports nothing;
+  /// SillyDraft keeps the same text and adds a warning that blocks no run.
   String _unknown(String raw, String message) {
     diagnostics.add(
       CompatibilityDiagnostic(
         'unknown_macro',
         message,
-        severity: DiagnosticSeverity.error,
+        severity: DiagnosticSeverity.warning,
       ),
     );
     return '{{$raw}}';
@@ -1570,6 +1585,7 @@ final class MacroEngine {
     '\\s*(?:${_operator.pattern}|//|[.\$!?~#/]|[a-zA-Z][^\\s:|}]*)?\\s*\$',
   );
   static final _space = RegExp(r'\s');
+  static final _junk = RegExp(r'[^\s:|}]*');
 
   /// The next macro in [source] at or after [from], or null.
   static _Token? _next(String source, int from) {
@@ -1592,31 +1608,50 @@ final class MacroEngine {
     return null;
   }
 
-  /// The closed macros of [source] from [from] on, without nested ones.
+  /// The macros of [source] from [from] on, without nested ones. An
+  /// unclosed one (end -1) runs to the end of [source]; the macros listed
+  /// after it are the ones inside it, which ST 1.19.0 MacroCstWalker
+  /// `#flattenIncompleteMacro` evaluates in its place while the unclosed
+  /// macro itself stays text.
   static Iterable<_Token> _macrosIn(String source, int from) sync* {
     for (
       var token = _next(source, from);
-      token != null && token.end >= 0;
-      token = _next(source, token.end)
+      token != null;
+      token = _next(source, token.end < 0 ? token.start + 2 : token.end)
     ) {
       yield token;
     }
   }
 
   /// The index after the `}}` closing the macro at [start], or -1. As in
-  /// MacroLexer's argument mode, only a `{{` with a macro head nests.
+  /// MacroLexer's argument mode, only a `{{` with a macro head nests, and
+  /// not within what the lexer skips after a name (`{{a{{b}}` closes at
+  /// the first `}}`).
   static int _end(String source, int start) {
     var depth = 1;
-    for (var i = start + 2; i + 1 < source.length; i++) {
-      if (source.startsWith('{{', i)) {
-        if (_head.matchAsPrefix(source, i + 2) != null) depth++;
-        i++;
+    var i = _afterHead(source, start);
+    while (i + 1 < source.length) {
+      if (source.startsWith('{{', i) &&
+          _head.matchAsPrefix(source, i + 2) != null) {
+        depth++;
+        i = _afterHead(source, i);
       } else if (source.startsWith('}}', i)) {
         if (--depth == 0) return i + 2;
-        i++;
+        i += 2;
+      } else {
+        i += source.startsWith('{{', i) ? 2 : 1;
       }
     }
     return -1;
+  }
+
+  /// Where the lexer goes on after the head of the macro at [start]: past
+  /// the characters it skips after an identifier (see [_parse]).
+  static int _afterHead(String source, int start) {
+    final head = _head.matchAsPrefix(source, start + 2)!;
+    return const ['//', '.', r'$'].contains(head[2])
+        ? head.end
+        : _junk.matchAsPrefix(source, head.end)!.end;
   }
 
   /// Splits a macro body the way MacroLexer and MacroParser do, or returns
@@ -1660,9 +1695,7 @@ final class MacroEngine {
     }
     // After an identifier the lexer skips what is not whitespace, `:`, `|`
     // or `}`, with a warning; `//` starts its arguments at once.
-    final junk = name == '//'
-        ? ''
-        : RegExp(r'[^\s:|}]*').matchAsPrefix(body, head.end)![0]!;
+    final junk = name == '//' ? '' : _junk.matchAsPrefix(body, head.end)![0]!;
     final spans = _spans(body, head.end + junk.length);
     return (
       flags: flags,

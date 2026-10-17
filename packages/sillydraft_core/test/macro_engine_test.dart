@@ -85,8 +85,52 @@ void main() {
       expect(_run('{{.mood-}}'), ('{{.mood-}}', ''));
     });
 
-    test('an unclosed macro is reported', () {
-      expect(_run('{{user'), ('{{user', 'unclosed_macro'));
+    test('an unclosed macro stays as written with a warning', () {
+      final engine = _engine();
+      expect(engine.render('a {{user b'), 'a {{user b');
+      final diagnostic = engine.diagnostics.single;
+      expect(diagnostic.code, 'unclosed_macro');
+      expect(diagnostic.severity, DiagnosticSeverity.warning);
+      expect(diagnostic.message, '宏缺少结束的 }}；保留原文：{{user b');
+      final long = _engine()..render('{{user ${'长' * 50}');
+      expect(
+        long.diagnostics.single.message,
+        '宏缺少结束的 }}；保留原文：{{user ${'长' * 33}…',
+      );
+    });
+
+    test('closed macros inside an unclosed one still resolve', () {
+      // MacroCstWalker `#flattenIncompleteMacro`: the unclosed macro runs to
+      // the end and is text; the closed macros in it are evaluated in its
+      // place, pairing as scoped macros at that level.
+      for (final (source, text) in [
+        ('{{user', '{{user'),
+        ('{{user::a', '{{user::a'),
+        ('{{', '{{'),
+        ('{{user}} {{char', '阿雨 {{char'),
+        ('{{char {{user}}', '{{char 阿雨'),
+        ('{{user}} x {{a {{user}} y {{char}}', '阿雨 x {{a 阿雨 y 道渊'),
+        ('{{reverse::{{user}}', '{{reverse::阿雨'),
+        ('{{a::{{b {{user}}', '{{a::{{b 阿雨'),
+        ('{{.x = {{user}}', '{{.x = 阿雨'),
+        ('{{// {{user}}', '{{// 阿雨'),
+        ('{{user {{.n++}}{{.n++}}', '{{user 12'),
+        ('{{a {{if 1}}x{{/if}} y', '{{a x y'),
+        ('{{a {{user}} {{/a}}', '{{a 阿雨 {{/a}}'),
+        ('{{if 1}}a{{b {{/if}} c', 'a{{b c'),
+        ('{{reverse}}ab{{c {{/reverse}}', 'c{{ba'),
+        ('{{a}} {{b {{/a}}', '{{a}}{{b}}'),
+        // `splitOnTopLevelElse` sees only top-level macros.
+        ('{{if 1}}a{{b {{else}}c{{/if}}', 'a{{b c'),
+        ('{{if 0}}a{{b {{else}}c{{/if}}', ''),
+        ('{{if 1}}a{{else {{/if}}', 'a{{else'),
+        ('{{if 1}}x{{/if', '{{if 1}}x{{/if'),
+        // Characters the lexer skips after a name never open a macro.
+        ('{{a{{user}} b', '{{a{{user}} b'),
+        ('{{user{{char}}}}', '阿雨}}'),
+      ]) {
+        expect(_run(source).$1, text, reason: source);
+      }
     });
   });
 
@@ -126,6 +170,16 @@ void main() {
         '{{ mystery :: 阿雨 }}',
         'unknown_macro',
       ));
+    });
+
+    test('an unknown macro stays as written with a warning', () {
+      // ST keeps it silently; SillyDraft warns without blocking.
+      final engine = _engine();
+      expect(engine.render('{{NPC::{{user}}}}'), '{{NPC::阿雨}}');
+      final diagnostic = engine.diagnostics.single;
+      expect(diagnostic.code, 'unknown_macro');
+      expect(diagnostic.severity, DiagnosticSeverity.warning);
+      expect(diagnostic.message, '未支持的宏 NPC；保留原文：{{NPC::阿雨}}');
     });
 
     test('space and newline take an optional integer count', () {
