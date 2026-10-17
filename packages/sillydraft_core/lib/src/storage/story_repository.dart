@@ -17,6 +17,7 @@ import '../model/resource.dart';
 import '../model/lore.dart';
 import '../model/asset.dart';
 import '../model/persona.dart';
+import '../model/usage.dart';
 import '../model/display_context.dart';
 import '../st/import_types.dart';
 import '../st/card_importer.dart';
@@ -47,6 +48,7 @@ part 'asset_store.dart';
 part 'project_store.dart';
 part 'display_store.dart';
 part 'persona_store.dart';
+part 'usage_store.dart';
 
 /// All writable story state is committed here, independently of widget lifetime.
 final class StoryRepository {

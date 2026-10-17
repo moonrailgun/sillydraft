@@ -462,9 +462,12 @@ final class _ClaudeStream extends _CliStream {
           failure = '${event['result'] ?? event['subtype'] ?? '未知错误'}';
         } else {
           finished = true;
-          if (event['usage'] is Map<String, dynamic>) {
-            usage = event['usage'] as Map<String, dynamic>;
-          }
+          usage = {
+            if (event['usage'] case final Map<String, dynamic> usage) ...usage,
+            // The run's cost sits beside its usage; metering reads usage.
+            if (event['total_cost_usd'] is num)
+              'total_cost_usd': event['total_cost_usd'],
+          };
         }
     }
   }

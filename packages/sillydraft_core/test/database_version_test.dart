@@ -40,9 +40,11 @@ void main() {
       partialText: '旧输出',
     );
     await current.close();
-    // Version 9 is version 10 without the table of streamed progress.
+    // Version 9 is version 11 without the tables of streamed progress and
+    // request usage.
     sqlite.sqlite3.open(path)
       ..execute('DROP TABLE task_progress')
+      ..execute('DROP TABLE usage_records')
       ..execute('PRAGMA user_version = 9')
       ..close();
 
@@ -57,9 +59,50 @@ void main() {
     await repo.updateTask(running.id, status: TaskStatus.running);
     await repo.saveTaskProgress(running.id, partialText: '新', reasoning: '');
     expect((await repo.getTask(running.id)).partialText, '新');
+    await repo.recordUsage(
+      connection: ModelConnection(
+        id: 'c',
+        name: '网关',
+        baseUrl: 'https://gateway.example/v1',
+        model: 'm',
+      ),
+      kind: 'text',
+      source: CostSource.unknown,
+    );
+    expect((await repo.usageByMonth()).single.requests, 1);
     await repo.close();
     final db = sqlite.sqlite3.open(path);
-    expect(db.select('PRAGMA user_version').single.values.single, 10);
+    expect(db.select('PRAGMA user_version').single.values.single, 11);
+    db.close();
+  });
+  test('a version 10 library gains the table of request usage', () async {
+    final dir = await Directory.systemTemp.createTemp('v10-library-');
+    addTearDown(() => dir.delete(recursive: true));
+    final path = '${dir.path}/library.sqlite';
+    final current = StoryRepository.open(path);
+    await current.createNovel(title: '雾港来信');
+    await current.close();
+    sqlite.sqlite3.open(path)
+      ..execute('DROP TABLE usage_records')
+      ..execute('PRAGMA user_version = 10')
+      ..close();
+
+    final repo = StoryRepository.open(path);
+    expect((await repo.listNovels()).single.title, '雾港来信');
+    await repo.recordUsage(
+      connection: ModelConnection(
+        id: 'c',
+        name: '网关',
+        baseUrl: 'https://gateway.example/v1',
+        model: 'm',
+      ),
+      kind: 'text',
+      source: CostSource.unknown,
+    );
+    expect((await repo.usageByMonth()).single.requests, 1);
+    await repo.close();
+    final db = sqlite.sqlite3.open(path);
+    expect(db.select('PRAGMA user_version').single.values.single, 11);
     db.close();
   });
   test('a database from an older app is refused and left untouched', () async {

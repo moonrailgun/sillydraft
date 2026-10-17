@@ -80,6 +80,7 @@ void main() {
         'is_error': false,
         'result': '雾从港口升起。',
         'usage': {'output_tokens': 8},
+        'total_cost_usd': 0.0123,
       },
     ]);
     final provider = LocalCliProvider(
@@ -94,6 +95,8 @@ void main() {
     final finish = events.whereType<GenerationFinished>().single;
     expect(finish.isComplete, isTrue);
     expect(finish.usage['output_tokens'], 8);
+    // The run's cost sits beside its usage; metering reads it from usage.
+    expect(finish.usage['total_cost_usd'], 0.0123);
 
     final args = await File('${dir.path}/args').readAsLines();
     expect(args.take(2), ['-p', '--output-format']);

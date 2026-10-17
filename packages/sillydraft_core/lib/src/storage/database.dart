@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -32,6 +32,7 @@ final class StoryDatabase extends GeneratedDatabase {
         ...loreSchema,
         ...assetSchema,
         ...progressSchema,
+        ...usageSchema,
       ]) {
         await customStatement(sql);
       }
@@ -48,9 +49,16 @@ final class StoryDatabase extends GeneratedDatabase {
       if (from < 9) {
         throw StateError('作品库来自不再支持的旧版本 SillyDraft（数据版本 $from），无法打开');
       }
-      // 9 → 10 only adds a table.
-      for (final sql in progressSchema) {
-        await customStatement(sql);
+      // Each step only adds tables: 10 streamed progress, 11 request usage.
+      if (from < 10) {
+        for (final sql in progressSchema) {
+          await customStatement(sql);
+        }
+      }
+      if (from < 11) {
+        for (final sql in usageSchema) {
+          await customStatement(sql);
+        }
       }
     },
     beforeOpen: (_) async {
@@ -69,6 +77,23 @@ final class StoryDatabase extends GeneratedDatabase {
       task_id TEXT PRIMARY KEY REFERENCES generation_tasks(id) ON DELETE CASCADE,
       partial_text TEXT NOT NULL, reasoning TEXT NOT NULL
     )''',
+  ];
+
+  /// One row per model request, frozen when it ends. Kept apart from
+  /// novels: deleting a work keeps what it cost.
+  static const usageSchema = <String>[
+    '''CREATE TABLE IF NOT EXISTS usage_records (
+      id TEXT PRIMARY KEY, execution_id TEXT UNIQUE, created_at INTEGER NOT NULL,
+      connection_id TEXT NOT NULL, connection_name TEXT NOT NULL,
+      protocol TEXT NOT NULL, model TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('text', 'image')),
+      input_tokens INTEGER, output_tokens INTEGER,
+      tokens_estimated INTEGER NOT NULL CHECK(tokens_estimated IN (0, 1)),
+      cost_usd REAL,
+      cost_source TEXT NOT NULL CHECK(cost_source IN ('upstream', 'stPricing', 'unknown')),
+      usage_json TEXT NOT NULL
+    )''',
+    'CREATE INDEX IF NOT EXISTS usage_created ON usage_records(created_at)',
   ];
 
   static const assetSchema = <String>[
