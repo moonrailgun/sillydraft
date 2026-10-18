@@ -10,7 +10,7 @@ enum CostSource {
   unknown,
 }
 
-/// Requests summed under one month or one connection and model.
+/// Requests summed under one day, month, or connection and model.
 final class UsageTotal {
   const UsageTotal({
     required this.label,

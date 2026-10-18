@@ -43,6 +43,12 @@ extension UsageOperations on StoryRepository {
     'label DESC',
   );
 
+  /// Totals per local calendar day, oldest first, labelled `2026-10-19`.
+  Future<List<UsageTotal>> usageByDay() => _usageTotals(
+    "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')",
+    'label ASC',
+  );
+
   /// Totals per connection and model as they were named, costliest first.
   Future<List<UsageTotal>> usageByModel() => _usageTotals(
     "connection_name || ' · ' || model",

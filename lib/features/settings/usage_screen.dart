@@ -5,15 +5,22 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 
+part 'usage_chart.dart';
+
 final usageProvider =
-    FutureProvider<({List<UsageTotal> months, List<UsageTotal> models})>((
-      ref,
-    ) async {
+    FutureProvider<
+      ({
+        List<UsageTotal> months,
+        List<UsageTotal> models,
+        List<UsageTotal> days,
+      })
+    >((ref) async {
       ref.watch(repositoryChangesProvider);
       final repo = ref.watch(repositoryProvider);
       return (
         months: await repo.usageByMonth(),
         models: await repo.usageByModel(),
+        days: await repo.usageByDay(),
       );
     });
 
@@ -74,6 +81,8 @@ class UsageScreen extends ConsumerWidget {
                 if (usage.months.isEmpty)
                   const Text('还没有模型请求。每次请求结束后会记在这里。')
                 else ...[
+                  _UsageChart(days: usage.days),
+                  const SizedBox(height: 24),
                   group('按月', usage.months),
                   const SizedBox(height: 24),
                   group('按连接与模型', usage.models),
