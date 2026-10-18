@@ -118,6 +118,8 @@ void main() {
       expect(contents[1], '你是沈砚的文风顾问，回答要简短。', reason: 'macros rendered');
       expect(contents.sublist(2, 5), ['先前的问题', '先前的回答', '这一章的节奏如何？']);
       expect(contents[5], '记住：只用中文。', reason: 'post-history after chat');
+      expect(contents.last, contains('继续处理作者本轮的请求'));
+      expect(contents.first, isNot(contains('不能自行采纳')));
       expect(contents, isNot(contains('不应出现')));
       expect(seen!.tools, isNotEmpty, reason: 'editing tools are kept');
       expect(seen!.parameters['temperature'], 0.9);
