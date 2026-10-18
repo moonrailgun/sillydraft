@@ -64,12 +64,14 @@ class SettingsScreen extends ConsumerWidget {
         ref.read(repositoryProvider).setSetting('html', {'render': value});
     return PageScaffold(
       title: '设置',
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return ListView(
+            // Center the content while keeping the scrollbar at the page edge.
+            padding: EdgeInsets.symmetric(
+              horizontal: 24 + max(0.0, (constraints.maxWidth - 800) / 2),
+              vertical: 24,
+            ),
             children: [
               if (remote != null) ...[
                 FTileGroup(
@@ -397,8 +399,8 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
