@@ -84,6 +84,8 @@ ST 导出的预设通常不含 `name`，ST 以文件名作为预设名；SillyDr
 
 **未填充的扩展标记不阻止发送。** `agentTask`、`agentSystemPrompt`、`agentResults` 不属于固定 ST 基线的内置标记。按 ST `populateChatCompletion` 的选择规则，这类空系统占位符不进入请求；未知标记若是自定义相对条目（`system_prompt: false`）或绝对深度注入，则保留其自身内容并展开宏。未知相对系统标记不会仅凭保存的内容进入请求。SillyDraft 为这些标记记录 `unknown_marker` 警告，明确未填充扩展内容，不模拟扩展运行时。[ST 提示词选择](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/openai.js#L1185-L1344)、[Prompt 字段](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/PromptManager.js#L182-L197)
 
+助手在发送前因预设配置失败时显示具体原因，并说明尚未请求模型、待发送内容已保留；模型返回内容确实不符合格式时，仍保留原始输出并报告返回格式错误。
+
 **正文生成服务与编辑 Agent 分开调用模型。** 编辑 Agent 负责理解要求、检索资料、调用工具和组织修改提案；正文生成服务接收不可变输入快照，按 ST 预设组织请求并返回候选正文。两者可以使用同一个模型配置，也可以分别设置。
 
 ```text

@@ -46,6 +46,74 @@ ImportedPreset _chatPreset() => PresetImporter().decode({
 });
 
 void main() {
+  for (final invalid in [false, true]) {
+    test(
+      'assistant preset markers do not block; preparation failure: $invalid',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final novel = await repo.createNovel(title: '预设兼容');
+        final conversation = await repo.createConversation(
+          branchId: novel.activeBranchId,
+        );
+        var called = false;
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (c) async {
+            called = true;
+            return ScriptProvider(c, (_, _) async* {
+              yield const TextDelta('收到');
+              yield const GenerationFinished('stop');
+            });
+          },
+        );
+        addTearDown(runner.close);
+        final raw = _chatPreset().exportJson();
+        final prompts = raw['prompts'] as List;
+        final order = (raw['prompt_order'] as List).single['order'] as List;
+        for (final id in ['agentTask', 'agentSystemPrompt', 'agentResults']) {
+          prompts.add({
+            'identifier': id,
+            'marker': true,
+            'system_prompt': true,
+            'content': '',
+          });
+          order.add({'identifier': id, 'enabled': true});
+        }
+        if (invalid) {
+          (prompts.first as Map)['injection_position'] = 99;
+        }
+        final task = await EditorAgent(repository: repo, runner: runner).send(
+          conversationId: conversation,
+          connection: ModelConnection(
+            id: 't',
+            name: 't',
+            baseUrl: 'http://localhost:1',
+            model: 't',
+          ),
+          message: '请继续',
+          chatPreset: PresetImporter().decode(raw),
+        );
+        await runner.wait(task.id);
+        final stored = await repo.getTask(task.id);
+        expect(called, !invalid);
+        expect(
+          stored.status,
+          invalid ? TaskStatus.failed : TaskStatus.completed,
+        );
+        if (invalid) {
+          expect(stored.error, contains('发送前准备失败'));
+          expect(stored.error, contains('不支持的注入位置：99'));
+          expect(stored.error, contains('尚未请求模型'));
+          expect(stored.error, isNot(contains('原始输出已保留')));
+          expect(stored.partialText, isEmpty);
+          expect(stored.input['agentMessage'], '请继续');
+          expect(await repo.getAgentMessages(conversation), isEmpty);
+        }
+      },
+    );
+  }
+
   test(
     'a chat preset assembles the editing conversation, rules stay first',
     () async {

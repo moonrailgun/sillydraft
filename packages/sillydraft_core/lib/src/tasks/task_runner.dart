@@ -312,10 +312,19 @@ final class TaskRunner implements TaskControl {
       final current =
           task.kind == TaskKind.agent && task.input['pendingAgent'] != null
           ? await repository.prepareAgentTask(task.id, () async {
-              final input = await EditorAgent(
-                repository: repository,
-                runner: this,
-              ).prepare(task);
+              final Map<String, dynamic> input;
+              try {
+                input = await EditorAgent(
+                  repository: repository,
+                  runner: this,
+                ).prepare(task);
+              } on FormatException catch (error) {
+                throw ProviderException(
+                  'preparation_failed',
+                  '发送前准备失败：${error.message}\n'
+                      '请检查预设配置后重试；本次尚未请求模型，待发送内容已保留。',
+                );
+              }
               cancel.check();
               return input;
             })

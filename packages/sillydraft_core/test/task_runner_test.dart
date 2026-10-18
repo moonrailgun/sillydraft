@@ -595,6 +595,26 @@ void main() {
     expect(await repository.listProposals(novel.activeBranchId), isEmpty);
   });
 
+  test(
+    'invalid model output keeps its text and reports a response format error',
+    () async {
+      script = (_, _) async* {
+        yield const TextDelta('这不是 JSON');
+        yield const GenerationFinished('stop');
+      };
+      final task = await service.suggestBranches(
+        branchId: novel.activeBranchId,
+        connection: connection,
+        count: 2,
+      );
+      final result = await runner.wait(task.id);
+      expect(result.status, TaskStatus.failed);
+      expect(result.partialText, '这不是 JSON');
+      expect(result.error, '返回结果未满足格式要求，原始输出已保留。');
+      expect(await repository.listProposals(novel.activeBranchId), isEmpty);
+    },
+  );
+
   test('a chapter titled only by its number is named after its text', () async {
     final branchId = novel.activeBranchId;
     final bare = await repository.createChapter(
