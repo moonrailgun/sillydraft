@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart' hide ImageProvider;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
@@ -44,6 +45,67 @@ class _WaitingImageProvider implements ImageProvider {
 }
 
 void main() {
+  testWidgets('image download saves the original PNG to the selected path', (
+    tester,
+  ) async {
+    late Directory dir;
+    late AppServices services;
+    late StoryAsset asset;
+    await tester.runAsync(() async {
+      dir = await Directory.systemTemp.createTemp('sillydraft-image-export-');
+      services = AppServices(
+        repository: StoryRepository.memory(),
+        secrets: MemorySecrets(),
+        dataDirectory: dir,
+      );
+      final novel = await services.repository.createNovel(title: '下载图片');
+      asset = await services.assets!.importImage(
+        branchId: novel.activeBranchId,
+        name: '插画',
+        bytes: await File('test/fixtures/tiny-illustration.png').readAsBytes(),
+      );
+    });
+    addTearDown(() async {
+      await services.close();
+      await dir.delete(recursive: true);
+    });
+    const channel = MethodChannel('plugins.flutter.io/file_selector');
+    final output = File('${dir.path}/download.png');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      expect(call.method, 'getSavePath');
+      expect(call.arguments['suggestedName'], 'illustration.png');
+      return output.path;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    late Future<void> Function() download;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(
+          Consumer(
+            builder: (context, ref, _) {
+              download = () => exportIllustration(context, ref, asset.id);
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await download();
+      expect(await output.readAsBytes(), await services.assets!.read(asset.id));
+    });
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final protocol in [
     ModelProtocol.openAICompatible,
     ModelProtocol.novelAI,

@@ -280,6 +280,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byKey(const Key('agent-image-a1')), findsOneWidget);
+    expect(findAction('下载到本地'), findsOneWidget);
   });
 
   testWidgets('the assistant draws only after the author confirms', (

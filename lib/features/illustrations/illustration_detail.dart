@@ -46,6 +46,41 @@ Future<void> showIllustrationDetail(
   },
 );
 
+Future<void> exportIllustration(
+  BuildContext context,
+  WidgetRef ref,
+  String assetId,
+) async {
+  try {
+    final library = ref.read(servicesProvider).assets;
+    if (library == null) throw const FormatException('图片目录未配置');
+    final bytes = await library.read(assetId);
+    final file = XFile.fromData(
+      bytes,
+      mimeType: 'image/png',
+      name: 'illustration.png',
+    );
+    if (!context.mounted) return;
+    if (Platform.isAndroid || Platform.isIOS) {
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [file],
+          fileNameOverrides: ['illustration.png'],
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+    } else {
+      final location = await getSaveLocation(suggestedName: 'illustration.png');
+      if (location != null) await File(location.path).writeAsBytes(bytes);
+    }
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+  }
+}
+
 class IllustrationDetail extends ConsumerWidget {
   const IllustrationDetail({
     super.key,
@@ -53,43 +88,6 @@ class IllustrationDetail extends ConsumerWidget {
     required this.branchId,
   });
   final String assetId, branchId;
-  Future<void> _export(
-    BuildContext context,
-    WidgetRef ref,
-    StoryAsset asset,
-  ) async {
-    try {
-      final library = ref.read(servicesProvider).assets;
-      if (library == null) throw const FormatException('图片目录未配置');
-      final bytes = await library.read(asset.id);
-      final file = XFile.fromData(
-        bytes,
-        mimeType: 'image/png',
-        name: 'illustration.png',
-      );
-      if (!context.mounted) return;
-      if (Platform.isAndroid || Platform.isIOS) {
-        final box = context.findRenderObject() as RenderBox?;
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [file],
-            fileNameOverrides: ['illustration.png'],
-            sharePositionOrigin: box == null
-                ? null
-                : box.localToGlobal(Offset.zero) & box.size,
-          ),
-        );
-      } else {
-        final location = await getSaveLocation(
-          suggestedName: 'illustration.png',
-        );
-        if (location != null) await File(location.path).writeAsBytes(bytes);
-      }
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
-  }
-
   Future<void> _insert(
     BuildContext context,
     WidgetRef ref,
@@ -284,7 +282,7 @@ class IllustrationDetail extends ConsumerWidget {
           HeaderIconAction(
             tooltip: '导出图片',
             icon: FLucideIcons.share,
-            onPress: () => _export(context, ref, asset),
+            onPress: () => exportIllustration(context, ref, asset.id),
           ),
           HeaderIconAction(
             tooltip: asset.archived ? '恢复图片' : '归档图片',

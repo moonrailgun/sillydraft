@@ -1517,7 +1517,34 @@ class _AgentState extends ConsumerState<AgentPanel> {
               ),
               child: ClipRRect(
                 borderRadius: context.theme.style.borderRadius.lg,
-                child: AssetImageView(assetId: id, height: 280),
+                child: Stack(
+                  children: [
+                    AssetImageView(assetId: id, height: 280),
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: context.theme.colors.background.withValues(
+                            alpha: .9,
+                          ),
+                          borderRadius: context.theme.style.borderRadius.md,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconAction(
+                              icon: FLucideIcons.download,
+                              tooltip: '下载到本地',
+                              onPress: () =>
+                                  exportIllustration(context, ref, id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
