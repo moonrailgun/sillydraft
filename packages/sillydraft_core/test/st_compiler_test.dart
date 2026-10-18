@@ -64,6 +64,55 @@ PresetInput input(
 );
 
 void main() {
+  test(
+    'unfilled extension markers follow ST prompt selection without blocking',
+    () {
+      final result = PromptCompiler().compile(
+        input(
+          chat([
+            p('main', 'base'),
+            for (final id in ['agentTask', 'agentSystemPrompt', 'agentResults'])
+              {...p(id, '', marker: true), 'system_prompt': true},
+            {
+              ...p('extensionSystem', 'unused', marker: true),
+              'system_prompt': true,
+            },
+            p(
+              'extensionUnspecified',
+              'unused without system_prompt',
+              marker: true,
+            ),
+            {
+              ...p('extensionCustom', 'custom {{user}}', marker: true),
+              'system_prompt': false,
+            },
+            {
+              ...p('extensionDepth', 'depth', marker: true),
+              'system_prompt': true,
+              'injection_position': 1,
+              'injection_depth': 0,
+            },
+            p('chatHistory', '', marker: true),
+          ]),
+        ),
+      );
+      expect(result.messages.map((m) => m.content), [
+        'base',
+        'custom 阿雨',
+        'brief',
+        'depth',
+      ]);
+      expect(
+        result.diagnostics.where((d) => d.severity == DiagnosticSeverity.error),
+        isEmpty,
+      );
+      expect(
+        result.diagnostics.where((d) => d.code == 'unknown_marker'),
+        hasLength(7),
+      );
+    },
+  );
+
   test('selected 100001 order disables absent prompts and preserves requested order', () {
     final preset = chat(
       [

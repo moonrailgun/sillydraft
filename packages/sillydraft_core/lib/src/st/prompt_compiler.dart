@@ -492,18 +492,34 @@ final class PromptCompiler {
           continue;
         }
         var content = prompt.marker
-            ? markers[prompt.identifier] ?? ''
+            ? markers[prompt.identifier] ?? prompt.content
             : prompt.content;
-        if (prompt.marker && !markers.containsKey(prompt.identifier)) {
+        final unknownMarker =
+            prompt.marker && !markers.containsKey(prompt.identifier);
+        if (unknownMarker) {
           diagnostics.add(
             CompatibilityDiagnostic(
               'unknown_marker',
-              '未支持标记：${prompt.identifier}',
-              severity: DiagnosticSeverity.error,
+              '标记 ${prompt.identifier} 没有可填充的扩展内容，按 ST 普通提示词规则处理。',
+              severity: DiagnosticSeverity.warning,
             ),
           );
         }
         content = macros.render(content);
+        // ST 1.19.0 (06bde939), openai.js `populateChatCompletion`:
+        // relative system entries need a known identifier; custom and
+        // absolute entries retain their content even when marked as markers.
+        if (unknownMarker &&
+            prompt.raw['system_prompt'] != false &&
+            prompt.injectionPosition != 1 &&
+            !const {
+              'main',
+              'nsfw',
+              'jailbreak',
+              'enhanceDefinitions',
+            }.contains(prompt.identifier)) {
+          continue;
+        }
         // openai.js `preparePromptsForChatCompletion`: the card's main
         // prompt or post-history override (its env value, non-empty)
         // replaces the resolved prompt and is resolved again with that as

@@ -98,7 +98,7 @@ git -C ~/Develop/SillyTavern diff --stat <旧提交> <新提交> -- \
 | 正则脚本规则、`sanitizeRegexMacro`、placement 编号 | `extensions/regex/engine.js` | `core/st/regex_pipeline.dart`；placement 数字散落在 `prompt_compiler.dart`、`tasks/task_runner.dart`、`model/manuscript_presentation.dart`、`lib/features/resources/resource_preview.dart` | `macro_engine_test.dart`、`st_compiler_test.dart` |
 | 聊天补全预设的参数键、连接字段 `_connectionKeys`、预设类型识别 | `openai.js` `settingsToUpdate`（第四项为 true 的是连接设置）、`preset-manager.js` | `core/st/preset_importer.dart` | `st_import_test.dart` |
 | 凭据字段（导入时隐藏） | 同上 | `core/st/import_types.dart` `credentialKeys` | `st_import_test.dart` |
-| 文本预设字段别名、角色卡覆盖、提示词标记 | `preset-manager.js`、`script.js` `setGenerationParamsFromPreset`、`nai-settings.js`、`openai.js` `preparePromptsForChatCompletion` | `core/st/prompt_compiler.dart` | `st_compiler_test.dart` |
+| 文本预设字段别名、角色卡覆盖、提示词标记（含未填充扩展标记的选择） | `preset-manager.js`、`script.js` `setGenerationParamsFromPreset`、`nai-settings.js`、`openai.js` `preparePromptsForChatCompletion` / `populateChatCompletion` | `core/st/prompt_compiler.dart` | `st_compiler_test.dart`、`agent_preset_test.dart` |
 | PromptManager 内置条目 | `PromptManager.js` | `lib/features/resources/preset_prompt_editor.dart` | `test/preset_panel_test.dart` |
 | 采样参数界面的字段与范围 | `public/index.html` 滑块、`preset-manager.js` | `lib/features/presets/preset_screen.dart` | `test/preset_panel_test.dart` |
 | 默认允许的额外采样字段（四项） | `openai.js` OpenRouter / NanoGPT 分支；Custom 不默认发送，差异见兼容文档 | `core/providers/provider.dart` `stSamplingParameters`；`openai_compatible.dart`；连接高级参数开关 | `provider_test.dart`、`test/model_settings_flow_test.dart` |
