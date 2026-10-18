@@ -119,6 +119,19 @@ void main() {
     expect(jsonDecode(copied!), {...data, 'temperature': 0.0});
     expect((await repo.getResource(original.id)).data, data);
 
+    tester.view.physicalSize = const Size(1200, 900);
+    await tester.pumpAndSettle();
+    final bar = tester.getRect(
+      find
+          .ancestor(of: find.text('兼容提示'), matching: find.byType(DecoratedBox))
+          .first,
+    );
+    final content = tester.getRect(
+      find.byKey(const PageStorageKey('preset-json')),
+    );
+    expect(bar.left, content.left);
+    expect(bar.width, lessThan(content.width));
+    expect(bar.right - tester.getRect(find.text('兼容提示')).right, lessThan(32));
     expect(tester.takeException(), isNull);
   });
 
@@ -172,7 +185,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(FTabs), findsOneWidget);
+    expect(find.byType(TabBar), findsOneWidget);
     expect(find.byType(PresetPromptEditor), findsNothing);
     await tester.tap(find.text('提示词管理'));
     await tester.pumpAndSettle();

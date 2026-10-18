@@ -2,9 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/material.dart' show SelectableText;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -464,10 +463,8 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                             ),
                             gap,
                             Expanded(
-                              child: FTabs(
+                              child: _PresetTabs(
                                 key: ValueKey('preset-tabs:${_resource!.id}'),
-                                expands: true,
-                                scrollable: true,
                                 children: [
                                   if (chat || text)
                                     FTabEntry(
@@ -809,6 +806,67 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
         keyboardType: TextInputType.number,
         label: Text(label),
         hint: '未设置',
+      ),
+    );
+  }
+}
+
+// FTabs stretches its bar; keep the same theme with a content-width header.
+class _PresetTabs extends StatelessWidget {
+  const _PresetTabs({super.key, required this.children});
+
+  final List<FTabEntry> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    final style = theme.tabsStyle;
+    return DefaultTabController(
+      length: children.length,
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DecoratedBox(
+              decoration: style.decoration,
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                dividerHeight: 0,
+                padding: style.padding,
+                indicator: style.indicatorDecoration,
+                indicatorSize: TabBarIndicatorSize.tab,
+                labelStyle: style.labelTextStyle.resolve({
+                  context.platformVariant,
+                  FTabVariant.selected,
+                }),
+                unselectedLabelStyle: style.labelTextStyle.resolve({
+                  context.platformVariant,
+                }),
+                tabs: [
+                  for (final tab in children)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: style.minHeight),
+                      child: Center(widthFactor: 1, child: tab.label),
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(height: style.spacing),
+            Expanded(
+              child: DefaultTextStyle(
+                style: theme.typography.body.md.copyWith(
+                  color: theme.colors.foreground,
+                ),
+                child: TabBarView(
+                  physics: const BouncingScrollPhysics(),
+                  children: [for (final tab in children) tab.child],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
