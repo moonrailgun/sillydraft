@@ -17,6 +17,7 @@ Map<String, Object?> encodeProviderEvent(ProviderEvent event) =>
         'id': event.id,
         'name': event.name,
         'arguments': event.arguments,
+        if (event.extraContent != null) 'extra_content': event.extraContent,
       },
       GenerationFinished() => {
         'e': 'finish',
@@ -33,6 +34,9 @@ ProviderEvent decodeProviderEvent(Map<String, dynamic> json) =>
         json['id'] as String,
         json['name'] as String,
         jsonObject(json['arguments'], 'arguments'),
+        extraContent: json['extra_content'] == null
+            ? null
+            : jsonObject(json['extra_content'], 'extra_content'),
       ),
       'finish' => GenerationFinished(
         json['reason'] as String,

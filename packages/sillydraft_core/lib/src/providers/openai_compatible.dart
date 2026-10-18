@@ -337,6 +337,13 @@ final class OpenAICompatibleProvider implements ModelProvider {
             }
             final buffer = tools.putIfAbsent(index, _ToolBuffer.new);
             if (call['id'] is String) buffer.id = call['id'] as String;
+            // Gemini requires the opaque signature on its original tool call.
+            if (call['extra_content'] != null) {
+              buffer.extraContent = jsonObject(
+                call['extra_content'],
+                'extra_content',
+              );
+            }
             final function = call['function'] as Map<String, dynamic>? ?? {};
             if (function['name'] is String) {
               buffer.name += function['name'] as String;
@@ -366,7 +373,12 @@ final class OpenAICompatibleProvider implements ModelProvider {
             '工具参数必须是 JSON 对象',
           );
         }
-        yield ToolCallReady(call.id, call.name, args);
+        yield ToolCallReady(
+          call.id,
+          call.name,
+          args,
+          extraContent: call.extraContent,
+        );
       }
       yield GenerationFinished(finish, usage: usage);
     } on DioException catch (error) {
@@ -430,5 +442,6 @@ final class OpenAICompatibleProvider implements ModelProvider {
 
 final class _ToolBuffer {
   String id = '', name = '';
+  Map<String, dynamic>? extraContent;
   final arguments = StringBuffer();
 }

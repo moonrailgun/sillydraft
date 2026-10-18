@@ -12,6 +12,10 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 限制仍需明确：token 预算为估算；随机宏按任务固定，`pick` 的种子不等同于 ST 聊天标识；世界书的 sticky、cooldown 计时与快速回复自动化不生效（只提示）；浏览器脚本扩展不执行。模型参数诊断、输出处理、资源库 UI 与采纳时变量提交已接入。现有证据覆盖固定样本和本地模拟模型，不代表全部社区预设或真实模型行为等价。
 
+## 工具调用的模型元数据
+
+OpenAI 兼容接口按工具调用保留并回传 `extra_content`，包括 Gemini 的 `extra_content.google.thought_signature`。签名随流式片段或完整 JSON 响应接收，留在原来的工具调用上；后续工具轮次、会话日志和手机经桌面代理调用均保留该字段，不给同批其他调用补签名。依据为 [Gemini 官方协议](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures)，不改变 ST 预设语义。旧版本已经丢弃的签名无法恢复；重新发送用户消息会开始新的工具轮次。`provider_test.dart` 与 `remote_providers_test.dart` 覆盖本地模拟协议和日志保存，尚未验证真实 Gemini 服务或第三方网关。
+
 ## ComfyUI 工作流读取
 
 ST 1.19.0 的 [`stable-diffusion.js`](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/stable-diffusion.js#L446) 按文件名读取 ST 用户目录内的工作流，再提交 API 节点图到 ComfyUI。社区“智绘姬” [`st-chatu8`](https://github.com/damoshen123/st-chatu8/blob/8b07f4554355671e0a288afa94c1ae89ddfb8b8b/index.js#L45901) 也以 API JSON 保存工作流预设，导入时明确拒绝包含 UI 节点的画布格式。

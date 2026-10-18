@@ -59,7 +59,15 @@ void main() {
     script = (_, _) async* {
       yield const ReasoningDelta('想');
       yield const TextDelta('甲');
-      yield ToolCallReady('1', 'look', {'q': 1});
+      yield decodeProviderEvent({
+        'e': 'tool',
+        'id': '1',
+        'name': 'look',
+        'arguments': {'q': 1},
+        'extra_content': {
+          'google': {'thought_signature': 'opaque+/='},
+        },
+      });
       yield const GenerationFinished('stop', usage: {'total': 3});
     };
     desktop = await Desktop.start(
@@ -72,6 +80,18 @@ void main() {
   tearDown(() async {
     await phone.close();
     await desktop.close();
+  });
+
+  test('tool events without metadata keep their existing wire shape', () {
+    final json = <String, dynamic>{
+      'e': 'tool',
+      'id': '1',
+      'name': 'look',
+      'arguments': {'q': 1},
+    };
+    final event = decodeProviderEvent(json) as ToolCallReady;
+    expect(encodeProviderEvent(event), json);
+    expect(event.toOpenAI().containsKey('extra_content'), isFalse);
   });
 
   test('text calls stream from the desktop\'s provider', () async {
@@ -90,6 +110,9 @@ void main() {
       events[2],
       isA<ToolCallReady>().having((e) => e.arguments, 'args', {'q': 1}),
     );
+    expect((events[2] as ToolCallReady).toOpenAI()['extra_content'], {
+      'google': {'thought_signature': 'opaque+/='},
+    });
     expect(
       events[3],
       isA<GenerationFinished>().having((e) => e.usage, 'usage', {'total': 3}),

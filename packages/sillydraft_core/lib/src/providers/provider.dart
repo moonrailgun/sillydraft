@@ -250,15 +250,25 @@ final class ReasoningDelta extends ProviderEvent {
 }
 
 final class ToolCallReady extends ProviderEvent {
-  ToolCallReady(this.id, this.name, Map<String, dynamic> arguments)
-    : _arguments = jsonEncode(arguments);
+  ToolCallReady(
+    this.id,
+    this.name,
+    Map<String, dynamic> arguments, {
+    Map<String, dynamic>? extraContent,
+  }) : _arguments = jsonEncode(arguments),
+       _extraContent = extraContent == null ? null : jsonEncode(extraContent);
   final String id, name, _arguments;
+  final String? _extraContent;
   Map<String, dynamic> get arguments =>
       jsonDecode(_arguments) as Map<String, dynamic>;
+  Map<String, dynamic>? get extraContent => _extraContent == null
+      ? null
+      : jsonDecode(_extraContent) as Map<String, dynamic>;
   Map<String, dynamic> toOpenAI() => {
     'id': id,
     'type': 'function',
     'function': {'name': name, 'arguments': _arguments},
+    if (_extraContent != null) 'extra_content': extraContent,
   };
 }
 

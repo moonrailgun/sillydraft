@@ -168,6 +168,117 @@ void main() {
     },
   );
 
+  for (final format in ['first delta', 'late delta', 'JSON']) {
+    test(
+      'tool signatures survive agent rounds and storage ($format)',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final novel = await repo.createNovel(title: '签名');
+        final chapter = await repo.createChapter(
+          branchId: novel.activeBranchId,
+          content: ManuscriptContent.plainText('门开了。'),
+        );
+        final conversation = await repo.createConversation(
+          branchId: novel.activeBranchId,
+          title: '工具签名',
+        );
+        final requests = <Map<String, dynamic>>[];
+        handler = (r) async {
+          requests.add(
+            jsonDecode(await utf8.decoder.bind(r).join())
+                as Map<String, dynamic>,
+          );
+          final round = requests.length;
+          final extra = {
+            'google': {'thought_signature': 'opaque-$round+/='},
+          };
+          final calls = [
+            for (var i = 0; i < (round == 1 ? 2 : 1); i++)
+              {
+                if (format != 'JSON') 'index': i,
+                'id': 'call-$round-$i',
+                'type': 'function',
+                'function': {
+                  'name': 'read_chapter',
+                  'arguments': jsonEncode({'chapterId': chapter.id}),
+                },
+                if (i == 0 && format != 'late delta') 'extra_content': extra,
+              },
+          ];
+          final message = round < 3
+              ? {'role': 'assistant', 'tool_calls': calls}
+              : {'role': 'assistant', 'content': '已读完。'};
+          final finish = round < 3 ? 'tool_calls' : 'stop';
+          if (format == 'JSON') {
+            r.response.headers.contentType = ContentType.json;
+            r.response.write(
+              jsonEncode({
+                'choices': [
+                  {'index': 0, 'message': message, 'finish_reason': finish},
+                ],
+              }),
+            );
+          } else {
+            r.response.headers.contentType = ContentType(
+              'text',
+              'event-stream',
+              charset: 'utf-8',
+            );
+            r.response.write(chunk(message));
+            if (format == 'late delta' && round < 3) {
+              r.response.write(
+                chunk({
+                  'tool_calls': [
+                    {'index': 0, 'extra_content': extra},
+                  ],
+                }),
+              );
+            }
+            r.response.write(chunk({}, finish: finish));
+            r.response.write('data: [DONE]\n\n');
+          }
+          await r.response.close();
+        };
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (_) async => provider,
+        );
+        addTearDown(runner.close);
+        final task = await EditorAgent(repository: repo, runner: runner).send(
+          conversationId: conversation,
+          connection: provider.config,
+          message: '读一下本章，再检查一遍',
+        );
+        expect((await runner.wait(task.id)).status, TaskStatus.completed);
+        expect(requests, hasLength(3));
+        final replayed = [
+          for (final message in requests.last['messages'] as List)
+            ...message['tool_calls'] as List? ?? [],
+        ];
+        expect(replayed.map((call) => call['id']), [
+          'call-1-0',
+          'call-1-1',
+          'call-2-0',
+        ]);
+        expect(replayed.map((call) => call['extra_content']), [
+          {
+            'google': {'thought_signature': 'opaque-1+/='},
+          },
+          null,
+          {
+            'google': {'thought_signature': 'opaque-2+/='},
+          },
+        ]);
+        final stored = [
+          for (final message in await repo.getAgentMessages(conversation))
+            ...message.toWire()['tool_calls'] as List? ?? [],
+        ];
+        expect(stored, replayed);
+      },
+    );
+  }
+
   test(
     'a disconnected stream is an interruption even with partial text',
     () async {
