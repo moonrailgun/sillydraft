@@ -253,16 +253,6 @@ class _AgentState extends ConsumerState<AgentPanel> {
           connection = await services.connectionFor('editor');
       if (connection == null) throw const FormatException('请先在模型设置里配置编辑助手连接。');
       await _selecting;
-      final busy =
-          (await services.repository.listTasks(
-            branchId: widget.branchId,
-            activeOnly: true,
-          )).any(
-            (t) =>
-                _conversation != null &&
-                t.input['conversationId'] == _conversation,
-          );
-      if (busy) throw const FormatException('助手还在回复，请等这一轮结束再发送。');
       final conversation = await _ensureConversation();
       if (mounted) setState(() {});
       final profile = await WritingContext.load(services, widget.branchId);
@@ -310,14 +300,21 @@ class _AgentState extends ConsumerState<AgentPanel> {
     if (!confirm || !mounted) return;
     try {
       final services = ref.read(servicesProvider);
-      for (final task in await services.repository.listTasks(
-        branchId: widget.branchId,
-        activeOnly: true,
-      )) {
-        if (task.input['conversationId'] == id) {
-          await services.runner.cancel(task.id);
-          await services.runner.wait(task.id);
-        }
+      final active =
+          (await services.repository.listTasks(
+            branchId: widget.branchId,
+            activeOnly: true,
+          )).where((t) => t.input['conversationId'] == id).toList()..sort(
+            (a, b) => (a.status == TaskStatus.running ? 1 : 0).compareTo(
+              b.status == TaskStatus.running ? 1 : 0,
+            ),
+          );
+      // Cancel the queue before its running head can release another turn.
+      for (final task in active) {
+        await services.runner.cancel(task.id);
+      }
+      for (final task in active) {
+        await services.runner.wait(task.id);
       }
       await services.repository.deleteConversation(id);
       if (mounted) {
@@ -326,6 +323,20 @@ class _AgentState extends ConsumerState<AgentPanel> {
       }
     } catch (e) {
       if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _retryQueued(GenerationTask task) async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    try {
+      final services = ref.read(servicesProvider);
+      final retry = await services.runner.resume(task.id);
+      unawaited(_sidecarAfterRound(services, retry).catchError((Object _) {}));
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -559,15 +570,28 @@ class _AgentState extends ConsumerState<AgentPanel> {
           t.kind == TaskKind.agent &&
           t.input['conversationId'] == _conversation,
     );
+    final queued = conversationTasks
+        .where((t) => t.status == TaskStatus.queued)
+        .toList()
+        .reversed
+        .toList();
     final currentTask =
-        conversationTasks.where((t) => t.isActive).firstOrNull ??
+        conversationTasks
+            .where((t) => t.status == TaskStatus.running)
+            .firstOrNull ??
+        queued.firstOrNull ??
         conversationTasks.firstOrNull;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 920),
         child: Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: _chat(currentTask, pending: pending, running: running),
+          child: _chat(
+            currentTask,
+            queued: queued,
+            pending: pending,
+            running: running,
+          ),
         ),
       ),
     );
@@ -805,6 +829,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   Widget _chat(
     GenerationTask? task, {
+    required List<GenerationTask> queued,
     required int pending,
     required int running,
   }) {
@@ -963,6 +988,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                     // there as a reply streams in; aligned to the top while
                     // short, like an unreversed list.
                     builder: (messages) {
+                      final unsent = task?.input['agentMessage'] as String?;
                       final last = messages
                           .where((m) => m.role == 'user')
                           .lastOrNull;
@@ -1003,6 +1029,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                         const SizedBox(height: 8),
                                         SelectableText(task.error),
                                       ],
+                                      if (!task.isActive && unsent != null)
+                                        SelectableText('待发送：$unsent'),
                                       if (task.isActive ||
                                           task.partialText.isNotEmpty) ...[
                                         const SizedBox(height: 12),
@@ -1028,12 +1056,17 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                             child: const Text('查看工具与任务'),
                                           ),
                                           if (!task.isActive &&
-                                              regenerate != null)
+                                              (unsent != null ||
+                                                  regenerate != null))
                                             FButton(
                                               variant: FButtonVariant.ghost,
                                               size: FButtonSizeVariant.sm,
                                               mainAxisSize: MainAxisSize.min,
-                                              onPress: regenerate,
+                                              onPress: _sending
+                                                  ? null
+                                                  : unsent == null
+                                                  ? regenerate
+                                                  : () => _retryQueued(task),
                                               prefix: const Icon(
                                                 FLucideIcons.refreshCw,
                                               ),
@@ -1064,6 +1097,48 @@ class _AgentState extends ConsumerState<AgentPanel> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Column(
               children: [
+                if (queued.isNotEmpty)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: bounds.maxHeight * .18,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < queued.length; i++)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '排队 ${i + 1} · ${queued[i].input['agentMessage'] ?? '助手消息'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: context.theme.typography.body.sm,
+                                  ),
+                                ),
+                                IconAction(
+                                  key: ValueKey(
+                                    'cancel-queued-${queued[i].id}',
+                                  ),
+                                  icon: FLucideIcons.x,
+                                  tooltip: '取消排队消息',
+                                  onPress: () async {
+                                    try {
+                                      await ref
+                                          .read(servicesProvider)
+                                          .runner
+                                          .cancel(queued[i].id);
+                                    } catch (e) {
+                                      if (mounted) showError(context, e);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 _quickActions(story),
                 const SizedBox(height: 8),
                 ConstrainedBox(
@@ -1113,7 +1188,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                               !_input.value.composing.isCollapsed) {
                             return KeyEventResult.ignored;
                           }
-                          if (event is KeyDownEvent && active == null) _send();
+                          if (event is KeyDownEvent) _send();
                           return KeyEventResult.handled;
                         },
                         child: FTextField(
@@ -1145,14 +1220,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             if (mounted) showError(context, e);
                           }
                         },
-                      )
-                    else
-                      IconAction(
-                        variant: FButtonVariant.primary,
-                        icon: FLucideIcons.arrowUp,
-                        tooltip: '发送给编辑助手',
-                        onPress: _sending ? null : _send,
                       ),
+                    IconAction(
+                      variant: FButtonVariant.primary,
+                      icon: FLucideIcons.arrowUp,
+                      tooltip: active == null ? '发送给编辑助手' : '加入消息队列',
+                      onPress: _sending ? null : _send,
+                    ),
                   ],
                 ),
               ],

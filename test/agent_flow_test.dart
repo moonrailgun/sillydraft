@@ -106,6 +106,44 @@ Future<List<String>> _thread(StoryRepository repo, String branchId) async {
 }
 
 void main() {
+  testWidgets('retrying an unsent turn keeps the previous conversation', (
+    tester,
+  ) async {
+    final (:repo, :branchId) = await _replyingPanel(tester, ['原回复', '新回复']);
+    final input = find.byKey(const Key('agent-input'));
+    await tester.enterText(input, '原问题');
+    await tester.tap(findAction('发送给编辑助手'));
+    await tester.pumpAndSettle();
+    final conversation = (await repo.listConversations(branchId)).single['id'];
+    final pending = await repo.createTask(
+      branchId: branchId,
+      kind: TaskKind.agent,
+      input: {
+        'connection': ModelConnection(
+          id: 'test',
+          name: '测试模型',
+          baseUrl: 'http://localhost:1/v1',
+          model: 'test',
+        ).raw,
+        'conversationId': conversation,
+        'agentMessage': '排队的问题',
+        'pendingAgent': <String, dynamic>{},
+      },
+    );
+    await repo.recoverInterruptedTasks();
+    await tester.pumpAndSettle();
+    expect(await _thread(repo, branchId), ['原问题', '原回复']);
+    expect(find.text('待发送：排队的问题'), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(await _thread(repo, branchId), ['原问题', '原回复', '排队的问题', '新回复']);
+    final retry = (await repo.listTasks(branchId: branchId)).first;
+    expect(retry.retryOf, pending.id);
+    expect(retry.status, TaskStatus.completed);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'regenerating drops the last reply; editing resends from there',
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
@@ -275,9 +313,15 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(
           await repo.listTasks(branchId: novel.activeBranchId),
-          hasLength(1),
+          hasLength(2),
         );
-        expect(controller.text, '等回复后再发');
+        expect(controller.text, isEmpty);
+        expect(find.text('排队 1 · 等回复后再发'), findsOneWidget);
+        expect(find.textContaining('正在检查人物动机'), findsWidgets);
+        await tester.tap(findAction('取消排队消息'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('排队 1 · 等回复后再发'), findsNothing);
         await tester.tap(findAction('停止编辑回复'));
         await tester.pumpAndSettle();
         await tester.pumpWidget(const SizedBox());
