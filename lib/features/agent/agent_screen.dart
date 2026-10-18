@@ -92,9 +92,15 @@ const _starterPrompts = [
 /// selection" from the reader, with the chapter it came from as context.
 /// Each instance is sent once.
 final class AgentRequest {
-  AgentRequest(this.message, {this.chapterId, this.replace});
+  AgentRequest(
+    this.message, {
+    this.chapterId,
+    this.replace,
+    this.illustrationAnchor,
+  });
   final String message;
   final String? chapterId;
+  final Map<String, dynamic>? illustrationAnchor;
 
   /// The author's earlier message this one takes the place of, along with
   /// every turn after it.
@@ -221,6 +227,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
       _ => null,
     },
     replace: message.id,
+    illustrationAnchor:
+        message.raw['illustrationAnchor'] as Map<String, dynamic>?,
   );
 
   /// Puts the author's [message] back in the input; sending it then asks
@@ -273,6 +281,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         focusChapterId: widget.focusChapterId ?? _chapter,
         imageConnection: await services.connectionFor('image'),
         attachChapterId: request?.chapterId,
+        illustrationAnchor: request?.illustrationAnchor,
         replaceMessageId: request?.replace,
       );
       unawaited(_sidecarAfterRound(services, task).catchError((Object _) {}));
@@ -284,6 +293,36 @@ class _AgentState extends ConsumerState<AgentPanel> {
       if (mounted) setState(() => _error = e);
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  final _insertingImages = <String>{};
+
+  Future<void> _insertImage(String assetId, AgentMessage imageMessage) async {
+    if (!_insertingImages.add(assetId)) return;
+    setState(() {});
+    try {
+      final services = ref.read(servicesProvider);
+      await services.flushDrafts();
+      final messages = await services.repository.getAgentMessages(
+        imageMessage.conversationId,
+      );
+      final source = messages
+          .takeWhile((m) => m.id != imageMessage.id)
+          .where((m) => m.role == 'user')
+          .lastOrNull;
+      if (source == null) throw const FormatException('找不到这张图片引用的正文');
+      await services.repository.insertAgentIllustration(
+        branchId: widget.branchId,
+        assetId: assetId,
+        source: source,
+      );
+      if (mounted) toast(context, '已插入引用段落下方');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      _insertingImages.remove(assetId);
+      if (mounted) setState(() {});
     }
   }
 
@@ -1533,6 +1572,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            IconAction(
+                              icon: FLucideIcons.filePlus,
+                              tooltip: '插入正文',
+                              onPress: _insertingImages.contains(id)
+                                  ? null
+                                  : () => _insertImage(id, message),
+                            ),
                             IconAction(
                               icon: FLucideIcons.download,
                               tooltip: '下载到本地',

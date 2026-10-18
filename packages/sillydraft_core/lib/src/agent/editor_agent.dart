@@ -55,6 +55,7 @@ final class EditorAgent {
     /// A chapter sent along with [message] as its context, e.g. the one a
     /// selection was made in. It stays with the message for later turns.
     String? attachChapterId,
+    Map<String, dynamic>? illustrationAnchor,
 
     /// An earlier message of the author's that [message] replaces: it and
     /// every later turn are removed first. Editing a message, or resending
@@ -77,10 +78,14 @@ final class EditorAgent {
       )).any((t) => t.input['conversationId'] == conversationId)) {
         throw StateError('请等助手回复和排队消息结束后再修改消息。');
       }
-      if (!(await repository.getAgentMessages(conversationId))
-          .any((m) => m.id == replaceMessageId && m.role == 'user')) {
+      final replaced = (await repository.getAgentMessages(conversationId))
+          .where((m) => m.id == replaceMessageId && m.role == 'user')
+          .firstOrNull;
+      if (replaced == null) {
         throw const StoryNotFound('待替换的消息');
       }
+      illustrationAnchor ??=
+          replaced.raw['illustrationAnchor'] as Map<String, dynamic>?;
     }
     return runner.start(
       branchId: branchId,
@@ -110,6 +115,7 @@ final class EditorAgent {
           'focusChapterId': focusChapterId,
           'imageConnection': ?imageConnection?.raw,
           'attachChapterId': attachChapterId,
+          'illustrationAnchor': ?illustrationAnchor,
           'replaceMessageId': replaceMessageId,
         },
       },
@@ -215,6 +221,7 @@ final class EditorAgent {
       role: 'user',
       content: message.trim(),
       metadata: {
+        'illustrationAnchor': ?pending['illustrationAnchor'],
         if (attached != null)
           'attachment': {
             'chapterId': attached.id,

@@ -51,6 +51,90 @@ void main() {
     await repo.close();
     await dir.delete(recursive: true);
   });
+  test(
+    'assistant inserts below the selected paragraph, including duplicate text',
+    () async {
+      final chapter = await repo.createChapter(
+        branchId: novel.activeBranchId,
+        title: '渡口',
+        content: ManuscriptContent.plainText('红伞。\n红伞。她继续前行。\n下一段。'),
+      );
+      final asset = await assets.importImage(
+        branchId: chapter.branchId,
+        name: '红伞',
+        bytes: testPicture(),
+      );
+      final conversation = await repo.createConversation(
+        branchId: chapter.branchId,
+      );
+      await repo.appendAgentMessage(
+        conversation,
+        role: 'user',
+        content: '为这段正文生成一张插图：\n\n红伞。',
+        metadata: {
+          'illustrationAnchor': {
+            'chapterId': chapter.id,
+            'revisionId': chapter.revisionId,
+            'endOffset': 7,
+          },
+        },
+      );
+      final source = (await repo.getAgentMessages(conversation)).single;
+      final inserted = await repo.insertAgentIllustration(
+        branchId: chapter.branchId,
+        assetId: asset.id,
+        source: source,
+      );
+      expect(inserted.content.text, '红伞。\n红伞。她继续前行。\n\uFFFC\n下一段。\n');
+      await expectLater(
+        repo.insertAgentIllustration(
+          branchId: chapter.branchId,
+          assetId: asset.id,
+          source: source,
+        ),
+        throwsA(isA<RevisionConflict>()),
+      );
+    },
+  );
+  test('old image messages locate a unique quote and reject ambiguous or changed prose', () async {
+    final chapter = await repo.createChapter(
+      branchId: novel.activeBranchId,
+      title: '渡口',
+      content: ManuscriptContent.plainText('红伞。\n她走过石桥，回头。\n红伞。'),
+    );
+    final asset = await assets.importImage(
+      branchId: chapter.branchId,
+      name: '石桥',
+      bytes: testPicture(),
+    );
+    final conversation = await repo.createConversation(
+      branchId: chapter.branchId,
+    );
+    Future<Chapter> insert(String quote, {String? text}) async {
+      await repo.appendAgentMessage(
+        conversation,
+        role: 'user',
+        content: '为这段正文生成一张插图：\n\n$quote',
+        metadata: {
+          'attachment': {
+            'chapterId': chapter.id,
+            'text': text ?? chapter.content.text,
+          },
+        },
+      );
+      return repo.insertAgentIllustration(
+        branchId: chapter.branchId,
+        assetId: asset.id,
+        source: (await repo.getAgentMessages(conversation)).last,
+      );
+    }
+
+    await expectLater(insert('红伞。'), throwsFormatException);
+    await expectLater(insert('不存在'), throwsFormatException);
+    await expectLater(insert('石桥', text: '已变更'), throwsFormatException);
+    final inserted = await insert('石桥');
+    expect(inserted.content.text, '红伞。\n她走过石桥，回头。\n\uFFFC\n红伞。\n');
+  });
   test('startup cleanup removes only aged unreferenced files, keeping archived assets', () async {
     final asset = await assets.importImage(
       branchId: novel.activeBranchId,

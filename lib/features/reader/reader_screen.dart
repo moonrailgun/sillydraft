@@ -94,7 +94,8 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
   /// Offers 生图 on selected text: the chapter and the selection go to the
   /// assistant, which draws it.
-  final void Function(Chapter chapter, String selection)? onIllustrate;
+  final void Function(Chapter chapter, String selection, int? endOffset)?
+  onIllustrate;
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderState();
 }
@@ -529,9 +530,22 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                 label: '生图',
                 onPressed: _canIllustrate
                     ? () {
-                        ContextMenuController.removeAny();
+                        // Same selection API used by the line highlight painter.
+                        // ignore: invalid_use_of_visible_for_testing_member
+                        final ranges = _paragraph?.selections;
+                        final end = ranges == null || ranges.isEmpty
+                            ? null
+                            : ranges
+                                  .map((r) => r.end)
+                                  .reduce((a, b) => a > b ? a : b);
+                        final sourceEnd = end == null
+                            ? null
+                            : _document?.sourceOffset(end);
                         final chapter = _story?.chapters[_index];
-                        if (chapter != null) illustrate(chapter, _selected);
+                        if (chapter != null) {
+                          illustrate(chapter, _selected, sourceEnd);
+                        }
+                        ContextMenuController.removeAny();
                       }
                     : null,
               ),

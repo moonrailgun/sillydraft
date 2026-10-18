@@ -147,6 +147,63 @@ extension AssetOperations on StoryRepository {
     }
   }
 
+  Future<Chapter> insertAgentIllustration({
+    required String branchId,
+    required String assetId,
+    required AgentMessage source,
+  }) async {
+    if (source.role != 'user' ||
+        await conversationBranch(source.conversationId) != branchId) {
+      throw const FormatException('找不到这张图片引用的正文，请从插图库选择插入位置。');
+    }
+    final anchor = source.raw['illustrationAnchor'];
+    final attachment = source.raw['attachment'];
+    final chapterId = anchor is Map
+        ? anchor['chapterId']
+        : attachment is Map
+        ? attachment['chapterId']
+        : null;
+    if (chapterId is! String) {
+      throw const FormatException('这张图片没有引用正文，请从插图库选择插入位置。');
+    }
+    final chapter = await getChapter(branchId: branchId, chapterId: chapterId);
+    final text = chapter.content.text;
+    late int end;
+    if (anchor case {
+      'revisionId': final String revision,
+      'endOffset': final int offset,
+    }) {
+      if (chapter.revisionId != revision) {
+        throw RevisionConflict(expected: revision, actual: chapter.revisionId);
+      }
+      end = offset;
+    } else {
+      // Older selection requests stored only the quote and the attached chapter.
+      const prefix = '为这段正文生成一张插图：';
+      final quote = source.content.startsWith(prefix)
+          ? source.content.substring(prefix.length).trim()
+          : '';
+      final start = quote.isEmpty ? -1 : text.indexOf(quote);
+      if (attachment is! Map ||
+          attachment['text'] != text ||
+          start < 0 ||
+          text.indexOf(quote, start + 1) >= 0) {
+        throw const FormatException('无法准确定位引用段落，请重新选中正文生成插图。');
+      }
+      end = start + quote.length;
+    }
+    if (end <= 0 || end > text.length) throw const FormatException('引用段落的位置无效');
+    final newline = text.indexOf('\n', end - 1);
+    final offset = (newline + 1).clamp(0, text.length - 1);
+    return insertIllustration(
+      branchId: branchId,
+      chapterId: chapter.id,
+      expectedRevisionId: chapter.revisionId,
+      assetId: assetId,
+      offset: offset,
+    );
+  }
+
   Future<Chapter> insertIllustration({
     required String branchId,
     required String chapterId,

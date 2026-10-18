@@ -136,13 +136,20 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
 
   /// Hands a selection to the assistant, which draws it with its image tool.
   /// A reader opened on top of the workspace closes so the reply is in view.
-  void _illustrate(Chapter chapter, String selection) {
+  void _illustrate(Chapter chapter, String selection, int? endOffset) {
     final here = ModalRoute.of(context);
     Navigator.popUntil(context, (route) => route == here);
     setState(
       () => _agentRequest = AgentRequest(
         '为这段正文生成一张插图：\n\n${selection.trim()}',
         chapterId: chapter.id,
+        illustrationAnchor: endOffset == null
+            ? null
+            : {
+                'chapterId': chapter.id,
+                'revisionId': chapter.revisionId,
+                'endOffset': endOffset,
+              },
       ),
     );
     _go(WorkspaceSection.agent);

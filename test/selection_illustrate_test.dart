@@ -122,13 +122,13 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final (services, chapter) = await _book();
     addTearDown(services.close);
-    (Chapter, String)? drawn;
+    (Chapter, String, int?)? drawn;
     await _pump(
       tester,
       services,
       ReaderScreen(
         branchId: chapter.branchId,
-        onIllustrate: (c, text) => drawn = (c, text),
+        onIllustrate: (c, text, end) => drawn = (c, text, end),
       ),
     );
     await tester.pumpAndSettle();
@@ -175,6 +175,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(drawn?.$1.id, chapter.id);
     expect(drawn?.$2, startsWith('雨中的渡口'));
+    expect(drawn?.$3, drawn!.$2.length);
     expect(find.text('生图'), findsNothing);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
@@ -186,7 +187,7 @@ void main() {
     await _pump(
       tester,
       services,
-      ReaderScreen(branchId: chapter.branchId, onIllustrate: (_, _) {}),
+      ReaderScreen(branchId: chapter.branchId, onIllustrate: (_, _, _) {}),
     );
     await tester.pumpAndSettle();
     double bubble() => tester
@@ -229,7 +230,7 @@ void main() {
     await _pump(
       tester,
       services,
-      ReaderScreen(branchId: chapter.branchId, onIllustrate: (_, _) {}),
+      ReaderScreen(branchId: chapter.branchId, onIllustrate: (_, _, _) {}),
     );
     await tester.pumpAndSettle();
     await _select(tester);
@@ -252,7 +253,15 @@ void main() {
       AppScaffold(
         child: AgentPanel(
           branchId: chapter.branchId,
-          request: AgentRequest('为这段正文生成一张插图：她撑着红伞', chapterId: chapter.id),
+          request: AgentRequest(
+            '为这段正文生成一张插图：她撑着红伞',
+            chapterId: chapter.id,
+            illustrationAnchor: {
+              'chapterId': chapter.id,
+              'revisionId': chapter.revisionId,
+              'endOffset': 10,
+            },
+          ),
         ),
       ),
     );
@@ -267,20 +276,44 @@ void main() {
     expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
     expect(find.text('附：渡口'), findsOneWidget);
 
+    final asset = await repo.storeAsset(
+      branchId: chapter.branchId,
+      name: '红伞',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 1,
+        height: 1,
+        byteLength: 1,
+      ),
+      purpose: AssetPurpose.illustration,
+    );
+
     await repo.appendAgentMessage(
       conversation,
       role: 'tool',
       content: jsonEncode({
         'taskId': 't',
         'status': 'completed',
-        'assetId': 'a1',
+        'assetId': asset.id,
       }),
       metadata: {'tool_call_id': 'c', 'tool_name': 'generate_image'},
     );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byKey(const Key('agent-image-a1')), findsOneWidget);
+    expect(find.byKey(Key('agent-image-${asset.id}')), findsOneWidget);
+    expect(findAction('插入正文'), findsOneWidget);
     expect(findAction('下载到本地'), findsOneWidget);
+    await tester.tap(findAction('插入正文'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+      )).content.text,
+      contains('\uFFFC'),
+    );
+    expect(find.text('已插入引用段落下方'), findsOneWidget);
   });
 
   testWidgets('the assistant draws only after the author confirms', (
