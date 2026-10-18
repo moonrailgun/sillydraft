@@ -460,29 +460,9 @@ class _NovelCard extends ConsumerWidget {
                   color: Color(0x66ffffff),
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    novel.genre,
-                    style: const TextStyle(
-                      color: Color(0xff514b65),
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    novel.title,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 23,
-                      height: 1.35,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xff343044),
-                    ),
-                  ),
-                ],
+              Text(
+                novel.genre,
+                style: const TextStyle(color: Color(0xff514b65), fontSize: 12),
               ),
             ],
           ),
@@ -496,6 +476,16 @@ class _NovelCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                novel.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.typography.body.md.copyWith(
+                  color: theme.colors.foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
               Text(
                 novel.synopsis.isEmpty ? '一个正在生长的故事' : novel.synopsis,
                 maxLines: 1,
