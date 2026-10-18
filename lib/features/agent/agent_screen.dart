@@ -700,8 +700,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
   /// chapter beside the chat, else the chapter at the assistant's position, for
   /// the author to finish or send. The assistant may only write the last
   /// chapter it can see, so continuing or revising another chapter, or asking
-  /// about one beyond its position, first moves the position there. Image
-  /// batches also stop there so later events cannot shape them.
+  /// about one beyond its position, first moves the position there. Ending
+  /// ideas and image batches also stop there so later events cannot shape them.
   Widget _quickActions(StorySnapshot? story) {
     final chapters = story?.chapters ?? const <Chapter>[];
     final limit = _chapter == null
@@ -771,6 +771,16 @@ class _AgentState extends ConsumerState<AgentPanel> {
         () => fill('归纳目前为止出场的人物、地点、设定和伏笔，整理成资料建议。'),
       ),
       (FLucideIcons.notebookPen, '生成正文', '为参考位置的章节生成正文', _generate),
+      (
+        FLucideIcons.flag,
+        '推演结局',
+        '讨论三个可能的结局，保留当前正文',
+        () => fill(
+          '根据截至$name的故事，推演三个不同的结局，说明人物选择、伏笔回收和最终结果。'
+          '这些只是创作方案，不要修改正文或资料。',
+          edit: true,
+        ),
+      ),
     ];
     return SingleChildScrollView(
       key: const Key('agent-quick-actions'),

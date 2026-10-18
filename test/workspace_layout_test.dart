@@ -141,6 +141,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(_input(tester), startsWith('续写「灯塔」'));
       expect(find.text('分支末尾'), findsOneWidget);
+      final ending = find.byKey(const Key('agent-quick-推演结局'));
+      await tester.ensureVisible(ending);
+      await tester.pumpAndSettle();
+      await tester.tap(ending);
+      await tester.pumpAndSettle();
+      expect(_input(tester), contains('截至「灯塔」'));
+      expect(_input(tester), contains('三个不同的结局'));
+      expect(_input(tester), contains('不要修改正文或资料'));
+      await _chapter(tester, '码头');
+      await tester.tap(ending);
+      await tester.pumpAndSettle();
+      expect(_input(tester), contains('截至「码头」'));
+      expect(find.text('截至「码头」'), findsOneWidget);
       // Filling in never sends, so nothing was saved.
       expect(await repo.listConversations(novel.activeBranchId), isEmpty);
 
