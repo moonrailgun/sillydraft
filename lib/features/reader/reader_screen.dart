@@ -803,7 +803,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       final story = book.story;
       _story = story;
       if (!_initialized) unawaited(_initialize(story));
-      // Load pure mode before creating HTML views that could run scripts.
+      // Load visibility settings before creating HTML views that could run scripts.
       if (!_styleLoaded) return const Center(child: FCircularProgress());
       if (_openWhenLoaded case final id?) {
         final at = story.chapters.indexWhere((s) => s.id == id);
@@ -848,7 +848,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
             ? presentation
             : ManuscriptPresentation.identity(chapter.content),
         fontSize: _style.fontSize,
-        pureMode: _style.pureMode,
+        hideHtml: _style.hideHtml,
+        hideImages: _style.hideImages,
         paragraphSpacing: _style.paragraphSpacing,
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,
@@ -1397,7 +1398,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       ReaderDocument.build(
         ManuscriptPresentation.identity(ManuscriptContent.plainText(text)),
         fontSize: _style.fontSize,
-        pureMode: _style.pureMode,
+        hideHtml: _style.hideHtml,
+        hideImages: _style.hideImages,
         paragraphSpacing: _style.paragraphSpacing,
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,

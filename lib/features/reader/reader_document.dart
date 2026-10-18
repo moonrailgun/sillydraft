@@ -15,8 +15,9 @@ import 'reader_markup.dart';
 ///
 /// With an [html] builder, HTML blocks in the text (fenced pages, raw
 /// fragments) become one inline widget each on a line of their own; the
-/// widget stands for the whole block in the offset map. [pureMode] omits
-/// these blocks and image embeds, preserving the prose's source offsets.
+/// widget stands for the whole block in the offset map. [hideHtml] and
+/// [hideImages] independently omit blocks and image embeds, preserving the
+/// prose's source offsets.
 ///
 /// Text is marked up the way SillyTavern shows a chat message (see
 /// [ProseMarkup]): Markdown emphasis shows as emphasis with its markers left
@@ -29,13 +30,14 @@ final class ReaderDocument {
     required double fontSize,
     required Widget Function(String? uri) image,
     Widget Function(HtmlBlock block, int index)? html,
-    bool pureMode = false,
+    bool hideHtml = false,
+    bool hideImages = false,
     double paragraphSpacing = 0,
     bool indent = false,
     Color? quoteColor,
     Color? italicColor,
   }) {
-    final blocks = !pureMode && html == null
+    final blocks = !hideHtml && html == null
         ? const <HtmlBlock>[]
         : HtmlBlocks.find(presentation.content.text);
     // The source's own indents are dropped: [indent] alone indents.
@@ -165,7 +167,7 @@ final class ReaderDocument {
     // interactive children would conflict with their siblings.
     void emitBlock(HtmlBlock block) {
       if (line.isNotEmpty) finish(const {});
-      if (!pureMode) {
+      if (!hideHtml) {
         paragraphs.add(
           TextSpan(
             children: [
@@ -194,7 +196,7 @@ final class ReaderDocument {
       final value = op['insert'], attributes = op['attributes'] as Map? ?? {};
       if (value is Map) {
         if (opStart >= skipUntil) {
-          if (pureMode) {
+          if (hideImages) {
             hiddenImages.add(opStart);
           } else {
             line.add(WidgetSpan(child: image(value['image'] as String?)));
@@ -238,7 +240,7 @@ final class ReaderDocument {
     return ReaderDocument._(
       TextSpan(children: paragraphs),
       offsets,
-      pureMode ? const [] : blocks,
+      hideHtml ? const [] : blocks,
     );
   }
   final TextSpan span;

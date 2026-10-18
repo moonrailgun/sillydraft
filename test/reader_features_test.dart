@@ -89,11 +89,21 @@ void main() {
     expect(style.theme, ReaderTheme.sepia);
     expect(style.font, ReaderFont.kai);
     expect(style.indent, isTrue);
-    expect(style.pureMode, isFalse);
+    expect(style.hideHtml, isFalse);
+    expect(style.hideImages, isFalse);
     expect(ReaderStyle.fromJson(style.toJson()), style);
-    final pure = style.copyWith(pureMode: true);
-    expect(ReaderStyle.fromJson(pure.toJson()), pure);
-    expect(ReaderStyle.fromJson(pure.toJson()).pureMode, isTrue);
+  });
+
+  test('visibility settings stay independent when saved', () {
+    for (final hideHtml in [false, true]) {
+      for (final hideImages in [false, true]) {
+        final style = const ReaderStyle().copyWith(
+          hideHtml: hideHtml,
+          hideImages: hideImages,
+        );
+        expect(ReaderStyle.fromJson(style.toJson()), style);
+      }
+    }
   });
 
   test('indent and paragraph spacing keep bookmark offsets exact', () {

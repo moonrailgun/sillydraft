@@ -224,10 +224,16 @@ class _ReaderSettingsState extends State<_ReaderSettings> {
           ],
         ),
         _switch(
-          '纯净模式',
-          s.pureMode,
-          (v) => _set(_style.copyWith(pureMode: v)),
-          subtitle: '只显示正文，隐藏 HTML 界面和插图',
+          '隐藏 HTML',
+          s.hideHtml,
+          (v) => _set(_style.copyWith(hideHtml: v)),
+          subtitle: '隐藏 HTML 界面和片段',
+        ),
+        _switch(
+          '隐藏插图',
+          s.hideImages,
+          (v) => _set(_style.copyWith(hideImages: v)),
+          subtitle: '隐藏正文中的插图',
         ),
         _section(
           '字号',

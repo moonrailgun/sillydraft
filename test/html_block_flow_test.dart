@@ -135,7 +135,7 @@ void _phone(WidgetTester tester) {
 
 void main() {
   _workspaceTests();
-  testWidgets('pure mode hides HTML and images, persists, and restores them', (
+  testWidgets('HTML and image visibility are independent and persist', (
     tester,
   ) async {
     _phone(tester);
@@ -146,7 +146,7 @@ void main() {
       await tester.pumpAndSettle();
     });
     final repo = services.repository;
-    final novel = await repo.createNovel(title: '纯净阅读');
+    final novel = await repo.createNovel(title: '阅读显示');
     final asset = await repo.storeAsset(
       branchId: novel.activeBranchId,
       name: '插图',
@@ -179,19 +179,33 @@ void main() {
 
     await tester.tap(findAction('排版与主题').first);
     await tester.pumpAndSettle();
-    expect(find.text('纯净模式'), findsOneWidget);
-    await tester.tap(find.text('纯净模式'));
+    expect(find.text('隐藏 HTML'), findsOneWidget);
+    expect(find.text('隐藏插图'), findsOneWidget);
+    await tester.tap(find.text('隐藏 HTML'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(HtmlBlockView), findsNothing);
+    expect(find.text('图片暂不可用'), findsOneWidget);
+
+    await tester.tap(find.text('隐藏插图'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
     expect(find.byType(HtmlBlockView), findsNothing);
     expect(find.text('图片暂不可用'), findsNothing);
     expect(find.textContaining('正文继续', findRichText: true), findsWidgets);
     expect(find.textContaining('开启仙途', findRichText: true), findsNothing);
     expect(find.textContaining('状态面板', findRichText: true), findsNothing);
-    expect((await repo.getSetting('reader'))?['pureMode'], isTrue);
+    expect((await repo.getSetting('reader'))?['hideHtml'], isTrue);
+    expect((await repo.getSetting('reader'))?['hideImages'], isTrue);
     expect(
       (await repo.getStory(novel.activeBranchId)).chapters.single.content,
       content,
     );
+
+    await tester.tap(find.text('隐藏 HTML'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(HtmlBlockView), findsNWidgets(2));
+    expect(find.text('图片暂不可用'), findsNothing);
+    await tester.tap(find.text('隐藏 HTML'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
 
     await tester.tapAt(const Offset(10, 100));
     await tester.pumpAndSettle();
@@ -210,11 +224,12 @@ void main() {
 
     await tester.tap(findAction('排版与主题').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('纯净模式'));
+    await tester.tap(find.text('隐藏插图'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
-    expect(find.byType(HtmlBlockView), findsNWidgets(2));
+    expect(find.byType(HtmlBlockView), findsNothing);
     expect(find.text('图片暂不可用'), findsOneWidget);
-    expect((await repo.getSetting('reader'))?['pureMode'], isFalse);
+    expect((await repo.getSetting('reader'))?['hideHtml'], isTrue);
+    expect((await repo.getSetting('reader'))?['hideImages'], isFalse);
     expect(tester.takeException(), isNull);
   });
 
@@ -241,9 +256,7 @@ void main() {
     expect(none.span.toPlainText(), text);
   });
 
-  testWidgets('saved pure mode never creates an HTML view while opening', (
-    tester,
-  ) async {
+  testWidgets('hidden HTML never creates a view while opening', (tester) async {
     final services = await _services();
     addTearDown(services.close);
     addTearDown(() async {
@@ -254,7 +267,7 @@ void main() {
       resourceId: 'card',
       title: '道渊',
     );
-    await services.repository.setSetting('reader', {'pureMode': true});
+    await services.repository.setSetting('reader', {'hideHtml': true});
     var htmlBuilds = 0;
     await tester.pumpWidget(
       ProviderScope(
@@ -273,7 +286,7 @@ void main() {
     expect(htmlBuilds, 0);
   });
 
-  test('pure mode skips split HTML blocks and images with exact offsets', () {
+  test('hiding split HTML blocks and images keeps exact offsets', () {
     final content = ManuscriptContent.fromDelta([
       {'insert': '前言。\n```html\n<html><body>'},
       {
@@ -289,9 +302,10 @@ void main() {
     final doc = ReaderDocument.build(
       ManuscriptPresentation.identity(content),
       fontSize: 18,
-      pureMode: true,
-      image: (_) => throw StateError('pure mode must not build images'),
-      html: (_, _) => throw StateError('pure mode must not build HTML'),
+      hideHtml: true,
+      hideImages: true,
+      image: (_) => throw StateError('hidden images must not be built'),
+      html: (_, _) => throw StateError('hidden HTML must not be built'),
     );
     final shown = doc.span.toPlainText();
     expect(doc.blocks, isEmpty);
@@ -307,12 +321,12 @@ void main() {
     expect(doc.displayOffset(content.text.length), shown.length);
   });
 
-  test('pure mode hides HTML even when HTML rendering is disabled', () {
+  test('HTML can be hidden even when HTML rendering is disabled', () {
     final content = ManuscriptContent.plainText(_opening);
     final doc = ReaderDocument.build(
       ManuscriptPresentation.identity(content),
       fontSize: 18,
-      pureMode: true,
+      hideHtml: true,
       image: (_) => const SizedBox(),
     );
     expect(doc.span.toPlainText(), isEmpty);
