@@ -1297,10 +1297,12 @@ class _AgentState extends ConsumerState<AgentPanel> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (active != null)
+                    // One slot: stop while a reply runs and nothing is typed;
+                    // typing turns it back into send (queue).
+                    if (active != null && _input.text.trim().isEmpty)
                       IconAction(
                         variant: FButtonVariant.primary,
-                        icon: FLucideIcons.square,
+                        icon: Icons.stop_rounded,
                         tooltip: '停止编辑回复',
                         onPress: () async {
                           try {
@@ -1312,13 +1314,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             if (mounted) showError(context, e);
                           }
                         },
+                      )
+                    else
+                      IconAction(
+                        variant: FButtonVariant.primary,
+                        icon: FLucideIcons.arrowUp,
+                        tooltip: active == null ? '发送给编辑助手' : '加入消息队列',
+                        onPress: _sending ? null : _send,
                       ),
-                    IconAction(
-                      variant: FButtonVariant.primary,
-                      icon: FLucideIcons.arrowUp,
-                      tooltip: active == null ? '发送给编辑助手' : '加入消息队列',
-                      onPress: _sending ? null : _send,
-                    ),
                   ],
                 ),
               ],
