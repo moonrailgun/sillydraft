@@ -102,6 +102,7 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
 class _ReaderState extends ConsumerState<ReaderScreen>
     with SingleTickerProviderStateMixin {
+  late String _branchId = widget.branchId;
   final _scroll = ScrollController();
 
   /// Bumped when the page's height changes, e.g. a new chapter is laid out,
@@ -224,7 +225,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     if (story == null || story.chapters.isEmpty || !_scroll.hasClients) return;
     final extent = _scroll.position.maxScrollExtent;
     await _services.repository.setReadingProgress(
-      branchId: widget.branchId,
+      branchId: _branchId,
       chapterId: story.chapters[_index.clamp(0, story.chapters.length - 1)].id,
       fraction: extent <= 0 ? 0 : (_scroll.offset / extent).clamp(0, 1),
     );
@@ -236,7 +237,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final prefs = await ref.read(repositoryProvider).getSetting('reader');
     final progress = await ref
         .read(repositoryProvider)
-        .getReadingProgress(widget.branchId);
+        .getReadingProgress(_branchId);
     if (!mounted) return;
     final index = story.chapters.indexWhere(
       (s) => s.id == (widget.chapterId ?? progress?['chapterId']),
@@ -330,6 +331,24 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         _shown == index ? action() : _whenShown(index, action);
       });
 
+  void _openChapter(Chapter chapter) {
+    if (!mounted) return;
+    setState(() {
+      if (chapter.branchId != _branchId) {
+        _timer?.cancel();
+        _menu.remove();
+        _selected = '';
+        _story = null;
+        _document = null;
+        _shown = null;
+        _index = 0;
+        _branchId = chapter.branchId;
+      }
+      _openWhenLoaded = chapter.id;
+    });
+    widget.onChapterChanged?.call(chapter);
+  }
+
   /// Opens chapter [index], at its start, at [offset] in its text, or at its
   /// end when paging backwards into it.
   void _go(int index, {int offset = 0, bool atEnd = false}) {
@@ -370,7 +389,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       ref
           .read(repositoryProvider)
           .setReadingProgress(
-            branchId: widget.branchId,
+            branchId: _branchId,
             chapterId: _story!.chapters[index].id,
             fraction: 0,
           ),
@@ -779,7 +798,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
 
   @override
   Widget build(BuildContext context) => AsyncView(
-    value: ref.watch(_readerStoryProvider(widget.branchId)),
+    value: ref.watch(_readerStoryProvider(_branchId)),
     builder: (book) {
       final story = book.story;
       _story = story;
@@ -810,7 +829,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       final page = ref.watch(
         _revisionPresentationProvider((
           revisionId: chapter.revisionId,
-          branchId: widget.branchId,
+          branchId: _branchId,
           display: book.display,
         )),
       );
@@ -963,7 +982,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         ? TavernBridge(
             backend: BranchChatBackend(
               repository: _services.repository,
-              branchId: widget.branchId,
+              branchId: _branchId,
               context: book.display,
             ),
             actions: FlutterTavernHost(
@@ -998,7 +1017,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       _writingFromInput = true;
       try {
         final repo = ref.read(repositoryProvider);
-        final tasks = await repo.listTasks(branchId: widget.branchId);
+        final tasks = await repo.listTasks(branchId: _branchId);
         if (tasks.any(
           (task) =>
               task.isActive &&
@@ -1006,7 +1025,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         )) {
           throw const FormatException('本书正在写作，请等待完成后再续写。');
         }
-        final latest = await repo.getStory(widget.branchId);
+        final latest = await repo.getStory(_branchId);
         if (!mounted) return;
         final chapter = await startNextChapter(
           ref,
@@ -1057,7 +1076,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     try {
       final tasks = await ref
           .read(repositoryProvider)
-          .listTasks(branchId: widget.branchId);
+          .listTasks(branchId: _branchId);
       if (tasks.any(
         (t) =>
             t.isActive && [TaskKind.writing, TaskKind.rewrite].contains(t.kind),
@@ -1099,7 +1118,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     );
     // Show inline generation while preserving any saved text. A selection
     // rewrite is only a fragment of the chapter, so it stays on its task page.
-    final tasks = ref.watch(tasksProvider(widget.branchId)).value ?? const [];
+    final tasks = ref.watch(tasksProvider(_branchId)).value ?? const [];
     final latest = tasks
         .where(
           (t) =>
@@ -1110,7 +1129,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         .firstOrNull;
     final pending =
         latest != null &&
-        (ref.watch(proposalsProvider(widget.branchId)).value ?? const []).any(
+        (ref.watch(proposalsProvider(_branchId)).value ?? const []).any(
           (p) =>
               p.id == latest.result['proposalId'] &&
               p.status == ProposalStatus.pending,
@@ -1320,8 +1339,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                 _noTap(
                                   StoryDirections(
                                     story: story,
-                                    onOpenChapter: (id) =>
-                                        setState(() => _openWhenLoaded = id),
+                                    onOpenChapter: _openChapter,
                                     // Not before the author's own setting
                                     // is known.
                                     auto: _styleLoaded && _style.autoDirections,

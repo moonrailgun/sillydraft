@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/features/editor/workspace_screen.dart';
 import 'package:sillydraft/features/html/html_block_view.dart';
 import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -70,12 +71,15 @@ Future<_Open> _open(
   Future<void>? gate,
   List<int>? failures,
   bool model = true,
+  bool workspace = false,
   int contextWindow = 200000,
   String text = '风暴要来了。',
   Map<String, Object>? reader,
   Widget Function(HtmlBlockRequest)? htmlBuilder,
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = workspace
+      ? const Size(1400, 900)
+      : const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -114,7 +118,11 @@ Future<_Open> _open(
         if (htmlBuilder != null)
           htmlBlockBuilderProvider.overrideWithValue(htmlBuilder),
       ],
-      child: testHost(ReaderScreen(branchId: novel.activeBranchId)),
+      child: testHost(
+        workspace
+            ? NovelWorkspace(novelId: novel.id)
+            : ReaderScreen(branchId: novel.activeBranchId),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -137,6 +145,65 @@ Future<List<GenerationTask>> _directionRuns(_Open book) async => [
 ];
 
 void main() {
+  for (final workspace in [false, true]) {
+    testWidgets(
+      'a direction forks and writes in ${workspace ? 'the workspace' : 'the reader'}',
+      (tester) async {
+        final requests = <ProviderRequest>[];
+        final book = await _open(
+          tester,
+          requests: requests,
+          workspace: workspace,
+        );
+        final repo = book.services.repository;
+        final original = await repo.getStory(book.branchId);
+        final adjust = find.byKey(const Key('direction-adjust-0'));
+        await tester.ensureVisible(adjust);
+        await tester.pumpAndSettle();
+        await tester.tap(adjust);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.descendant(
+            of: find.byKey(const Key('direction-brief-0')),
+            matching: find.byType(EditableText),
+          ),
+          '她独自出海，先去寻找失踪的船长。',
+        );
+        final fork = find.byKey(const Key('direction-fork-0'));
+        await tester.ensureVisible(fork);
+        await tester.pumpAndSettle();
+        await tester.tap(fork);
+        await tester.pumpAndSettle();
+        final novel = await repo.getNovel(original.novel.id);
+        expect(novel.activeBranchId, isNot(book.branchId));
+        expect(await repo.listBranches(novel.id), hasLength(2));
+        final source = await repo.getStory(book.branchId);
+        expect(source.chapters, hasLength(1));
+        expect(
+          source.chapters.single.revisionId,
+          original.chapters.single.revisionId,
+        );
+        final story = await repo.getStory(novel.activeBranchId);
+        expect(story.branch.parentBranchId, book.branchId);
+        expect(story.branch.name, '出海');
+        expect(story.chapters, hasLength(2));
+        expect(
+          story.chapters.first.revisionId,
+          original.chapters.single.revisionId,
+        );
+        expect(story.chapters.last.content.text.trim(), '她推开门。她守在灯下。');
+        final write = (await repo.listTasks(branchId: novel.activeBranchId))
+            .singleWhere((task) => task.kind == TaskKind.writing);
+        expect(write.input['brief'], '她独自出海，先去寻找失踪的船长。');
+        expect(
+          find.textContaining('她推开门。', findRichText: true),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('continuation appends to the current chapter only once', (
     tester,
   ) async {
@@ -543,21 +610,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a write that cannot start says why in plain words', (
-    tester,
-  ) async {
-    // Room for the directions, not for a chapter with 2048 tokens of reply.
-    final book = await _open(tester, contextWindow: 2300);
-    final pick = find.byKey(const Key('direction-continue-0'));
-    await tester.ensureVisible(pick);
-    await tester.pumpAndSettle();
-    await tester.tap(pick);
-    await tester.pumpAndSettle();
-    final story = await book.services.repository.getStory(book.branchId);
-    expect(story.chapters, hasLength(2));
-    expect(find.textContaining('的上下文装不下这次写作'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  for (final fork in [false, true]) {
+    testWidgets(
+      'a ${fork ? 'forked' : 'current'} write that cannot start says why',
+      (tester) async {
+        // Room for the directions, not for a chapter with 2048 tokens of reply.
+        final book = await _open(tester, contextWindow: 2300);
+        final pick = find.byKey(
+          Key('direction-${fork ? 'fork' : 'continue'}-0'),
+        );
+        await tester.ensureVisible(pick);
+        await tester.pumpAndSettle();
+        await tester.tap(pick);
+        await tester.pumpAndSettle();
+        final repo = book.services.repository;
+        final source = await repo.getStory(book.branchId);
+        final novel = await repo.getNovel(source.novel.id);
+        final story = await repo.getStory(novel.activeBranchId);
+        expect(story.chapters, hasLength(2));
+        if (fork) {
+          expect(novel.activeBranchId, isNot(book.branchId));
+          expect(source.chapters, hasLength(1));
+          expect(story.chapters.last.content.text.trim(), isEmpty);
+          expect(find.text(story.chapters.last.title), findsWidgets);
+        }
+        expect(find.textContaining('的上下文装不下这次写作'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'directions come by themselves, and picking one writes the next chapter in place',

@@ -48,7 +48,7 @@ class StoryDirections extends ConsumerStatefulWidget {
   final bool auto;
 
   /// Shows a chapter of the story: the chapter just started.
-  final ValueChanged<String>? onOpenChapter;
+  final ValueChanged<Chapter>? onOpenChapter;
   @override
   ConsumerState<StoryDirections> createState() => _DirectionsState();
 }
@@ -147,6 +147,7 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
     // Writing adds a chapter, which can replace this panel before a later
     // step fails; the navigator outlives it to show the error.
     final host = Navigator.of(context).context;
@@ -173,18 +174,51 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
 
   /// Writes the next chapter along [direction], or along [brief] when the
   /// author adjusted it, and turns to it.
-  Future<void> _write(Map direction, {String? brief}) => _run(() async {
-    final chapter = await startNextChapter(
-      ref,
-      widget.story,
-      name: '${direction['title']}',
-      brief: brief ?? chapterBrief(direction),
-      onWaitSidecar: () => toast(context, sidecarWaitNotice),
-      onBudgetDrop: (summary) => showWorldInfoBudgetNotice(context, summary),
-    );
-    if (mounted) setState(() => _adjusting = null);
-    widget.onOpenChapter?.call(chapter.id);
-  });
+  Future<void> _write(Map direction, {String? brief, bool fork = false}) =>
+      _run(() async {
+        final services = ref.read(servicesProvider), repo = services.repository;
+        final open = widget.onOpenChapter;
+        final host = Navigator.of(context).context;
+        var story = widget.story;
+        if (fork) {
+          if (await services.connectionFor('writing') == null) {
+            throw const FormatException('请先在设置里添加写作模型连接。');
+          }
+          // Fork after the sidecar so the new route inherits its latest state.
+          await awaitSidecar(
+            services,
+            story.branch.id,
+            onWait: () => toast(host, sidecarWaitNotice),
+          );
+          if (!mounted) return;
+          final branch = await repo.forkBranch(
+            branchId: story.branch.id,
+            name: '${direction['title']}',
+          );
+          story = await repo.getStory(branch.id);
+        }
+        try {
+          final chapter = await startNextChapter(
+            ref,
+            story,
+            name: '${direction['title']}',
+            brief: brief ?? chapterBrief(direction),
+            onWaitSidecar: () => toast(host, sidecarWaitNotice),
+            onBudgetDrop: (summary) => showWorldInfoBudgetNotice(host, summary),
+          );
+          if (!fork) open?.call(chapter);
+        } finally {
+          if (fork) {
+            // Open even a failed attempt so it can be retried on the new route.
+            final latest = await repo.getStory(story.branch.id);
+            if (latest.chapters.lastOrNull case final chapter?) {
+              open?.call(chapter);
+            }
+            await repo.setActiveBranch(story.branch.id);
+          }
+        }
+        if (mounted) setState(() => _adjusting = null);
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +402,23 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                                       : _write(d),
                             prefix: const Icon(FLucideIcons.penLine),
                             child: Text(_adjusting == i ? '按要求写下一章' : '写下一章'),
+                          ),
+                          FButton(
+                            key: Key('direction-fork-$i'),
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: _busy
+                                ? null
+                                : () => _write(
+                                    d,
+                                    fork: true,
+                                    brief: _adjusting == i
+                                        ? _brief.text.trim()
+                                        : null,
+                                  ),
+                            prefix: const Icon(FLucideIcons.gitFork),
+                            child: const Text('另开分支写'),
                           ),
                           FButton(
                             key: Key('direction-adjust-$i'),
