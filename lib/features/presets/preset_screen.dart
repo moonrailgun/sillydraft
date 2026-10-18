@@ -546,6 +546,38 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
                                       ),
                                     ),
                                   FTabEntry(
+                                    label: const Text('原始 JSON'),
+                                    child: Builder(
+                                      builder: (_) => ListView(
+                                        key: const PageStorageKey(
+                                          'preset-json',
+                                        ),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 32,
+                                        ),
+                                        children: [
+                                          const Text('当前分支使用的完整预设，包含已做的修改。'),
+                                          const SizedBox(height: 8),
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: FButton(
+                                              variant: FButtonVariant.outline,
+                                              mainAxisSize: MainAxisSize.min,
+                                              onPress: () => Clipboard.setData(
+                                                ClipboardData(
+                                                  text: _json.convert(_draft!),
+                                                ),
+                                              ),
+                                              child: const Text('复制完整 JSON'),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          JsonTreeView(_draft!),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  FTabEntry(
                                     label: const Text('兼容提示'),
                                     child: Builder(
                                       builder: (_) => ListView(

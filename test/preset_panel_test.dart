@@ -10,6 +10,7 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/presets/preset_screen.dart';
 import 'package:sillydraft/features/resources/preset_prompt_editor.dart';
 import 'package:sillydraft/features/resources/resource_library_screen.dart';
+import 'package:sillydraft/features/resources/resource_preview.dart';
 import 'package:sillydraft/features/resources/writing_profile.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -40,6 +41,87 @@ const _preset = {
 };
 
 void main() {
+  testWidgets('raw preset JSON preserves all fields and follows branch edits', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '雾港');
+    final data = {
+      ..._preset,
+      'extensions': {'unknown': '保留全部字段'},
+    };
+    final original = await services.library.import(
+      Uint8List.fromList(utf8.encode(jsonEncode(data))),
+      filename: 'fog.json',
+      kind: ResourceKind.preset,
+    );
+    final settingKey = 'writing/${novel.activeBranchId}';
+    await repo.setSetting(settingKey, {'presetId': original.id});
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(PresetScreen(branchId: novel.activeBranchId)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(JsonTreeView), findsNothing);
+    await tester.ensureVisible(find.text('原始 JSON'));
+    await tester.tap(find.text('原始 JSON'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<JsonTreeView>(find.byType(JsonTreeView)).value, data);
+    await tester.tap(find.text('复制完整 JSON'));
+    await tester.pumpAndSettle();
+    expect(jsonDecode(copied!), data);
+    expect(await repo.getSetting(settingKey), {'presetId': original.id});
+
+    await tester.ensureVisible(find.text('采样参数'));
+    await tester.tap(find.text('采样参数'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('sampler-temperature')),
+      const Offset(-600, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('原始 JSON'));
+    await tester.tap(find.text('原始 JSON'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<JsonTreeView>(find.byType(JsonTreeView)).value, {
+      ...data,
+      'temperature': 0.0,
+    });
+    await tester.tap(find.text('复制完整 JSON'));
+    await tester.pumpAndSettle();
+    expect(jsonDecode(copied!), {...data, 'temperature': 0.0});
+    expect((await repo.getResource(original.id)).data, data);
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('preset tabs keep long prompt lists lazy and edits saved', (
     tester,
   ) async {
