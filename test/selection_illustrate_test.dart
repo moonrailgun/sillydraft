@@ -385,6 +385,7 @@ void main() {
           request: AgentRequest(
             '为这段正文生成一张插图：她撑着红伞',
             chapterId: chapter.id,
+            illustrationOnly: true,
             illustrationAnchor: {
               'chapterId': chapter.id,
               'revisionId': chapter.revisionId,
@@ -403,6 +404,7 @@ void main() {
         .firstWhere((m) => m.role == 'user');
     expect(user.content, '为这段正文生成一张插图：她撑着红伞');
     expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
+    expect(user.raw['illustrationOnly'], true);
     expect(find.text('附：渡口'), findsOneWidget);
 
     final asset = await repo.storeAsset(

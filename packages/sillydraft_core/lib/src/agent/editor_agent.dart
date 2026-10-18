@@ -56,6 +56,9 @@ final class EditorAgent {
     /// selection was made in. It stays with the message for later turns.
     String? attachChapterId,
 
+    /// Image-only requests may read context but cannot edit the story.
+    bool illustrationOnly = false,
+
     /// Chapter highlights share one approval and generate images serially.
     bool illustrationBatch = false,
     Map<String, dynamic>? illustrationAnchor,
@@ -87,12 +90,14 @@ final class EditorAgent {
       if (replaced == null) {
         throw const StoryNotFound('待替换的消息');
       }
+      illustrationOnly =
+          illustrationOnly || replaced.raw['illustrationOnly'] == true;
       illustrationBatch =
           illustrationBatch || replaced.raw['illustrationBatch'] == true;
       illustrationAnchor ??=
           replaced.raw['illustrationAnchor'] as Map<String, dynamic>?;
     }
-    final illustrationOnly = illustrationBatch;
+    illustrationOnly = illustrationOnly || illustrationBatch;
     return runner.start(
       branchId: branchId,
       kind: TaskKind.agent,
@@ -171,7 +176,8 @@ final class EditorAgent {
     final focusChapterId = pending['focusChapterId'] as String?;
     final attachChapterId = pending['attachChapterId'] as String?;
     final illustrationBatch = pending['illustrationBatch'] == true;
-    final illustrationOnly = illustrationBatch;
+    final illustrationOnly =
+        pending['illustrationOnly'] == true || illustrationBatch;
     final replaceMessageId = pending['replaceMessageId'] as String?;
     final worldBooks = [
       for (final book in pending['worldBooks'] as List? ?? [])
@@ -274,6 +280,8 @@ final class EditorAgent {
     final purpose = illustrationBatch
         ? '\n本轮任务是从附带的当前章节提取 3 个不同的视觉亮点，每个亮点写成一段完整生图提示词；内容不足时可减少，不得编造章节里没有的情节。'
               '写好后必须立即调用 generate_images 提交全部提示词，由工具展示整组确认卡片，不能只回复提示词或等待作者文字确认。只能读取资料和生成图片，禁止改写、续写正文或提出资料建议。'
+        : illustrationOnly
+        ? '\n本轮任务是为作者选中的正文生成插图。只能读取资料和生成图片，禁止改写或续写正文、提出资料建议；没有生图工具时请说明，不能改做写作任务。'
         : '';
     final rules = '$editorInstructions$focusNote$imageNote$purpose';
     final instructions = '$rules${skillCatalog(skills)}';
@@ -309,7 +317,12 @@ final class EditorAgent {
       ],
     );
     Map<String, dynamic>? presetRecord = illustrationOnly && chatPreset != null
-        ? {'name': chatPreset.name, 'skipped': 'chapter_illustration'}
+        ? {
+            'name': chatPreset.name,
+            'skipped': illustrationBatch
+                ? 'chapter_illustration'
+                : 'selection_illustration',
+          }
         : null;
     if (chatPreset != null && !illustrationOnly) {
       if (![PresetKind.chat, PresetKind.promptPack].contains(chatPreset.kind)) {

@@ -42,6 +42,103 @@ Future<GenerationTask> _awaitConfirmation(
 }
 
 void main() {
+  for (final approve in [false, true]) {
+    test(
+      'illustration ${approve ? 'failure' : 'cancellation'} stops without another paid request',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final dir = Directory.systemTemp.createTempSync('image-outcome-');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final novel = await repo.createNovel(title: '结果');
+        final conversation = await repo.createConversation(
+          branchId: novel.activeBranchId,
+        );
+        var modelCalls = 0, imageCalls = 0;
+        final runner = TaskRunner(
+          repository: repo,
+          assetLibrary: AssetLibrary(repository: repo, directory: dir),
+          providerFactory: (c) async => ScriptProvider(c, (_, _) async* {
+            modelCalls++;
+            yield ToolCallReady('image', 'generate_image', {
+              'prompt': 'red umbrella',
+              'name': '雨伞',
+            });
+            yield const GenerationFinished('tool_calls');
+          }),
+          imageProviderFactory: (_) async {
+            imageCalls++;
+            throw const ProviderException('service_error', '生图服务暂时不可用');
+          },
+        );
+        addTearDown(runner.close);
+        final connection = ModelConnection(
+          id: 'test',
+          name: 'test',
+          baseUrl: 'http://localhost:1',
+          model: 'test',
+        );
+        final task = await EditorAgent(repository: repo, runner: runner).send(
+          conversationId: conversation,
+          connection: connection,
+          imageConnection: connection,
+          message: '生成插图',
+          illustrationOnly: true,
+        );
+        final pending = await _awaitConfirmation(repo, task.id);
+        await runner.respondToImageConfirmation(
+          task.id,
+          pending.result['imageConfirmation']['id'] as String,
+          approved: approve,
+        );
+        final done = await runner.wait(task.id);
+        expect(done.status, approve ? TaskStatus.failed : TaskStatus.cancelled);
+        if (approve) expect(done.error, contains('生图服务暂时不可用'));
+        expect(imageCalls, approve ? 1 : 0);
+        expect(modelCalls, 1);
+        expect(await repo.listAssets(novel.id), isEmpty);
+      },
+    );
+  }
+  test(
+    'an illustration cannot complete with prose instead of an image',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '插图结果');
+      final conversation = await repo.createConversation(
+        branchId: novel.activeBranchId,
+      );
+      var requests = 0;
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+          requests++;
+          yield const TextDelta('```bash\ncat chapter_01.txt\n```');
+          yield const GenerationFinished('stop');
+        }),
+      );
+      addTearDown(runner.close);
+      final connection = ModelConnection(
+        id: 'test',
+        name: 'test',
+        baseUrl: 'http://localhost:1',
+        model: 'test',
+      );
+      final task = await EditorAgent(repository: repo, runner: runner).send(
+        conversationId: conversation,
+        connection: connection,
+        imageConnection: connection,
+        illustrationOnly: true,
+        message: '生成一张渡口插图',
+      );
+      final done = await runner.wait(task.id);
+      expect(done.status, TaskStatus.failed);
+      expect(done.error, contains('未调用生图工具'));
+      expect(requests, 2);
+    },
+  );
+
   test(
     'the assistant draws a selection with the configured image engine',
     () async {
@@ -107,6 +204,7 @@ void main() {
               as Map<String, dynamic>;
 
       script = [
+        [const TextDelta('已写好插图提示词'), const GenerationFinished('stop')],
         [
           ToolCallReady('a', 'generate_image', {
             'prompt': '雨夜渡口，撑红伞的少女',
@@ -114,7 +212,6 @@ void main() {
           }),
           const GenerationFinished('tool_calls'),
         ],
-        [const TextDelta('已生成'), const GenerationFinished('stop')],
       ];
       final task = await agent.send(
         conversationId: conversation,
@@ -122,6 +219,7 @@ void main() {
         message: '为这段正文生成插图：她撑着红伞。',
         imageConnection: image,
         attachChapterId: chapter.id,
+        illustrationOnly: true,
       );
       final pending = await _awaitConfirmation(repo, task.id);
       expect(images, isEmpty);
@@ -158,6 +256,8 @@ void main() {
       );
       expect((await runner.wait(task.id)).status, TaskStatus.completed);
       expect((await repo.getTask(task.id)).result['imageConfirmation'], isNull);
+      expect((await repo.getTask(task.id)).result['assetId'], isA<String>());
+      expect(requests, hasLength(2));
 
       final first = requests.first;
       expect(toolNames(first), contains('generate_image'));
@@ -173,6 +273,9 @@ void main() {
       expect(first.messages.last['content'], contains('雨中的渡口，她撑着红伞。'));
       final messages = await repo.getAgentMessages(conversation);
       final user = messages.firstWhere((m) => m.role == 'user');
+      expect(user.raw['illustrationOnly'], true);
+      expect(toolNames(requests.first), isNot(contains('propose_chapter')));
+      expect(toolNames(requests.first), isNot(contains('propose_lore')));
       expect(user.content, '为这段正文生成插图：她撑着红伞。');
       expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
       expect(user.raw['attachment'], containsPair('title', '渡口'));
@@ -202,6 +305,7 @@ void main() {
       );
       await runner.wait(plain.id);
       expect(toolNames(requests.first), isNot(contains('generate_image')));
+      expect(toolNames(requests.first), contains('propose_chapter'));
       expect(
         requests.first.messages.first['content'],
         isNot(contains('generate_image')),

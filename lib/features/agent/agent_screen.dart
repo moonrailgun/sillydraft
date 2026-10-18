@@ -96,11 +96,13 @@ final class AgentRequest {
     this.message, {
     this.chapterId,
     this.replace,
+    this.illustrationOnly = false,
     this.illustrationBatch = false,
     this.illustrationAnchor,
   });
   final String message;
   final String? chapterId;
+  final bool illustrationOnly;
   final bool illustrationBatch;
   final Map<String, dynamic>? illustrationAnchor;
 
@@ -229,6 +231,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       _ => null,
     },
     replace: message.id,
+    illustrationOnly: message.raw['illustrationOnly'] == true,
     illustrationBatch: message.raw['illustrationBatch'] == true,
     illustrationAnchor:
         message.raw['illustrationAnchor'] as Map<String, dynamic>?,
@@ -284,6 +287,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         focusChapterId: widget.focusChapterId ?? _chapter,
         imageConnection: await services.connectionFor('image'),
         attachChapterId: request?.chapterId,
+        illustrationOnly: request?.illustrationOnly ?? false,
         illustrationBatch: request?.illustrationBatch ?? false,
         illustrationAnchor: request?.illustrationAnchor,
         replaceMessageId: request?.replace,

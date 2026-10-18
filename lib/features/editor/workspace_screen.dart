@@ -143,6 +143,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       () => _agentRequest = AgentRequest(
         '为这段正文生成一张插图：\n\n${selection.trim()}',
         chapterId: chapter.id,
+        illustrationOnly: true,
         illustrationAnchor: endOffset == null
             ? null
             : {

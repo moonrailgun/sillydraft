@@ -212,7 +212,9 @@ extension _AgentExecution on TaskRunner {
         AgentSkill.fromJson(s as Map<String, dynamic>),
     ];
     final illustrationBatch = input['illustrationBatch'] == true;
-    if (illustrationBatch && input['image'] is! Map<String, dynamic>) {
+    final illustrationOnly =
+        input['illustrationOnly'] == true || illustrationBatch;
+    if (illustrationOnly && input['image'] is! Map<String, dynamic>) {
       throw const ProviderException('image_unavailable', '请先配置生图引擎，再重新生成插图。');
     }
     const writingTools = {'propose_chapter', 'propose_lore'};
@@ -224,27 +226,27 @@ extension _AgentExecution on TaskRunner {
       reasoning,
       tools: [
         for (final tool in _editingTools)
-          if (!illustrationBatch ||
+          if (!illustrationOnly ||
               !writingTools.contains(tool['function']['name']))
             tool,
         if (input['image'] case final Map<String, dynamic> image)
           _imageTool(image, batch: illustrationBatch),
-        if (!illustrationBatch) ...skillTools(skills),
+        if (!illustrationOnly) ...skillTools(skills),
       ],
-      imageRequired: illustrationBatch,
+      imageRequired: illustrationOnly,
       execute: (call) async {
         if ((illustrationBatch && call.name == 'generate_image') ||
             (!illustrationBatch && call.name == 'generate_images')) {
           return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
         }
-        if (illustrationBatch && writingTools.contains(call.name)) {
+        if (illustrationOnly && writingTools.contains(call.name)) {
           return {
             'error': '本轮仅生成插图，不能修改正文或提出资料建议。请使用生图工具；不可用时说明原因。',
             'code': 'tool_not_allowed',
             'retryable': false,
           };
         }
-        return _executeTool(task, call, cancel);
+        return _executeTool(task, call, cancel, !illustrationOnly);
       },
       record: (role, content, metadata) => repository.appendAgentMessage(
         conversation,
@@ -453,6 +455,7 @@ extension _AgentExecution on TaskRunner {
     GenerationTask task,
     ToolCallReady call,
     GenerationCancellation cancel,
+    bool canWrite,
   ) async {
     final args = call.arguments;
     if (call.name == 'activate_skill' || call.name == 'read_skill_file') {
@@ -763,7 +766,8 @@ extension _AgentExecution on TaskRunner {
               'id': chapter['id'],
               'title': chapter['title'],
               'revisionId': chapter['revisionId'],
-              'canEdit': chapter['id'] == task.input['editChapterId'],
+              'canEdit':
+                  canWrite && chapter['id'] == task.input['editChapterId'],
             },
         ],
       };
