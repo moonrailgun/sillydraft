@@ -81,6 +81,103 @@ void main() {
         ],
       })}\r\n\r\n';
 
+  test('ST sampling parameters default on, including legacy connections', () {
+    final legacy = Map<String, dynamic>.of(provider.config.raw)
+      ..remove('disabledSamplingParameters');
+    final config = ModelConnection.fromJson(legacy);
+    final p = OpenAICompatibleProvider(config: config, apiKey: '');
+    addTearDown(p.close);
+    expect(
+      p.validateParameters(
+        ProviderRequest(
+          parameters: {
+            'top_k': 0,
+            'top_a': 0,
+            'min_p': 0,
+            'repetition_penalty': 1,
+          },
+        ),
+      ),
+      isEmpty,
+    );
+  });
+
+  test(
+    'sampling switches persist and filter both completion endpoints',
+    () async {
+      Map<String, dynamic>? sent;
+      handler = (r) async {
+        sent = jsonDecode(
+          await utf8.decoder.bind(r).join(),
+        ) as Map<String, dynamic>;
+        r.response.headers.contentType = ContentType(
+          'text',
+          'event-stream',
+          charset: 'utf-8',
+        );
+        r.response.write(
+          '${chunk({'content': '雨'}, finish: 'stop')}data: [DONE]\n\n',
+        );
+        await r.response.close();
+      };
+      const sampling = {
+        'top_k': 0,
+        'top_a': 0.2,
+        'min_p': 0,
+        'repetition_penalty': 1,
+      };
+      for (final completion in [null, '写小说']) {
+        for (final disabled in [
+          <String>[],
+          ...sampling.keys.map((key) => [key]),
+        ]) {
+          final config = ModelConnection.fromJson({
+            ...provider.config.raw,
+            // Old explicit entries must not bypass a switch being turned off.
+            'extraParameters': [
+              if (disabled.isNotEmpty) ...sampling.keys,
+              'custom_sampler',
+            ],
+            'disabledSamplingParameters': disabled,
+          }).withModel('test-model');
+          final p = OpenAICompatibleProvider(config: config, apiKey: '');
+          addTearDown(p.close);
+          final req = ProviderRequest(
+            completionText: completion,
+            messages: request().messages,
+            parameters: {
+              ...sampling,
+              'custom_sampler': 7,
+              'unknown_sampler': 9,
+            },
+          );
+          await p.generate(req).toList();
+          for (final entry in sampling.entries) {
+            if (disabled.contains(entry.key)) {
+              expect(sent, isNot(contains(entry.key)));
+            } else {
+              expect(sent![entry.key], entry.value);
+            }
+          }
+          expect(sent!['custom_sampler'], 7);
+          expect(sent, isNot(contains('unknown_sampler')));
+          expect(p.validateParameters(req).map((d) => (d.code, d.path)), [
+            for (final key in disabled) ('disabled_parameter', key),
+            ('unsupported_parameter', 'unknown_sampler'),
+          ]);
+        }
+      }
+      await provider.generate(request()).toList();
+      for (final key in sampling.keys) {
+        expect(
+          sent,
+          isNot(contains(key)),
+          reason: 'No preset value means no parameter',
+        );
+      }
+    },
+  );
+
   test('stream handles UTF-8 byte fragments and leaves reasoning separate', () async {
     Map<String, dynamic>? sent;
     handler = (r) async {

@@ -101,6 +101,7 @@ git -C ~/Develop/SillyTavern diff --stat <旧提交> <新提交> -- \
 | 文本预设字段别名、角色卡覆盖、提示词标记 | `preset-manager.js`、`script.js` `setGenerationParamsFromPreset`、`nai-settings.js`、`openai.js` `preparePromptsForChatCompletion` | `core/st/prompt_compiler.dart` | `st_compiler_test.dart` |
 | PromptManager 内置条目 | `PromptManager.js` | `lib/features/resources/preset_prompt_editor.dart` | `test/preset_panel_test.dart` |
 | 采样参数界面的字段与范围 | `public/index.html` 滑块、`preset-manager.js` | `lib/features/presets/preset_screen.dart` | `test/preset_panel_test.dart` |
+| 默认允许的额外采样字段（四项） | `openai.js` OpenRouter / NanoGPT 分支；Custom 不默认发送，差异见兼容文档 | `core/providers/provider.dart` `stSamplingParameters`；`openai_compatible.dart`；连接高级参数开关 | `provider_test.dart`、`test/model_settings_flow_test.dart` |
 | 对话引号、强调（showdown 及 ST 选项） | `script.js` `messageFormatting`；ST `package-lock.json` 中的 showdown 版本（当前范围 ^2.1.0） | `lib/features/reader/reader_markup.dart`、`core/html/html_blocks.dart` 围栏规则 | `test/reader_markup_test.dart`、`html_blocks_test.dart` |
 | HTML 片段净化 | ST `package-lock.json` 中的 DOMPurify 版本（当前范围 ^3.4.2）及 `messageFormatting` 的净化配置 | `core/html/html_blocks.dart` 净化部分 | `html_blocks_test.dart` |
 | NovelAI 请求体，以及按采样器和模型强制关闭 `sm`/`sm_dyn` | `src/endpoints/novelai.js` `/generate-image`；`extensions/stable-diffusion/index.js` | `core/providers/novelai_image.dart` 请求体部分 | `novelai_image_test.dart` |

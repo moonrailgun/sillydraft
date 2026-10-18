@@ -40,6 +40,54 @@ Future<AppServices> openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('ST sampling switches default on and keep saved choices', (
+    tester,
+  ) async {
+    final services = await openSettings(tester);
+    await tester.enterText(find.widgetWithText(FTextFormField, '模型名称'), 'test');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('高级参数'));
+    await tester.pumpAndSettle();
+    const keys = ['top_k', 'top_a', 'min_p', 'repetition_penalty'];
+    for (final key in keys) {
+      expect(
+        tester.widget<FSwitch>(find.widgetWithText(FSwitch, key)).value,
+        isTrue,
+      );
+    }
+    await tester.ensureVisible(find.widgetWithText(FSwitch, 'top_k'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FSwitch, 'top_k'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.widgetWithText(FTextFormField, '后端支持的额外参数'),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(FTextFormField, '后端支持的额外参数'),
+      'custom_sampler',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    final saved = (await services.connections()).single;
+    expect(saved.raw['disabledSamplingParameters'], ['top_k']);
+    expect(saved.extraParameters, ['custom_sampler']);
+    await tester.tap(findAction('编辑连接'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('高级参数'));
+    await tester.pumpAndSettle();
+    for (final key in keys) {
+      expect(
+        tester.widget<FSwitch>(find.widgetWithText(FSwitch, key)).value,
+        key != 'top_k',
+      );
+    }
+    expect(find.text('custom_sampler'), findsOneWidget);
+  });
+
   testWidgets('a connection moved outside this device keeps its key back', (
     tester,
   ) async {

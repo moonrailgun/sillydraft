@@ -32,6 +32,10 @@ const connectionEndpointKeys = [
   'allowInsecureHttp',
 ];
 
+/// ST 1.19.0 (06bde939) openai.js: OpenRouter/NanoGPT sampling fields.
+/// SillyDraft enables these by default; ST Custom requires explicit inclusion.
+const stSamplingParameters = ['top_k', 'top_a', 'min_p', 'repetition_penalty'];
+
 final class ModelConnection extends JsonSource {
   ModelConnection({
     required String id,
@@ -45,6 +49,7 @@ final class ModelConnection extends JsonSource {
     ModelProtocol protocol = ModelProtocol.openAICompatible,
     String outputTokenParameter = 'max_tokens',
     List<String> extraParameters = const [],
+    List<String> disabledSamplingParameters = const [],
     int contextWindow = 200000,
     int maxOutputTokens = 2048,
     bool allowInsecureHttp = false,
@@ -62,6 +67,7 @@ final class ModelConnection extends JsonSource {
          'protocol': protocol.name,
          'outputTokenParameter': outputTokenParameter,
          'extraParameters': extraParameters,
+         'disabledSamplingParameters': disabledSamplingParameters,
          'contextWindow': contextWindow,
          'maxOutputTokens': maxOutputTokens,
          'allowInsecureHttp': allowInsecureHttp,
@@ -136,6 +142,10 @@ final class ModelConnection extends JsonSource {
     outputTokenParameter:
         map['outputTokenParameter'] as String? ?? 'max_tokens',
     extraParameters: stringList(map['extraParameters'], 'extraParameters'),
+    disabledSamplingParameters: stringList(
+      map['disabledSamplingParameters'],
+      'disabledSamplingParameters',
+    ),
     contextWindow: map['contextWindow'] as int? ?? 200000,
     maxOutputTokens: map['maxOutputTokens'] as int? ?? 2048,
     allowInsecureHttp: map['allowInsecureHttp'] as bool? ?? false,
@@ -175,6 +185,8 @@ final class ModelConnection extends JsonSource {
   String get outputTokenParameter => raw['outputTokenParameter'] as String;
   List<String> get extraParameters =>
       (raw['extraParameters'] as List).cast<String>();
+  List<String> get disabledSamplingParameters =>
+      (raw['disabledSamplingParameters'] as List).cast<String>();
   int get contextWindow => raw['contextWindow'] as int;
   int get maxOutputTokens => raw['maxOutputTokens'] as int;
   bool get allowInsecureHttp => raw['allowInsecureHttp'] as bool;

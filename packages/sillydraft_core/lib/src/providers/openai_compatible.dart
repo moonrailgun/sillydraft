@@ -123,6 +123,10 @@ final class OpenAICompatibleProvider implements ModelProvider {
     if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey',
   };
 
+  bool _sendsParameter(String key) => stSamplingParameters.contains(key)
+      ? !config.disabledSamplingParameters.contains(key)
+      : _supported.contains(key) || config.extraParameters.contains(key);
+
   String _streamError(Object? error) {
     const fallback = '模型服务在生成中返回错误';
     final detail = error is Map ? error['message'] : error;
@@ -165,13 +169,14 @@ final class OpenAICompatibleProvider implements ModelProvider {
       }
     }
     for (final e in request.parameters.entries) {
-      if (!_supported.contains(e.key) &&
-          !_internal.contains(e.key) &&
-          !config.extraParameters.contains(e.key)) {
+      if (!_internal.contains(e.key) && !_sendsParameter(e.key)) {
+        final disabled = stSamplingParameters.contains(e.key);
         diagnostics.add(
           CompatibilityDiagnostic(
-            'unsupported_parameter',
-            '当前连接未启用参数 ${e.key}；可在连接能力中配置',
+            disabled ? 'disabled_parameter' : 'unsupported_parameter',
+            disabled
+                ? '参数 ${e.key} 已在连接的高级参数中关闭，不会发送'
+                : '当前连接未启用参数 ${e.key}；可在连接的高级参数中配置',
             path: e.key,
           ),
         );
@@ -220,9 +225,7 @@ final class OpenAICompatibleProvider implements ModelProvider {
     try {
       final parameters = {
         for (final e in request.parameters.entries)
-          if (_supported.contains(e.key) ||
-              config.extraParameters.contains(e.key))
-            e.key: e.value,
+          if (_sendsParameter(e.key)) e.key: e.value,
       };
       // ST text completions never send it; a connection that enables the
       // parameter itself passes the preset value through unchanged.

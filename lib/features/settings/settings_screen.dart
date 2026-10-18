@@ -481,6 +481,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late final _extras = TextEditingController(
     text: widget.connection?.extraParameters.join(', ') ?? '',
   );
+  late final _disabledSampling =
+      widget.connection?.disabledSamplingParameters.toSet() ?? <String>{};
   late String _tokenParameter =
       widget.connection?.outputTokenParameter ?? 'max_tokens';
   late final _id =
@@ -490,6 +492,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
         (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
       ).join();
   bool _busy = false, _obscure = true;
+  bool _advanced = false;
 
   /// The loaded connection no longer matches what this device saved.
   bool _moved = false;
@@ -589,6 +592,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       contextWindow: int.parse(_context.text),
       maxOutputTokens: int.parse(_output.text),
       outputTokenParameter: _tokenParameter,
+      disabledSamplingParameters: _disabledSampling.toList(),
       extraParameters: _extras.text
           .split(',')
           .map((s) => s.trim())
@@ -1221,6 +1225,10 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
             const SizedBox(height: 8),
             if (!_cli && _text)
               FAccordion(
+                control: FAccordionControl.lifted(
+                  expanded: (_) => _advanced,
+                  onChange: (_, value) => setState(() => _advanced = value),
+                ),
                 children: [
                   FAccordionItem(
                     title: const Text('高级参数'),
@@ -1240,12 +1248,38 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        if (_protocol == ModelProtocol.openAICompatible) ...[
+                          const Text('ST 常用采样参数'),
+                          const SizedBox(height: 8),
+                          Text(
+                            '开启后发送预设中的值；后端不支持时可关闭。预设未设置的参数不会发送。',
+                            style: theme.typography.body.sm,
+                          ),
+                          for (final parameter in stSamplingParameters)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: FSwitch(
+                                label: Text(parameter),
+                                value: !_disabledSampling.contains(parameter),
+                                onChange: (enabled) => setState(() {
+                                  if (enabled) {
+                                    _disabledSampling.remove(parameter);
+                                  } else {
+                                    _disabledSampling.add(parameter);
+                                  }
+                                }),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                        ],
                         FTextFormField(
                           control: FTextFieldControl.managed(
                             controller: _extras,
                           ),
                           label: const Text('后端支持的额外参数'),
-                          description: const Text('逗号分隔，例如 top_k, min_p'),
+                          description: const Text(
+                            '其他参数名用逗号分隔，例如 reasoning_effort',
+                          ),
                         ),
                       ],
                     ),
