@@ -49,12 +49,15 @@ final class EditorAgent {
     String? focusChapterId,
 
     /// The image engine the assistant may draw with; without one the
-    /// `generate_image` tool is not offered.
+    /// image tools are not offered.
     ModelConnection? imageConnection,
 
     /// A chapter sent along with [message] as its context, e.g. the one a
     /// selection was made in. It stays with the message for later turns.
     String? attachChapterId,
+
+    /// Chapter highlights share one approval and generate images serially.
+    bool illustrationBatch = false,
     Map<String, dynamic>? illustrationAnchor,
 
     /// An earlier message of the author's that [message] replaces: it and
@@ -84,9 +87,12 @@ final class EditorAgent {
       if (replaced == null) {
         throw const StoryNotFound('待替换的消息');
       }
+      illustrationBatch =
+          illustrationBatch || replaced.raw['illustrationBatch'] == true;
       illustrationAnchor ??=
           replaced.raw['illustrationAnchor'] as Map<String, dynamic>?;
     }
+    final illustrationOnly = illustrationBatch;
     return runner.start(
       branchId: branchId,
       kind: TaskKind.agent,
@@ -115,6 +121,8 @@ final class EditorAgent {
           'focusChapterId': focusChapterId,
           'imageConnection': ?imageConnection?.raw,
           'attachChapterId': attachChapterId,
+          if (illustrationOnly) 'illustrationOnly': true,
+          if (illustrationBatch) 'illustrationBatch': true,
           'illustrationAnchor': ?illustrationAnchor,
           'replaceMessageId': replaceMessageId,
         },
@@ -162,6 +170,8 @@ final class EditorAgent {
     final selectedOrderId = pending['selectedOrderId'] as int?;
     final focusChapterId = pending['focusChapterId'] as String?;
     final attachChapterId = pending['attachChapterId'] as String?;
+    final illustrationBatch = pending['illustrationBatch'] == true;
+    final illustrationOnly = illustrationBatch;
     final replaceMessageId = pending['replaceMessageId'] as String?;
     final worldBooks = [
       for (final book in pending['worldBooks'] as List? ?? [])
@@ -221,6 +231,8 @@ final class EditorAgent {
       role: 'user',
       content: message.trim(),
       metadata: {
+        if (illustrationOnly) 'illustrationOnly': true,
+        if (illustrationBatch) 'illustrationBatch': true,
         'illustrationAnchor': ?pending['illustrationAnchor'],
         if (attached != null)
           'attachment': {
@@ -254,8 +266,16 @@ final class EditorAgent {
           ).savedDefaults(imageConnection);
     final imageNote = imageConnection == null
         ? ''
-        : imageInstructions(imageConnection, imageDefaults!);
-    final rules = '$editorInstructions$focusNote$imageNote';
+        : imageInstructions(
+            imageConnection,
+            imageDefaults!,
+            batch: illustrationBatch,
+          );
+    final purpose = illustrationBatch
+        ? '\n本轮任务是从附带的当前章节提取 3 个不同的视觉亮点，每个亮点写成一段完整生图提示词；内容不足时可减少，不得编造章节里没有的情节。'
+              '一次调用 generate_images 提交全部提示词，统一等待作者确认后逐张生成。只能读取资料和生成图片，禁止改写、续写正文或提出资料建议。'
+        : '';
+    final rules = '$editorInstructions$focusNote$imageNote$purpose';
     final instructions = '$rules${skillCatalog(skills)}';
     final skillMessages = [
       for (final s in activeSkills)
@@ -281,13 +301,17 @@ final class EditorAgent {
     ];
     var request = ProviderRequest(
       messages: [
-        {'role': 'system', 'content': instructions},
-        ...skillMessages,
-        for (final m in chat) m.toJson(),
+        {'role': 'system', 'content': illustrationOnly ? rules : instructions},
+        if (!illustrationOnly) ...skillMessages,
+        // An image request is a new job; old roleplay and writing directives
+        // must not become its prompt-generation instructions.
+        for (final m in illustrationOnly ? [chat.last] : chat) m.toJson(),
       ],
     );
-    Map<String, dynamic>? presetRecord;
-    if (chatPreset != null) {
+    Map<String, dynamic>? presetRecord = illustrationOnly && chatPreset != null
+        ? {'name': chatPreset.name, 'skipped': 'chapter_illustration'}
+        : null;
+    if (chatPreset != null && !illustrationOnly) {
       if (![PresetKind.chat, PresetKind.promptPack].contains(chatPreset.kind)) {
         throw const FormatException(
           '助手对话只能使用聊天补全预设或提示词包；文本补全模板不能与编辑工具一起使用。'
@@ -368,6 +392,8 @@ final class EditorAgent {
       'connection': connection.raw,
       'request': request.raw,
       'conversationId': conversationId,
+      if (illustrationOnly) 'illustrationOnly': true,
+      if (illustrationBatch) 'illustrationBatch': true,
       'throughChapterId': throughChapterId,
       'agentPreset': ?presetRecord,
       if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
@@ -441,9 +467,10 @@ const editorInstructions =
 /// Only facts about the engine; how to write the prompt is the model's call.
 String imageInstructions(
   ModelConnection connection,
-  Map<String, dynamic> defaults,
-) =>
-    '\n可用 generate_image 提交插图提示词，作者确认后才会调用生图引擎，图片会存入作品资产库。'
+  Map<String, dynamic> defaults, {
+  bool batch = false,
+}) =>
+    '\n可用 ${batch ? 'generate_images' : 'generate_image'} 提交插图提示词，作者确认后才会调用生图引擎，图片会存入作品资产库。'
     '作者取消时不要自动重试。'
     '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
     '作者保存的默认设置：${jsonEncode(defaults)}。提示词按该引擎的写法由你编写。';

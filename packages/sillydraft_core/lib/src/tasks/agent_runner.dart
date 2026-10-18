@@ -137,38 +137,58 @@ bool _takesNegative(Map<String, dynamic> image) =>
         ) ==
         true;
 
-Map<String, dynamic> _imageTool(Map<String, dynamic> image) {
+Map<String, dynamic> _imageTool(
+  Map<String, dynamic> image, {
+  bool batch = false,
+}) {
   final limit = referenceLimit(
     ModelConnection.fromJson(image['connection'] as Map<String, dynamic>),
   );
+  final parameters = {
+    'type': 'object',
+    'properties': {
+      'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
+      if (_takesNegative(image))
+        'negative_prompt': {
+          'type': 'string',
+          'description': '负面提示词，填写时替换作者默认的负面提示词',
+        },
+      'name': {'type': 'string', 'description': '图片的简短名称'},
+      if (limit > 0)
+        'references': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'maxItems': limit,
+          'description':
+              '参考图的图片 id，最多 $limit 张。画人物时先用 read_lore 读出场人物，'
+              '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
+        },
+    },
+    'required': ['prompt', 'name'],
+    'additionalProperties': false,
+  };
   return {
     'type': 'function',
     'function': {
-      'name': 'generate_image',
-      'description': '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
-      'parameters': {
-        'type': 'object',
-        'properties': {
-          'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
-          if (_takesNegative(image))
-            'negative_prompt': {
-              'type': 'string',
-              'description': '负面提示词，填写时替换作者默认的负面提示词',
-            },
-          'name': {'type': 'string', 'description': '图片的简短名称'},
-          if (limit > 0)
-            'references': {
-              'type': 'array',
-              'items': {'type': 'string'},
-              'maxItems': limit,
-              'description':
-                  '参考图的图片 id，最多 $limit 张。画人物时先用 read_lore 读出场人物，'
-                  '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
-            },
-        },
-        'required': ['prompt', 'name'],
-        'additionalProperties': false,
-      },
+      'name': batch ? 'generate_images' : 'generate_image',
+      'description': batch
+          ? '一次提交本章全部亮点插图，统一展示提示词等待作者确认，再逐张生成并存入作品资产库。取消或失败时停止，不要自动重试。'
+          : '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
+      'parameters': batch
+          ? {
+              'type': 'object',
+              'properties': {
+                'images': {
+                  'type': 'array',
+                  'minItems': 1,
+                  'maxItems': 6,
+                  'items': parameters,
+                },
+              },
+              'required': ['images'],
+              'additionalProperties': false,
+            }
+          : parameters,
     },
   };
 }
@@ -190,6 +210,11 @@ extension _AgentExecution on TaskRunner {
       for (final s in input['skills'] as List? ?? const [])
         AgentSkill.fromJson(s as Map<String, dynamic>),
     ];
+    final illustrationBatch = input['illustrationBatch'] == true;
+    if (illustrationBatch && input['image'] is! Map<String, dynamic>) {
+      throw const ProviderException('image_unavailable', '请先配置生图引擎，再重新生成插图。');
+    }
+    const writingTools = {'propose_chapter', 'propose_lore'};
     await _toolLoop(
       task,
       provider,
@@ -197,12 +222,29 @@ extension _AgentExecution on TaskRunner {
       output,
       reasoning,
       tools: [
-        ..._editingTools,
+        for (final tool in _editingTools)
+          if (!illustrationBatch ||
+              !writingTools.contains(tool['function']['name']))
+            tool,
         if (input['image'] case final Map<String, dynamic> image)
-          _imageTool(image),
-        ...skillTools(skills),
+          _imageTool(image, batch: illustrationBatch),
+        if (!illustrationBatch) ...skillTools(skills),
       ],
-      execute: (call) => _executeTool(task, call, cancel),
+      imageRequired: illustrationBatch,
+      execute: (call) async {
+        if ((illustrationBatch && call.name == 'generate_image') ||
+            (!illustrationBatch && call.name == 'generate_images')) {
+          return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
+        }
+        if (illustrationBatch && writingTools.contains(call.name)) {
+          return {
+            'error': '本轮仅生成插图，不能修改正文或提出资料建议。请使用生图工具；不可用时说明原因。',
+            'code': 'tool_not_allowed',
+            'retryable': false,
+          };
+        }
+        return _executeTool(task, call, cancel);
+      },
       record: (role, content, metadata) => repository.appendAgentMessage(
         conversation,
         role: role,
@@ -232,11 +274,13 @@ extension _AgentExecution on TaskRunner {
     record,
     String overflow = '编辑会话超出上下文限制，请创建新会话',
     String name = '编辑',
+    bool imageRequired = false,
   }) async {
     final request = ProviderRequest.fromJson(
       jsonObject(task.input['request'], 'request'),
     );
     final messages = request.messages;
+    var missingImageReplies = 0;
     for (var round = 0; round < 8; round++) {
       cancel.check();
       if (estimateTokens(jsonEncode(messages)) +
@@ -294,6 +338,21 @@ extension _AgentExecution on TaskRunner {
       }
       if (calls.isEmpty) {
         await record('assistant', text.toString(), const {});
+        if (imageRequired) {
+          if (++missingImageReplies >= 2) {
+            throw const ProviderException(
+              'image_not_generated',
+              '助手未调用生图工具，未生成图片。请重试或更换支持工具调用的文本模型。',
+            );
+          }
+          messages.add({'role': 'assistant', 'content': text.toString()});
+          messages.add({
+            'role': 'system',
+            'content':
+                '尚未生成图片。请现在调用 ${task.input['illustrationBatch'] == true ? 'generate_images' : 'generate_image'}，提交图片名称和绘画提示词；不能用文字、模拟终端或续写替代生图。',
+          });
+          continue;
+        }
         await repository.updateTask(
           task.id,
           status: TaskStatus.completed,
@@ -347,6 +406,42 @@ extension _AgentExecution on TaskRunner {
           'content': content,
           'tool_call_id': call.id,
         });
+        if (imageRequired &&
+            (call.name == 'generate_image' || call.name == 'generate_images')) {
+          if (result['cancelled'] == true || result['status'] == 'cancelled') {
+            await record('assistant', '已取消本次生图。', const {});
+            throw const GenerationCancelled();
+          }
+          if (result['status'] == 'completed' &&
+              (result['assetId'] is String || result['images'] is List)) {
+            final reply = call.name == 'generate_images'
+                ? '${(result['images'] as List).length} 张插图已生成并保存到作品素材。'
+                : '插图已生成并保存到作品素材。';
+            output.write('\n$reply');
+            await record('assistant', reply, const {});
+            await repository.updateTask(
+              task.id,
+              status: TaskStatus.completed,
+              partialText: output.toString(),
+              reasoning: reasoning.toString(),
+              result: {
+                'text': reply,
+                'rounds': round + 1,
+                if (result['assetId'] != null) 'assetId': result['assetId'],
+                if (result['taskId'] != null) 'imageTaskId': result['taskId'],
+              },
+            );
+            return;
+          }
+          // A submitted image request may already be billed; never retry it
+          // automatically or let a later prose reply conceal its failure.
+          if (result['taskId'] != null || result['submitted'] == true) {
+            throw ProviderException(
+              'image_failed',
+              result['error'] as String? ?? '生图服务未返回完整图片，请检查生图任务后重试。',
+            );
+          }
+        }
       }
     }
     throw ProviderException('round_limit', '$name任务达到 8 轮工具调用限制，已有结果已保留');
@@ -473,58 +568,81 @@ extension _AgentExecution on TaskRunner {
         'message': '资料建议已保存，等待作者逐条审阅。',
       };
     }
-    if (call.name == 'generate_image') {
+    if (call.name == 'generate_image' || call.name == 'generate_images') {
       final image = task.input['image'];
-      final prompt = args['prompt'], name = args['name'];
-      final negative = args['negative_prompt'];
-      final references = args['references'];
-      if (image is! Map<String, dynamic> ||
-          args.keys.any(
-            (k) => ![
-              'prompt',
-              'name',
-              'negative_prompt',
-              'references',
-            ].contains(k),
-          ) ||
-          (negative != null &&
-              (negative is! String || !_takesNegative(image))) ||
-          prompt is! String ||
-          name is! String ||
-          name.trim().isEmpty ||
-          name.length > 100 ||
-          (references != null &&
-              (references is! List ||
-                  references.any((id) => id is! String) ||
-                  references.length >
-                      referenceLimit(
-                        ModelConnection.fromJson(
-                          image['connection'] as Map<String, dynamic>,
-                        ),
-                      )))) {
-        throw const FormatException('参数无效');
+      final batch = call.name == 'generate_images';
+      if (image is! Map<String, dynamic>) {
+        throw const FormatException('未配置生图引擎');
       }
-      final referenceIds = [...?(references as List?)?.cast<String>()];
-      // Checked before the author is asked: a picture from another book
-      // never reaches the confirmation card.
-      final novel = (await repository.getBranch(task.branchId)).novelId;
-      for (final id in referenceIds) {
-        if ((await repository.getAsset(id)).novelId != novel) {
-          throw const FormatException('参考图不属于当前作品');
+      final items = batch ? args['images'] : [args];
+      if (items is! List ||
+          items.isEmpty ||
+          items.length > 6 ||
+          (batch && (args.length != 1 || !args.containsKey('images')))) {
+        throw const FormatException('请一次提交 1–6 张插图');
+      }
+      final requests = <ImageRequest>[];
+      final previews = <Map<String, dynamic>>[];
+      for (final item in items) {
+        if (item is! Map<String, dynamic>) throw const FormatException('参数无效');
+        final prompt = item['prompt'], name = item['name'];
+        final negative = item['negative_prompt'];
+        final references = item['references'];
+        if (item.keys.any(
+              (k) => ![
+                'prompt',
+                'name',
+                'negative_prompt',
+                'references',
+              ].contains(k),
+            ) ||
+            (negative != null &&
+                (negative is! String || !_takesNegative(image))) ||
+            prompt is! String ||
+            name is! String ||
+            name.trim().isEmpty ||
+            name.length > 100 ||
+            (references != null &&
+                (references is! List ||
+                    references.any((id) => id is! String) ||
+                    references.length >
+                        referenceLimit(
+                          ModelConnection.fromJson(
+                            image['connection'] as Map<String, dynamic>,
+                          ),
+                        )))) {
+          throw const FormatException('参数无效');
         }
+        final referenceIds = [...?(references as List?)?.cast<String>()];
+        // Checked before the author is asked: a picture from another book
+        // never reaches the confirmation card.
+        final novel = (await repository.getBranch(task.branchId)).novelId;
+        for (final id in referenceIds) {
+          if ((await repository.getAsset(id)).novelId != novel) {
+            throw const FormatException('参考图不属于当前作品');
+          }
+        }
+        final connection = ModelConnection.fromJson(
+          jsonObject(image['connection'], 'image.connection'),
+        );
+        final saved = (image['defaults'] as Map? ?? {}).cast<String, dynamic>();
+        final request = IllustrationService.requestFrom(connection, prompt, {
+          ...saved,
+          if (negative != null)
+            'parameters': {
+              ...?saved['parameters'] as Map?,
+              'negative_prompt': negative,
+            },
+        });
+
+        requests.add(request);
+        previews.add({
+          'name': name,
+          'prompt': request.prompt,
+          'negativePrompt': ?request.parameters['negative_prompt'],
+          if (referenceIds.isNotEmpty) 'references': referenceIds,
+        });
       }
-      final connection = ModelConnection.fromJson(
-        jsonObject(image['connection'], 'image.connection'),
-      );
-      final saved = (image['defaults'] as Map? ?? {}).cast<String, dynamic>();
-      final request = IllustrationService.requestFrom(connection, prompt, {
-        ...saved,
-        if (negative != null)
-          'parameters': {
-            ...?saved['parameters'] as Map?,
-            'negative_prompt': negative,
-          },
-      });
       final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
       final answer = Completer<bool>();
       _imageConfirmations[task.id] = (id: confirmationId, answer: answer);
@@ -539,10 +657,7 @@ extension _AgentExecution on TaskRunner {
           result: {
             'imageConfirmation': {
               'id': confirmationId,
-              'name': name,
-              'prompt': request.prompt,
-              'negativePrompt': ?request.parameters['negative_prompt'],
-              if (referenceIds.isNotEmpty) 'references': referenceIds,
+              if (batch) 'images': previews else ...previews.single,
             },
           },
         );
@@ -560,31 +675,82 @@ extension _AgentExecution on TaskRunner {
       if (!approved) {
         return {'cancelled': true, 'message': '作者已取消本次生图，未调用生图引擎。请勿自动重试。'};
       }
-      final child =
-          await IllustrationService(
-            repository: repository,
-            runner: this,
-          ).generate(
-            branchId: task.branchId,
-            connection: connection,
-            name: name,
-            request: request,
-            chapterId: image['chapterId'] as String?,
-            referenceAssetIds: referenceIds,
-          );
-      final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
-      try {
-        final result = await wait(child.id);
+      final connection = ModelConnection.fromJson(
+        jsonObject(image['connection'], 'image.connection'),
+      );
+      final results = <Map<String, dynamic>>[];
+      for (var i = 0; i < requests.length; i++) {
         cancel.check();
-        return {
-          'taskId': child.id,
-          'status': result.status.name,
-          'assetId': ?result.result['assetId'],
-          if (result.error.isNotEmpty) 'error': result.error,
-        };
-      } finally {
-        remove();
+        Map<String, dynamic> result;
+        try {
+          final child =
+              await IllustrationService(
+                repository: repository,
+                runner: this,
+              ).generate(
+                branchId: task.branchId,
+                connection: connection,
+                name: previews[i]['name'] as String,
+                request: requests[i],
+                chapterId: image['chapterId'] as String?,
+                referenceAssetIds:
+                    (previews[i]['references'] as List?)?.cast<String>() ??
+                    const [],
+              );
+          final remove = cancel.onCancel(
+            () => unawaited(this.cancel(child.id)),
+          );
+          try {
+            final done = await wait(child.id);
+            result = {
+              'taskId': child.id,
+              'status': done.status.name,
+              'assetId': ?done.result['assetId'],
+              if (done.error.isNotEmpty) 'error': done.error,
+            };
+          } finally {
+            remove();
+          }
+        } on GenerationCancelled {
+          rethrow;
+        } catch (error) {
+          result = {
+            'status': 'failed',
+            'error': error is ProviderException
+                ? error.message
+                : '生图任务未完成，请检查生图配置后重试。',
+          };
+        }
+        if (!batch) {
+          cancel.check();
+          return {...result, 'submitted': true};
+        }
+        results.add(result);
+        await repository.updateTask(
+          task.id,
+          status: TaskStatus.running,
+          result: {
+            'assetIds': [
+              for (final result in results)
+                if (result['assetId'] != null) result['assetId'],
+            ],
+            'imageTaskIds': [
+              for (final result in results)
+                if (result['taskId'] != null) result['taskId'],
+            ],
+          },
+        );
+        cancel.check();
+        if (result['status'] != 'completed' || result['assetId'] == null) {
+          return {
+            'submitted': true,
+            'status': result['status'] == 'cancelled' ? 'cancelled' : 'failed',
+            'images': results,
+            'error': result['error'] ?? '生图服务未返回完整图片',
+          };
+        }
       }
+      return {'submitted': true, 'status': 'completed', 'images': results};
     }
     if (call.name == 'list_chapters') {
       if (args.isNotEmpty) throw const FormatException('list_chapters 无参数');
