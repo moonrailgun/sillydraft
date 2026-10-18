@@ -113,6 +113,135 @@ CupertinoTextSelectionToolbarButton _drawButton(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets(
+    'chapter highlights require an image channel and confirm the batch once',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (services, chapter) = await _book(
+        configured: false,
+        script: [
+          [
+            ToolCallReady('batch', 'generate_images', {
+              'images': [
+                {'name': '红伞', 'prompt': 'red umbrella on the bridge'},
+                {'name': '渡口', 'prompt': 'boat at the rainy harbor'},
+              ],
+            }),
+            const GenerationFinished('tool_calls'),
+          ],
+        ],
+      );
+      addTearDown(services.close);
+      final repo = services.repository;
+      await repo.createChapter(
+        branchId: chapter.branchId,
+        title: '未来',
+        content: ManuscriptContent.plainText('之后才发生的事'),
+      );
+      await services.saveConnection(
+        ModelConnection(
+          id: 'text',
+          name: 'text',
+          baseUrl: 'http://localhost:1',
+          model: 'text',
+          kind: ModelKind.text,
+        ),
+      );
+      await _pump(
+        tester,
+        services,
+        AppScaffold(
+          child: AgentPanel(
+            branchId: chapter.branchId,
+            focusChapterId: chapter.id,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final action = find.byKey(const Key('agent-quick-本章亮点生图'));
+      expect(action, findsNothing);
+      await services.saveConnection(_both);
+      await tester.pumpAndSettle();
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byKey(const Key('agent-image-confirmation')), findsOneWidget);
+      expect(find.text('生成 2 张本章亮点插图？'), findsOneWidget);
+      expect(find.text('red umbrella on the bridge'), findsOneWidget);
+      expect(find.text('boat at the rainy harbor'), findsOneWidget);
+      expect(find.text('确认生成'), findsOneWidget);
+      final task = await repo.getTask(
+        (await repo.listTasks(branchId: chapter.branchId)).single.id,
+      );
+      expect(task.input['illustrationBatch'], true);
+      expect(task.input['illustrationOnly'], true);
+      expect((task.input['chapterSnapshot'] as List).single['id'], chapter.id);
+      final conversation = task.input['conversationId'] as String;
+      final user = (await repo.getAgentMessages(conversation))
+          .firstWhere((m) => m.role == 'user');
+      expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
+      final cancel = find.descendant(
+        of: find.byKey(const Key('agent-image-confirmation')),
+        matching: find.text('取消'),
+      );
+      await tester.ensureVisible(cancel);
+      await tester.tap(cancel);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect((await repo.getTask(task.id)).status, TaskStatus.cancelled);
+      expect(find.byKey(const Key('agent-image-confirmation')), findsNothing);
+      expect(find.text('已取消生图'), findsOneWidget);
+      expect(
+        (await repo.listTasks(branchId: chapter.branchId))
+            .where((t) => t.kind == TaskKind.illustration),
+        isEmpty,
+      );
+
+      final ids = <String>[];
+      for (var i = 0; i < 2; i++) {
+        final asset = await repo.storeAsset(
+          branchId: chapter.branchId,
+          name: '亮点 $i',
+          prepared: PreparedAsset(
+            hash: '$i' * 64,
+            thumbnailHash: '${i + 2}' * 64,
+            width: 1,
+            height: 1,
+            byteLength: 1,
+          ),
+          purpose: AssetPurpose.illustration,
+        );
+        ids.add(asset.id);
+      }
+      await repo.appendAgentMessage(
+        conversation,
+        role: 'tool',
+        content: jsonEncode({
+          'status': 'completed',
+          'images': [
+            for (final id in ids) {'assetId': id},
+          ],
+        }),
+        metadata: {'tool_call_id': 'result', 'tool_name': 'generate_images'},
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      for (final id in ids) {
+        expect(find.byKey(Key('agent-image-$id')), findsOneWidget);
+      }
+      expect(findAction('下载到本地'), findsNWidgets(2));
+      expect(findAction('插入正文'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('selecting with the mouse offers 生图 and highlights whole lines', (
     tester,
   ) async {

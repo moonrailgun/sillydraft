@@ -96,10 +96,12 @@ final class AgentRequest {
     this.message, {
     this.chapterId,
     this.replace,
+    this.illustrationBatch = false,
     this.illustrationAnchor,
   });
   final String message;
   final String? chapterId;
+  final bool illustrationBatch;
   final Map<String, dynamic>? illustrationAnchor;
 
   /// The author's earlier message this one takes the place of, along with
@@ -227,6 +229,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
       _ => null,
     },
     replace: message.id,
+    illustrationBatch: message.raw['illustrationBatch'] == true,
     illustrationAnchor:
         message.raw['illustrationAnchor'] as Map<String, dynamic>?,
   );
@@ -281,6 +284,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         focusChapterId: widget.focusChapterId ?? _chapter,
         imageConnection: await services.connectionFor('image'),
         attachChapterId: request?.chapterId,
+        illustrationBatch: request?.illustrationBatch ?? false,
         illustrationAnchor: request?.illustrationAnchor,
         replaceMessageId: request?.replace,
       );
@@ -485,9 +489,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
     }
   }
 
-  /// The assistant's `generate_image` call waits on this card; nothing
+  /// The assistant's image call waits on this card; nothing
   /// reaches the image engine until the author confirms.
   Widget _imageConfirmation(GenerationTask task, Map<String, dynamic> pending) {
+    final batch = pending['images'] is List;
+    final previews = batch
+        ? (pending['images'] as List).cast<Map<String, dynamic>>()
+        : [pending];
     final theme = context.theme;
     final engine = ModelConnection.fromJson(
       (task.input['image'] as Map)['connection'] as Map<String, dynamic>,
@@ -523,46 +531,60 @@ class _AgentState extends ConsumerState<AgentPanel> {
               children: [
                 const Icon(FLucideIcons.image, size: 18),
                 const SizedBox(width: 10),
-                Expanded(child: Text('生成插图「${pending['name']}」？')),
+                Expanded(
+                  child: Text(
+                    batch
+                        ? '生成 ${previews.length} 张本章亮点插图？'
+                        : '生成插图「${pending['name']}」？',
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Text('生图引擎', style: label),
             const SizedBox(height: 4),
             Text(imageEngineLabel(engine)),
-            const SizedBox(height: 8),
-            Text('提示词', style: label),
-            const SizedBox(height: 4),
-            SelectableText('${pending['prompt']}'),
-            if (pending['negativePrompt'] case final String negative) ...[
+            if (batch) const Text('确认后按顺序逐张生成；取消或失败会停止后续图片。'),
+            for (final (index, preview) in previews.indexed) ...[
+              if (batch)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text('${index + 1}. ${preview['name']}'),
+                ),
               const SizedBox(height: 8),
-              Text('负面提示词', style: label),
+              Text('提示词', style: label),
               const SizedBox(height: 4),
-              SelectableText(negative),
-            ],
-            if (pending['references'] case final List references
-                when references.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('参考图', style: label),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final id in references.cast<String>())
-                    ClipRRect(
-                      key: Key('agent-image-reference-$id'),
-                      borderRadius: theme.style.borderRadius.md,
-                      child: AssetImageView(
-                        assetId: id,
-                        thumbnail: true,
-                        width: 64,
-                        height: 64,
-                        fit: BoxFit.cover,
+              SelectableText('${preview['prompt']}'),
+              if (preview['negativePrompt'] case final String negative) ...[
+                const SizedBox(height: 8),
+                Text('负面提示词', style: label),
+                const SizedBox(height: 4),
+                SelectableText(negative),
+              ],
+              if (preview['references'] case final List references
+                  when references.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('参考图', style: label),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final id in references.cast<String>())
+                      ClipRRect(
+                        key: Key('agent-image-reference-$id'),
+                        borderRadius: theme.style.borderRadius.md,
+                        child: AssetImageView(
+                          assetId: id,
+                          thumbnail: true,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
             const SizedBox(height: 12),
             Wrap(
@@ -674,11 +696,12 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
-  /// One-tap requests above the input. Each fills in a message about the
+  /// One-tap requests above the input. Writing actions fill in a message about the
   /// chapter beside the chat, else the chapter at the assistant's position, for
   /// the author to finish or send. The assistant may only write the last
   /// chapter it can see, so continuing or revising another chapter, or asking
-  /// about one beyond its position, first moves the position there.
+  /// about one beyond its position, first moves the position there. Image
+  /// batches also stop there so later events cannot shape them.
   Widget _quickActions(StorySnapshot? story) {
     final chapters = story?.chapters ?? const <Chapter>[];
     final limit = _chapter == null
@@ -701,7 +724,27 @@ class _AgentState extends ConsumerState<AgentPanel> {
       _inputFocus.requestFocus();
     }
 
+    final imageConnection = ref.watch(roleConnectionProvider('image')).value;
     final actions = [
+      if (target != null && imageConnection != null)
+        (
+          FLucideIcons.images,
+          '本章亮点生图',
+          '提取本章亮点，一次确认后逐张生成插图',
+          () {
+            if (at != limit) {
+              _moveTo(at == chapters.length - 1 ? null : target.id);
+            }
+            _send(
+              AgentRequest(
+                '提取$name的 3 个不同视觉亮点，每个亮点写成一段生图提示词；内容不足时可减少。'
+                '一次提交全部提示词，等我统一确认后逐张生成插图。',
+                chapterId: target.id,
+                illustrationBatch: true,
+              ),
+            );
+          },
+        ),
       (
         FLucideIcons.penLine,
         '续写',
@@ -1532,7 +1575,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
       );
     }
     if (message.role == 'system') return const SizedBox.shrink();
-    if (metadata['tool_name'] == 'generate_image') {
+    if (metadata['tool_name'] == 'generate_image' ||
+        metadata['tool_name'] == 'generate_images') {
       final result = jsonDecode(message.content);
       if (result case {'cancelled': true}) {
         return _foldedCard(
@@ -1542,58 +1586,71 @@ class _AgentState extends ConsumerState<AgentPanel> {
           child: SelectableText(message.content),
         );
       }
-      if (result case {'assetId': final String id}) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              key: Key('agent-image-$id'),
-              onTap: () => showIllustrationDetail(
-                context,
-                assetId: id,
-                branchId: widget.branchId,
-              ),
-              child: ClipRRect(
-                borderRadius: context.theme.style.borderRadius.lg,
-                child: Stack(
-                  children: [
-                    AssetImageView(assetId: id, height: 280),
-                    Positioned(
-                      left: 8,
-                      bottom: 8,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: context.theme.colors.background.withValues(
-                            alpha: .9,
+      final ids = <String>[
+        if (result case {'assetId': final String id}) id,
+        if (result case {'images': final List images})
+          for (final image in images)
+            if (image case {'assetId': final String id}) id,
+      ];
+      if (ids.isNotEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final id in ids)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    key: Key('agent-image-$id'),
+                    onTap: () => showIllustrationDetail(
+                      context,
+                      assetId: id,
+                      branchId: widget.branchId,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: context.theme.style.borderRadius.lg,
+                      child: Stack(
+                        children: [
+                          AssetImageView(assetId: id, height: 280),
+                          Positioned(
+                            left: 8,
+                            bottom: 8,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: context.theme.colors.background
+                                    .withValues(alpha: .9),
+                                borderRadius:
+                                    context.theme.style.borderRadius.md,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (metadata['tool_name'] == 'generate_image')
+                                    IconAction(
+                                      icon: FLucideIcons.filePlus,
+                                      tooltip: '插入正文',
+                                      onPress: _insertingImages.contains(id)
+                                          ? null
+                                          : () => _insertImage(id, message),
+                                    ),
+                                  IconAction(
+                                    icon: FLucideIcons.download,
+                                    tooltip: '下载到本地',
+                                    onPress: () =>
+                                        exportIllustration(context, ref, id),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                          borderRadius: context.theme.style.borderRadius.md,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconAction(
-                              icon: FLucideIcons.filePlus,
-                              tooltip: '插入正文',
-                              onPress: _insertingImages.contains(id)
-                                  ? null
-                                  : () => _insertImage(id, message),
-                            ),
-                            IconAction(
-                              icon: FLucideIcons.download,
-                              tooltip: '下载到本地',
-                              onPress: () =>
-                                  exportIllustration(context, ref, id),
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+          ],
         );
       }
     }
