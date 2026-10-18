@@ -1,15 +1,18 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
 import '../model/task.dart';
+import '../model/story.dart';
 import '../providers/provider.dart';
 import '../st/card_importer.dart';
 import '../st/import_types.dart';
 import '../st/preset_importer.dart';
 import '../st/prompt_compiler.dart';
 import '../st/world_book_engine.dart';
+import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
 import 'illustration_service.dart';
@@ -59,10 +62,120 @@ final class EditorAgent {
     String? replaceMessageId,
   }) async {
     if (message.trim().isEmpty) throw ArgumentError('请输入创作要求');
+    if (chatPreset != null &&
+        ![PresetKind.chat, PresetKind.promptPack].contains(chatPreset.kind)) {
+      throw const FormatException(
+        '助手对话只能使用聊天补全预设或提示词包；文本补全模板不能与编辑工具一起使用。'
+        '可在预设页关闭“助手对话使用此预设”。',
+      );
+    }
+    final branchId = await repository.conversationBranch(conversationId);
+    if (replaceMessageId != null) {
+      if ((await repository.listTasks(
+        branchId: branchId,
+        activeOnly: true,
+      )).any((t) => t.input['conversationId'] == conversationId)) {
+        throw StateError('请等助手回复和排队消息结束后再修改消息。');
+      }
+      if (!(await repository.getAgentMessages(conversationId))
+          .any((m) => m.id == replaceMessageId && m.role == 'user')) {
+        throw const StoryNotFound('待替换的消息');
+      }
+    }
+    return runner.start(
+      branchId: branchId,
+      kind: TaskKind.agent,
+      input: {
+        'connection': connection.raw,
+        'conversationId': conversationId,
+        'agentMessage': message.trim(),
+        'pendingAgent': {
+          'writingConnection': ?writingConnection?.raw,
+          'writingPreset': ?writingPreset?.exportJson(),
+          'card': ?card?.exportJson(),
+          'userName': userName,
+          'persona': persona,
+          'selectedOrderId': selectedOrderId,
+          'worldBooks': [
+            for (final book in worldBooks)
+              {
+                'data': book.book.exportJson(),
+                'branchId': book.branchId,
+                'availableFromPosition': book.availableFromPosition,
+              },
+          ],
+          'globalRegex': globalRegex,
+          'chatPreset': ?chatPreset?.exportJson(),
+          'skills': [for (final skill in skills) skill.raw],
+          'focusChapterId': focusChapterId,
+          'imageConnection': ?imageConnection?.raw,
+          'attachChapterId': attachChapterId,
+          'replaceMessageId': replaceMessageId,
+        },
+      },
+    );
+  }
+
+  /// Freeze the turn only when it reaches the front of its conversation.
+  Future<Map<String, dynamic>> prepare(GenerationTask task) async {
+    final input = task.input;
+    final pending = jsonObject(input['pendingAgent'], 'pendingAgent');
+    final conversationId = input['conversationId'] as String;
+    var message = input['agentMessage'] as String;
+    final connection = ModelConnection.fromJson(
+      jsonObject(input['connection'], 'connection'),
+    );
+    final writingConnection = pending['writingConnection'] == null
+        ? null
+        : ModelConnection.fromJson(
+            jsonObject(pending['writingConnection'], 'writingConnection'),
+          );
+    final imageConnection = pending['imageConnection'] == null
+        ? null
+        : ModelConnection.fromJson(
+            jsonObject(pending['imageConnection'], 'imageConnection'),
+          );
+    final writingPreset = pending['writingPreset'] == null
+        ? null
+        : PresetImporter().decode(
+            jsonObject(pending['writingPreset'], 'writingPreset'),
+          );
+    final chatPreset = pending['chatPreset'] == null
+        ? null
+        : PresetImporter().decode(
+            jsonObject(pending['chatPreset'], 'chatPreset'),
+          );
+    final card = pending['card'] == null
+        ? null
+        : CardImporter().decode(
+            Uint8List.fromList(utf8.encode(jsonEncode(pending['card']))),
+            'card.json',
+          );
+    final userName = pending['userName'] as String? ?? '我';
+    final persona = pending['persona'] as String? ?? '';
+    final selectedOrderId = pending['selectedOrderId'] as int?;
+    final focusChapterId = pending['focusChapterId'] as String?;
+    final attachChapterId = pending['attachChapterId'] as String?;
+    final replaceMessageId = pending['replaceMessageId'] as String?;
+    final worldBooks = [
+      for (final book in pending['worldBooks'] as List? ?? [])
+        ScopedWorldBook(
+          WorldBook.fromJson(jsonObject(book['data'], '世界书')),
+          branchId: book['branchId'] as String?,
+          availableFromPosition: book['availableFromPosition'] as int? ?? 0,
+        ),
+    ];
+    final globalRegex = (pending['globalRegex'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final skills = [
+      for (final s in pending['skills'] as List? ?? [])
+        AgentSkill.fromJson(jsonObject(s, 'skill')),
+    ];
     final branchId = await repository.conversationBranch(conversationId);
     final throughChapterId = await repository.conversationChapter(
       conversationId,
     );
+    if (branchId != task.branchId) throw StateError('会话不属于此任务的分支');
     final story = await repository.getStory(branchId);
     final cutoff = throughChapterId == null
         ? story.chapters.length - 1
@@ -244,69 +357,65 @@ final class EditorAgent {
         'droppedParameters': dropped,
       };
     }
-    return runner.start(
-      branchId: branchId,
-      kind: TaskKind.agent,
-      input: {
-        'connection': connection.raw,
-        'request': request.raw,
-        'conversationId': conversationId,
-        'throughChapterId': throughChapterId,
-        'agentPreset': ?presetRecord,
-        if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
-        if (active.isNotEmpty) 'activeSkills': active,
-        'editChapterId': chapters.lastOrNull?.id,
-        if (imageConnection != null)
-          'image': {
-            'connection': imageConnection.raw,
-            'defaults': imageDefaults,
-            'chapterId': ?focus?.id,
-          },
-        'sourceRevisions': [
-          for (final s in chapters)
-            {'chapterId': s.id, 'revisionId': s.revisionId},
-        ],
-        'chapterSnapshot': [
-          for (final s in chapters)
-            {
-              'id': s.id,
-              'title': s.title,
-              'revisionId': s.revisionId,
-              'text': s.content.text,
-            },
-        ],
-        'loreSnapshot': [
-          for (final e in lore)
-            {
-              'id': e.id,
-              'revisionId': e.revisionId,
-              'kind': e.kind.name,
-              'name': e.name,
-              'content': e.content,
-              'certainty': e.certainty.name,
-              'sourceStale': e.sourceStale,
-              'data': e.data,
-            },
-        ],
-        'writingConnection': (writingConnection ?? connection).raw,
-        if (writingPreset != null) 'writingPreset': writingPreset.exportJson(),
-        if (card != null) 'card': card.exportJson(),
-        'writingContext': {
-          'userName': userName,
-          'persona': persona,
-          'selectedOrderId': selectedOrderId,
-          'worldBooks': [
-            for (final book in worldBooks)
-              {
-                'data': book.book.exportJson(),
-                'branchId': book.branchId,
-                'availableFromPosition': book.availableFromPosition,
-              },
-          ],
-          'globalRegex': globalRegex,
+    return {
+      'connection': connection.raw,
+      'request': request.raw,
+      'conversationId': conversationId,
+      'throughChapterId': throughChapterId,
+      'agentPreset': ?presetRecord,
+      if (skills.isNotEmpty) 'skills': [for (final s in skills) s.raw],
+      if (active.isNotEmpty) 'activeSkills': active,
+      'editChapterId': chapters.lastOrNull?.id,
+      if (imageConnection != null)
+        'image': {
+          'connection': imageConnection.raw,
+          'defaults': imageDefaults,
+          'chapterId': ?focus?.id,
         },
+      'sourceRevisions': [
+        for (final s in chapters)
+          {'chapterId': s.id, 'revisionId': s.revisionId},
+      ],
+      'chapterSnapshot': [
+        for (final s in chapters)
+          {
+            'id': s.id,
+            'title': s.title,
+            'revisionId': s.revisionId,
+            'text': s.content.text,
+          },
+      ],
+      'loreSnapshot': [
+        for (final e in lore)
+          {
+            'id': e.id,
+            'revisionId': e.revisionId,
+            'kind': e.kind.name,
+            'name': e.name,
+            'content': e.content,
+            'certainty': e.certainty.name,
+            'sourceStale': e.sourceStale,
+            'data': e.data,
+          },
+      ],
+      'writingConnection': (writingConnection ?? connection).raw,
+      if (writingPreset != null) 'writingPreset': writingPreset.exportJson(),
+      if (card != null) 'card': card.exportJson(),
+      'writingContext': {
+        'userName': userName,
+        'persona': persona,
+        'selectedOrderId': selectedOrderId,
+        'worldBooks': [
+          for (final book in worldBooks)
+            {
+              'data': book.book.exportJson(),
+              'branchId': book.branchId,
+              'availableFromPosition': book.availableFromPosition,
+            },
+        ],
+        'globalRegex': globalRegex,
       },
-    );
+    };
   }
 }
 

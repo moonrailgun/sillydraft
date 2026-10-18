@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../agent/editor_agent.dart';
 import '../agent/illustration_service.dart';
 import '../agent/sidecar_agent.dart';
 import '../agent/skills.dart';
@@ -113,6 +114,7 @@ final class TaskRunner implements TaskControl {
   @override
   final AssetLibrary? assetLibrary;
   final _running = <String, Future<void>>{};
+  final _agentTails = <String, Future<void>>{};
   final _cancellations = <String, GenerationCancellation>{};
 
   /// Streamed progress not yet saved, flushed before a stop marks the task
@@ -171,7 +173,23 @@ final class TaskRunner implements TaskControl {
     if (_closing) throw StateError('任务执行器已关闭');
     final cancel = GenerationCancellation();
     _cancellations[task.id] = cancel;
-    final future = _execute(task, cancel);
+    final conversation = task.kind == TaskKind.agent
+        ? task.input['conversationId'] as String?
+        : null;
+    final previous = _agentTails[conversation];
+    final future = _executeQueued(task, cancel, previous);
+    if (conversation != null) {
+      // Cancelling a waiting turn must not let its successor skip the head.
+      final tail = Future.wait<void>([?previous, future]).then((_) {});
+      _agentTails[conversation] = tail;
+      unawaited(
+        tail.then((_) {
+          if (identical(_agentTails[conversation], tail)) {
+            _agentTails.remove(conversation);
+          }
+        }),
+      );
+    }
     _running[task.id] = future;
     unawaited(
       future.whenComplete(() {
@@ -183,6 +201,23 @@ final class TaskRunner implements TaskControl {
     return task;
   }
 
+  Future<void> _executeQueued(
+    GenerationTask task,
+    GenerationCancellation cancel,
+    Future<void>? previous,
+  ) async {
+    if (previous != null) {
+      final cancelled = Completer<void>();
+      final remove = cancel.onCancel(() => cancelled.complete());
+      try {
+        await Future.any([previous, cancelled.future]);
+      } finally {
+        remove();
+      }
+    }
+    await _execute(task, cancel);
+  }
+
   @override
   Future<GenerationTask> wait(String id) async {
     await _running[id];
@@ -192,7 +227,7 @@ final class TaskRunner implements TaskControl {
   @override
   Future<void> cancel(String id) async {
     final task = await repository.getTask(id, snapshots: false);
-    if (task.isRemote) {
+    if (task.isRemote && task.input['agentMessage'] == null) {
       final config = ModelConnection.fromJson(
         jsonObject(task.input['connection'], 'connection'),
       );
@@ -273,11 +308,20 @@ final class TaskRunner implements TaskControl {
     }
 
     try {
-      final current = await repository.updateTask(
-        task.id,
-        status: TaskStatus.running,
-      );
+      cancel.check();
+      final current =
+          task.kind == TaskKind.agent && task.input['pendingAgent'] != null
+          ? await repository.prepareAgentTask(task.id, () async {
+              final input = await EditorAgent(
+                repository: repository,
+                runner: this,
+              ).prepare(task);
+              cancel.check();
+              return input;
+            })
+          : await repository.updateTask(task.id, status: TaskStatus.running);
       if (current.status != TaskStatus.running) return;
+      if (task.input['pendingAgent'] != null) task = current;
       cancel.check();
       if (task.kind == TaskKind.illustration) {
         await _executeIllustration(task, cancel);

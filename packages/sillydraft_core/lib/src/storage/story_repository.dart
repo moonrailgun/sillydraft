@@ -69,8 +69,7 @@ final class StoryRepository {
   final _local = StreamController<bool>.broadcast();
   final _displayCache = <String, ({String key, DisplayContext context})>{};
 
-  /// Listed task inputs by task id: an input never changes once the task is
-  /// created, so SQLite trims each one once rather than on every list.
+  /// Listed task inputs by task id, cached once frozen for execution.
   final _listedInputs = <String, String>{};
   bool _closed = false;
 

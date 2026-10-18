@@ -121,6 +121,64 @@ void main() {
     append: true,
   );
 
+  test(
+    'phone queues assistant turns and refreshes frozen task inputs',
+    () async {
+      final conversation = await desktop.repository.createConversation(
+        branchId: novel.activeBranchId,
+      );
+      final entered = Completer<void>(), release = Completer<void>();
+      final seen = <String>[];
+      script = (request, cancel) async* {
+        final text = request.messages.last['content'] as String;
+        seen.add(text);
+        if (text == '第一条') {
+          entered.complete();
+          final cancelled = Completer<void>();
+          final remove = cancel.onCancel(() => cancelled.complete());
+          try {
+            await Future.any([release.future, cancelled.future]);
+            cancel.check();
+          } finally {
+            remove();
+          }
+        } else {
+          expect(request.messages.map((m) => m['content']), contains('第一条的回复'));
+        }
+        yield TextDelta('$text的回复');
+        yield const GenerationFinished('stop');
+      };
+      final agent = EditorAgent(repository: phone.repository, runner: tasks);
+      await agent.send(
+        conversationId: conversation,
+        connection: connection,
+        message: '第一条',
+      );
+      await entered.future.timeout(_wait);
+      final second = await agent.send(
+        conversationId: conversation,
+        connection: connection,
+        message: '第二条',
+      );
+      final queued = (await phone.repository.listTasks()).firstWhere(
+        (t) => t.id == second.id,
+      );
+      expect(queued.status, TaskStatus.queued);
+      expect(queued.input['agentMessage'], '第二条');
+      expect(seen, ['第一条']);
+      release.complete();
+      expect(
+        (await tasks.wait(second.id).timeout(_wait)).status,
+        TaskStatus.completed,
+      );
+      final completed = (await phone.repository.listTasks()).firstWhere(
+        (t) => t.id == second.id,
+      );
+      expect(completed.input['agentMessage'], isNull);
+      expect(completed.input['editChapterId'], chapter.id);
+    },
+  );
+
   test('a phone\'s task runs on the desktop', () async {
     final task = await generate();
     expect(

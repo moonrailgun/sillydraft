@@ -50,6 +50,25 @@ extension TaskOperations on StoryRepository {
     return getTask(id);
   }, tasksOnly: true);
 
+  /// Appending the user turn and freezing its input must succeed together.
+  Future<GenerationTask> prepareAgentTask(
+    String id,
+    Future<Map<String, dynamic>> Function() prepare,
+  ) => _write(() async {
+    final task = await getTask(id);
+    if (task.status != TaskStatus.queued) return task;
+    if (task.kind != TaskKind.agent || task.input['pendingAgent'] == null) {
+      throw StateError('此任务不是待发送的助手消息');
+    }
+    final input = await prepare();
+    await _execute(
+      "UPDATE generation_tasks SET input_json = ?, status = 'running', updated_at = ? WHERE id = ?",
+      [jsonEncode(redactCredentials(input)), _now(), id],
+    );
+    _listedInputs.remove(id);
+    return getTask(id);
+  });
+
   /// With [snapshots] false the input leaves out the frozen request
   /// snapshots, as in [listTasks].
   Future<GenerationTask> getTask(String id, {bool snapshots = true}) async {
@@ -82,7 +101,7 @@ extension TaskOperations on StoryRepository {
   }) async => _listed(
     await _rows(
       '''SELECT $_listedColumns FROM generation_tasks WHERE (? IS NULL OR branch_id = ?)
-      AND (? = 0 OR status IN ('queued','running')) ORDER BY created_at DESC, id''',
+      AND (? = 0 OR status IN ('queued','running')) ORDER BY created_at DESC, rowid DESC''',
       [branchId, branchId, activeOnly ? 1 : 0],
     ),
   );
@@ -104,11 +123,19 @@ extension TaskOperations on StoryRepository {
         _listedInputs[row['id'] as String] = row['input_json'] as String;
       }
     }
-    return [
+    final tasks = [
       for (final row in rows)
         if (_listedInputs[row['id']] case final input?)
           _task({...row, 'input_json': input}),
     ];
+    // A queued agent's input is replaced atomically when its turn starts,
+    // including on the remote host. Cache only the frozen input.
+    for (final task in tasks) {
+      if (task.kind == TaskKind.agent && task.status == TaskStatus.queued) {
+        _listedInputs.remove(task.id);
+      }
+    }
+    return tasks;
   }
 
   /// Returns the task without its request snapshots, like [listTasks].
@@ -313,6 +340,7 @@ extension TaskOperations on StoryRepository {
 /// Input keys holding frozen request snapshots: what replays or inspects one
 /// task, and most of its size.
 const _snapshotKeys = [
+  'pendingAgent',
   'preset',
   'writingPreset',
   'agentPreset',
