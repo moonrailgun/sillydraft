@@ -16,6 +16,7 @@ import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
 import 'illustration_service.dart';
+import 'image_prompt.dart';
 import 'skills.dart';
 
 final class EditorAgent {
@@ -481,7 +482,7 @@ const editorInstructions =
     'sourceStale 为 true 的资料依据已变化，不得直接当作当前事实。事实、计划、推测必须明确区分。'
     '使用简洁中文说明已完成的操作与需要作者判断的取舍。';
 
-/// The tool owns approval; prompt wording remains the model's call.
+/// The tool owns approval; these rules guide the model's visual description.
 String imageInstructions(
   ModelConnection connection,
   Map<String, dynamic> defaults, {
@@ -493,4 +494,5 @@ String imageInstructions(
     '作者仅要求编写或修改提示词、讨论画面，且未要求实际生图时，不调用生图工具。'
     '作者取消或生图失败后不要自动重试。'
     '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
-    '作者保存的默认设置：${jsonEncode(defaults)}。提示词按该引擎的写法由你编写。';
+    '作者保存的默认设置：${jsonEncode(defaults)}。'
+    '$scenePromptInstructions${imagePromptFormat(connection)}';

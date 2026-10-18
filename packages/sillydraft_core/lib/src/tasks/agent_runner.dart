@@ -173,6 +173,7 @@ Map<String, dynamic> _imageTool(
       'name': batch ? 'generate_images' : 'generate_image',
       'description':
           '作者要求生图时，准备好提示词后立即调用本工具${batch ? '，一次提交本章全部亮点插图' : ''}。'
+          '画人物时先核对提供的视觉资料；缺少出场人物时用 list_lore、read_lore 读取外貌、服饰和状态，再写入画面可见的特征。'
           '本工具会展示确认卡片；作者在卡片上确认后，应用才会${batch ? '逐张' : ''}调用生图引擎并把图片存入作品资产库。'
           '调用前不要在聊天中要求作者确认；取消或失败后不要自动重试。',
       'parameters': batch

@@ -186,25 +186,66 @@ void main() {
     },
   );
 
-  test('image prompts follow the painter: tags for NovelAI and ComfyUI, sentences otherwise', () async {
-    reply = '{"prompt": "solo, short hair"}';
-    const draft = Persona(id: '', name: '我', appearance: '短发', outfit: '卫衣');
-    final novelAI = ModelConnection(
-      id: 'nai',
-      name: 'NovelAI',
-      baseUrl: 'https://image.novelai.net',
-      model: 'nai-diffusion-4-5-full',
-      protocol: ModelProtocol.novelAI,
-    );
-    expect(await service.imagePrompt(text, draft, novelAI), 'solo, short hair');
-    await service.imagePrompt(text, draft, painter);
-    expect(requests[0].messages.first['content'], contains('Danbooru'));
-    expect(requests[1].messages.first['content'], isNot(contains('Danbooru')));
-    await expectLater(
-      service.imagePrompt(text, const Persona(id: '', name: '我'), painter),
-      throwsFormatException,
-    );
-  });
+  test(
+    'image prompts follow the model rather than the workflow transport',
+    () async {
+      reply = '{"prompt": "solo, short hair"}';
+      const draft = Persona(id: '', name: '我', appearance: '短发', outfit: '卫衣');
+      final novelAI = ModelConnection(
+        id: 'nai',
+        name: 'NovelAI',
+        baseUrl: 'https://image.novelai.net',
+        model: 'nai-diffusion-4-5-full',
+        protocol: ModelProtocol.novelAI,
+      );
+      expect(
+        await service.imagePrompt(text, draft, novelAI),
+        'solo, short hair',
+      );
+      await service.imagePrompt(text, draft, painter);
+      expect(requests[0].messages.first['content'], contains('Danbooru'));
+      expect(
+        requests[1].messages.first['content'],
+        isNot(contains('Danbooru')),
+      );
+      final comfy = ModelConnection(
+        id: 'comfy',
+        name: 'ComfyUI',
+        baseUrl: 'http://localhost:1',
+        model: 'workflow',
+        protocol: ModelProtocol.comfyUI,
+        comfyWorkflow: ComfyWorkflow(
+          nodes: {
+            '1': <String, dynamic>{
+              'class_type': 'UNETLoader',
+              'inputs': {'unet_name': 'qwen_image.safetensors'},
+            },
+            '2': <String, dynamic>{
+              'class_type': 'CLIPTextEncode',
+              'inputs': {'text': ''},
+            },
+            '3': <String, dynamic>{
+              'class_type': 'SaveImage',
+              'inputs': <String, dynamic>{},
+            },
+          },
+          promptInput: '2.text',
+          outputNode: '3',
+        ),
+      );
+      await service.imagePrompt(text, draft, comfy);
+      expect(
+        requests[2].messages.first['content'],
+        contains('qwen_image.safetensors'),
+      );
+      expect(requests[2].messages.first['content'], contains('无法确定'));
+      expect(requests[2].messages.first['content'], contains('自然语言'));
+      await expectLater(
+        service.imagePrompt(text, const Persona(id: '', name: '我'), painter),
+        throwsFormatException,
+      );
+    },
+  );
 
   test(
     'a generated reference uses the painter defaults and is stored by hash',

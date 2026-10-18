@@ -9,6 +9,7 @@ import '../st/import_types.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
 import 'illustration_service.dart';
+import 'image_prompt.dart';
 
 const _describe =
     '你是角色设定助手。根据参考图写出人物的外貌与服饰。用户消息先给出现有字段（JSON），再附参考图。'
@@ -24,12 +25,9 @@ const _refine =
     '{"name": "名字", "description": "身份、性格与经历，100 到 200 字", '
     '"appearance": "不随衣着改变的外貌特征", "outfit": "日常默认服饰"}。用中文。';
 
-const _tags =
-    '把用户消息中人物的外貌与服饰（JSON）写成 Danbooru 风格的英文标签，逗号分隔，以 solo 开头，'
-    '用于单人全身角色参考图。只输出一个 JSON 对象：{"prompt": "..."}。';
-
-const _sentence =
-    '把用户消息中人物的外貌与服饰（JSON）写成一段英文生图描述：单人、全身、纯色背景的角色参考图。'
+const _portrait =
+    '把用户消息中人物的外貌与服饰（JSON）写成单人全身、纯色背景的角色参考图提示词。'
+    '保留已给出的固定特征和衣着，不擅自改发色、瞳色或增加配饰；脸部清晰、姿态自然，双手和鞋子在画面内，不加文字、水印或多视图。'
     '只输出一个 JSON 对象：{"prompt": "..."}。';
 
 /// Model help for filling in a persona. Results only fill the form; the
@@ -95,8 +93,7 @@ final class PersonaService {
     );
   }
 
-  /// An image prompt for [painter]: Danbooru tags for NovelAI and ComfyUI,
-  /// an English sentence for other image models.
+  /// A reference-image prompt in the actual painter model's syntax.
   Future<String> imagePrompt(
     ModelConnection connection,
     Persona draft,
@@ -106,12 +103,9 @@ final class PersonaService {
     if (draft.appearance.trim().isEmpty && draft.outfit.trim().isEmpty) {
       throw const FormatException('请先填写外貌或默认服饰');
     }
-    final tags =
-        painter.protocol == ModelProtocol.novelAI ||
-        painter.protocol == ModelProtocol.comfyUI;
     final reply = await _ask(
       connection,
-      tags ? _tags : _sentence,
+      '${imagePromptFormat(painter)}\n$_portrait',
       jsonEncode({'appearance': draft.appearance, 'outfit': draft.outfit}),
       cancellation,
     );

@@ -117,6 +117,7 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 
 | 对象 | 记录位置 | 关注 | 实现 | 测试 |
 |---|---|---|---|---|
+| [智绘姬 st-chatu8](https://github.com/damoshen123/st-chatu8)：画面规则、角色与服装视觉描述 | `docs/st-preset-compatibility.md`“插图的视觉资料与画面规则”，固定 `6e159481b15a975ba4ab2ba43d449d659eca6cd5` | `index.js` 的 `processImageLikeRequest`、`processCharacterPrompt`；只对照已采用的机制，不自动导入外部分发预设 | `core/agent/editor_agent.dart`、`core/agent/image_prompt.dart`、`core/agent/persona_service.dart` | `persona_service_test.dart`、`agent_image_test.dart` |
 | [酒馆助手 JS-Slash-Runner](https://github.com/N0VI028/JS-Slash-Runner)（分支 `main`）：前端块识别、`srcdoc` 骨架与 `vh` 改写、高度算法、接口函数名、事件名、斜杠命令、助手宏 | `docs/verification/html-rendering.md` 第一段 | `src/util/is_frontend.ts`、`src/panel/render/iframe.ts`、`src/iframe/`、`src/function/`、`@types/function/` | `core/html/html_blocks.dart`、`core/html/tavern_runtime.dart`（接口列表、事件、高度）、`core/html/tavern_bridge.dart`、`lib/features/html/html_block_view.dart`、`core/st/macro_engine.dart` 助手宏 | `html_blocks_test.dart`、`tavern_bridge_test.dart`、`integration_test/html_*_test.dart` |
 | 酒馆助手预载的 lodash、jQuery、Font Awesome（只固定大版本） | 同上 | 酒馆助手源码中的预载列表 | `core/html/html_blocks.dart` 中的 CDN 地址 | `html_blocks_test.dart` |
 | [MVU MagVarUpdate](https://github.com/MagicalAstrogy/MagVarUpdate)（默认分支 `beta`，发布分支 `master`，两者都要看）：命令语法、JSONPatch、`$meta` 结构、记录字段、全局 `Mvu` 对象 | `docs/verification/mvu.md` 第一段 | 该段列出的 `src/function/` 文件与 `tests/` | `core/mvu/`、`core/html/tavern_runtime.dart` 的 `Mvu` 部分 | `mvu_test.dart`、`tavern_bridge_test.dart` |
