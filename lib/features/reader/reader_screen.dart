@@ -154,7 +154,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   /// A chapter to turn to once the story includes it: a chapter just started.
   String? _openWhenLoaded;
   bool _writingFromInput = false;
-  bool _regenerating = false;
+  bool _startingChapter = false;
 
   /// Relays events between the HTML blocks of the chapter being read.
   final _bus = HtmlEventBus();
@@ -1033,9 +1033,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     }
   }
 
-  Future<void> _regenerate(Chapter chapter, GenerationTask? previous) async {
-    if (_regenerating) return;
-    setState(() => _regenerating = true);
+  Future<void> _generateChapter(
+    Chapter chapter, {
+    required String brief,
+    bool rewrite = false,
+  }) async {
+    if (_startingChapter) return;
+    setState(() => _startingChapter = true);
     try {
       final tasks = await ref
           .read(repositoryProvider)
@@ -1044,23 +1048,21 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         (t) =>
             t.isActive && [TaskKind.writing, TaskKind.rewrite].contains(t.kind),
       )) {
-        throw const FormatException('本书正在写作，请等待完成后再重新生成。');
+        throw const FormatException('本书正在写作，请等待完成后再生成。');
       }
       if (!mounted) return;
       await writeChapter(
         ref,
         chapter,
-        brief:
-            previous?.input['brief'] as String? ??
-            '重新写当前章节《${chapter.title}》的完整正文。',
-        rewrite: true,
+        brief: brief,
+        rewrite: rewrite,
         onWaitSidecar: () => toast(context, sidecarWaitNotice),
         onBudgetDrop: (summary) => showWorldInfoBudgetNotice(context, summary),
       );
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
-      if (mounted) setState(() => _regenerating = false);
+      if (mounted) setState(() => _startingChapter = false);
     }
   }
 
@@ -1110,6 +1112,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         ? latest
         : null;
     final writing = draft != null && (draft.isActive || pending);
+    final canWrite =
+        !_startingChapter &&
+        !tasks.any(
+          (t) =>
+              t.isActive &&
+              [TaskKind.writing, TaskKind.rewrite].contains(t.kind),
+        );
     return SafeArea(
       child: Column(
         children: [
@@ -1212,28 +1221,53 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                   padding: const EdgeInsets.only(top: 20),
                                   child: Center(
                                     child: _noTap(
-                                      FButton(
-                                        key: const Key('chapter-regenerate'),
-                                        variant: FButtonVariant.outline,
-                                        size: FButtonSizeVariant.sm,
-                                        mainAxisSize: MainAxisSize.min,
-                                        onPress:
-                                            _regenerating ||
-                                                tasks.any(
-                                                  (t) =>
-                                                      t.isActive &&
-                                                      [
-                                                        TaskKind.writing,
-                                                        TaskKind.rewrite,
-                                                      ].contains(t.kind),
-                                                )
-                                            ? null
-                                            : () =>
-                                                  _regenerate(chapter, latest),
-                                        prefix: const Icon(
-                                          FLucideIcons.refreshCw,
-                                        ),
-                                        child: const Text('重新生成'),
+                                      Wrap(
+                                        alignment: WrapAlignment.center,
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          FButton(
+                                            key: const Key(
+                                              'chapter-regenerate',
+                                            ),
+                                            variant: FButtonVariant.outline,
+                                            size: FButtonSizeVariant.sm,
+                                            mainAxisSize: MainAxisSize.min,
+                                            onPress: canWrite
+                                                ? () => _generateChapter(
+                                                    chapter,
+                                                    brief:
+                                                        latest?.input['brief']
+                                                            as String? ??
+                                                        '重新写当前章节《${chapter.title}》的完整正文。',
+                                                    rewrite: true,
+                                                  )
+                                                : null,
+                                            prefix: const Icon(
+                                              FLucideIcons.refreshCw,
+                                            ),
+                                            child: const Text('重新生成'),
+                                          ),
+                                          FButton(
+                                            key: const Key('chapter-continue'),
+                                            variant: FButtonVariant.outline,
+                                            size: FButtonSizeVariant.sm,
+                                            mainAxisSize: MainAxisSize.min,
+                                            onPress: canWrite
+                                                ? () => _generateChapter(
+                                                    chapter,
+                                                    brief:
+                                                        '接着当前章节的正文末尾继续写，依据已有情节自然推进，'
+                                                        '保持人物动机与叙事视角一致。只输出要追加的正文，'
+                                                        '不要重复或改写已有内容，不要另起一章，不输出标题或说明。',
+                                                  )
+                                                : null,
+                                            prefix: const Icon(
+                                              FLucideIcons.penLine,
+                                            ),
+                                            child: const Text('继续续写'),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
