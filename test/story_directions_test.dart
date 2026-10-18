@@ -157,6 +157,7 @@ void main() {
         );
         final repo = book.services.repository;
         final original = await repo.getStory(book.branchId);
+        expect(find.text('分支与结局'), findsNothing);
         final adjust = find.byKey(const Key('direction-adjust-0'));
         await tester.ensureVisible(adjust);
         await tester.pumpAndSettle();
@@ -784,7 +785,10 @@ void main() {
       scroll.jumpTo(scroll.position.maxScrollExtent);
       await tester.pumpAndSettle();
       final bar = tester.getRect(find.textContaining('本章约剩')).top;
-      expect(tester.getRect(find.text('分支与结局')).bottom, lessThanOrEqualTo(bar));
+      expect(
+        tester.getRect(find.byKey(const Key('directions-again'))).bottom,
+        lessThanOrEqualTo(bar),
+      );
       expect(tester.takeException(), isNull);
     },
   );

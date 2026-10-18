@@ -27,8 +27,6 @@ class BranchScreen extends ConsumerStatefulWidget {
 
 class _BranchState extends ConsumerState<BranchScreen> {
   String? _source, _chapter;
-  bool _endings = false, _busy = false;
-  int _count = 3;
   Future<void> _fork(String source) async {
     final name = await askText(context, title: '从此处分叉', label: '新分支名称');
     if (name == null) return;
@@ -48,33 +46,6 @@ class _BranchState extends ConsumerState<BranchScreen> {
       }
     } catch (e) {
       if (mounted) showError(context, e);
-    }
-  }
-
-  Future<void> _generate(String source) async {
-    setState(() => _busy = true);
-    try {
-      final services = ref.read(servicesProvider),
-          connection = await ref
-              .read(servicesProvider)
-              .connectionFor('analysis');
-      if (connection == null) throw const FormatException('请先配置整理模型。');
-      final task = await services.writing.suggestBranches(
-        branchId: source,
-        connection: connection,
-        endings: _endings,
-        count: _count,
-      );
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute<void>(builder: (_) => TaskScreen(taskId: task.id)),
-        );
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -301,37 +272,6 @@ class _BranchState extends ConsumerState<BranchScreen> {
                     onPress: () => _fork(source),
                     prefix: const Icon(FLucideIcons.gitFork),
                     child: const Text('创建独立分支'),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('探索故事的下一步', style: heading),
-                  const SizedBox(height: 8),
-                  const Text('根据所选分支的全部正文，提出多种可能。要从中途探索，先在该处分叉。'),
-                  const SizedBox(height: 12),
-                  FTile(
-                    title: const Text('推演结局'),
-                    subtitle: const Text('关闭时生成后续剧情走向'),
-                    suffix: FSwitch(
-                      value: _endings,
-                      onChange: (v) => setState(() => _endings = v),
-                    ),
-                    onPress: () => setState(() => _endings = !_endings),
-                  ),
-                  const SizedBox(height: 16),
-                  FSelect<int>(
-                    label: const Text('候选数量'),
-                    items: {for (var i = 2; i <= 6; i++) '$i 个': i},
-                    control: FSelectControl<int>.lifted(
-                      value: _count,
-                      onChange: (v) {
-                        if (v != null) setState(() => _count = v);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FButton(
-                    onPress: _busy ? null : () => _generate(source),
-                    prefix: const Icon(FLucideIcons.sparkles),
-                    child: Text(_busy ? '准备中…' : '生成候选走向'),
                   ),
                   const SizedBox(height: 24),
                   AsyncView(

@@ -1,13 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' show MaterialPageRoute;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
-import '../branches/branch_screen.dart';
 import '../lore/sidecar.dart';
 import '../settings/world_info_budget.dart';
 import 'next_chapter.dart';
@@ -258,22 +256,6 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
             prefix: const Icon(FLucideIcons.refreshCw),
             child: const Text('换一批'),
           ),
-        FButton(
-          variant: FButtonVariant.ghost,
-          size: FButtonSizeVariant.sm,
-          mainAxisSize: MainAxisSize.min,
-          onPress: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => BranchScreen(
-                novelId: widget.story.novel.id,
-                sourceBranchId: _branchId,
-              ),
-            ),
-          ),
-          prefix: const Icon(FLucideIcons.gitFork),
-          child: const Text('分支与结局'),
-        ),
       ],
     );
     return Column(

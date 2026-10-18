@@ -213,7 +213,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('open-reader')));
       await tester.pumpAndSettle();
-      final link = find.text('分支与结局');
+      final link = find.byKey(const Key('directions-suggest'));
       final linkColor = FTheme.of(tester.element(link)).colors.primary;
       final background = tester
           .widget<ColoredBox>(find.byKey(const Key('reader-page')))
