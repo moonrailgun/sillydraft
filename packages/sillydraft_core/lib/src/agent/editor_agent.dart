@@ -273,7 +273,7 @@ final class EditorAgent {
           );
     final purpose = illustrationBatch
         ? '\n本轮任务是从附带的当前章节提取 3 个不同的视觉亮点，每个亮点写成一段完整生图提示词；内容不足时可减少，不得编造章节里没有的情节。'
-              '一次调用 generate_images 提交全部提示词，统一等待作者确认后逐张生成。只能读取资料和生成图片，禁止改写、续写正文或提出资料建议。'
+              '写好后必须立即调用 generate_images 提交全部提示词，由工具展示整组确认卡片，不能只回复提示词或等待作者文字确认。只能读取资料和生成图片，禁止改写、续写正文或提出资料建议。'
         : '';
     final rules = '$editorInstructions$focusNote$imageNote$purpose';
     final instructions = '$rules${skillCatalog(skills)}';
@@ -464,13 +464,16 @@ const editorInstructions =
     'sourceStale 为 true 的资料依据已变化，不得直接当作当前事实。事实、计划、推测必须明确区分。'
     '使用简洁中文说明已完成的操作与需要作者判断的取舍。';
 
-/// Only facts about the engine; how to write the prompt is the model's call.
+/// The tool owns approval; prompt wording remains the model's call.
 String imageInstructions(
   ModelConnection connection,
   Map<String, dynamic> defaults, {
   bool batch = false,
 }) =>
-    '\n可用 ${batch ? 'generate_images' : 'generate_image'} 提交插图提示词，作者确认后才会调用生图引擎，图片会存入作品资产库。'
-    '作者取消时不要自动重试。'
+    '\n生图工具：${batch ? 'generate_images' : 'generate_image'}。作者要求生图、画图或生成插图时，按需读取资料，写好图片名称和完整绘画提示词后，必须在本轮立即调用该工具。'
+    '工具调用会由应用展示确认卡片；只有作者在卡片上确认后才会调用生图引擎，图片会存入作品资产库。'
+    '确认交互由工具和应用处理，调用前不要要求作者回复“确认生成”，也不能用提示词文本、计划、口头承诺或模拟工具调用代替真实调用。'
+    '作者仅要求编写或修改提示词、讨论画面，且未要求实际生图时，不调用生图工具。'
+    '作者取消或生图失败后不要自动重试。'
     '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
     '作者保存的默认设置：${jsonEncode(defaults)}。提示词按该引擎的写法由你编写。';

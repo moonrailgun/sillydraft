@@ -171,9 +171,10 @@ Map<String, dynamic> _imageTool(
     'type': 'function',
     'function': {
       'name': batch ? 'generate_images' : 'generate_image',
-      'description': batch
-          ? '一次提交本章全部亮点插图，统一展示提示词等待作者确认，再逐张生成并存入作品资产库。取消或失败时停止，不要自动重试。'
-          : '先展示提示词等待作者确认，再用配置的生图引擎生成一张插图并存入作品资产库。作者取消时不要自动重试。',
+      'description':
+          '作者要求生图时，准备好提示词后立即调用本工具${batch ? '，一次提交本章全部亮点插图' : ''}。'
+          '本工具会展示确认卡片；作者在卡片上确认后，应用才会${batch ? '逐张' : ''}调用生图引擎并把图片存入作品资产库。'
+          '调用前不要在聊天中要求作者确认；取消或失败后不要自动重试。',
       'parameters': batch
           ? {
               'type': 'object',
@@ -349,7 +350,8 @@ extension _AgentExecution on TaskRunner {
           messages.add({
             'role': 'system',
             'content':
-                '尚未生成图片。请现在调用 ${task.input['illustrationBatch'] == true ? 'generate_images' : 'generate_image'}，提交图片名称和绘画提示词；不能用文字、模拟终端或续写替代生图。',
+                '本轮明确要求生图，但你尚未调用生图工具。请现在调用 ${task.input['illustrationBatch'] == true ? 'generate_images' : 'generate_image'}，提交图片名称和完整绘画提示词。'
+                '工具会展示确认卡片，由应用等待作者点击确认后才执行生图；不要要求作者先回复“确认生成”，不能以等待文字确认结束本轮，也不能用文字、模拟终端或续写替代真实工具调用。',
           });
           continue;
         }
