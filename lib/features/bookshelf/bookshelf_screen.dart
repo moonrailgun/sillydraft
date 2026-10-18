@@ -18,6 +18,7 @@ import 'search_screen.dart';
 import '../illustrations/asset_image.dart';
 import '../transfer/restore_screen.dart';
 import '../transfer/sync_screen.dart';
+import '../transfer/transfer_screen.dart';
 
 class BookshelfScreen extends ConsumerStatefulWidget {
   const BookshelfScreen({super.key});
@@ -525,6 +526,16 @@ class _NovelCard extends ConsumerWidget {
                 ),
               ),
               icon: FLucideIcons.gitBranch,
+            ),
+            menuEntry(
+              '导出、备份与同步',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => TransferScreen(novelId: novel.id),
+                ),
+              ),
+              icon: FLucideIcons.share2,
             ),
             menuEntry(
               novel.archived ? '恢复到书架' : '归档作品',

@@ -6,6 +6,7 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/bookshelf/novel_dialog.dart';
 import 'package:sillydraft/features/branches/branch_screen.dart';
 import 'package:sillydraft/features/editor/workspace_screen.dart';
+import 'package:sillydraft/features/transfer/transfer_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/finders.dart';
@@ -44,6 +45,7 @@ void main() {
       await openMenu(novel.title);
       expect(find.text('作品信息'), findsOneWidget);
       expect(find.text('故事分支'), findsOneWidget);
+      expect(find.text('导出、备份与同步'), findsOneWidget);
       expect(find.text('归档作品'), findsOneWidget);
       expect(find.text('删除作品'), findsNothing);
       expect(find.byType(NovelWorkspace), findsNothing);
@@ -72,6 +74,16 @@ void main() {
       await tester.tap(findAction('返回'));
       await tester.pumpAndSettle();
 
+      await openMenu('改过书名的作品');
+      await tester.tap(find.text('导出、备份与同步'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TransferScreen>(find.byType(TransferScreen)).novelId,
+        novel.id,
+      );
+      expect(find.text('导出与备份'), findsOneWidget);
+      await tester.tap(findAction('返回'));
+      await tester.pumpAndSettle();
       expect(find.text('改过书名的作品'), findsOneWidget);
       expect(find.byType(NovelWorkspace), findsNothing);
       expect(tester.takeException(), isNull);
