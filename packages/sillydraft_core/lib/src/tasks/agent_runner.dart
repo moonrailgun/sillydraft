@@ -217,36 +217,69 @@ extension _AgentExecution on TaskRunner {
     if (illustrationOnly && input['image'] is! Map<String, dynamic>) {
       throw const ProviderException('image_unavailable', '请先配置生图引擎，再重新生成插图。');
     }
+    final chapters = [
+      for (final chapter in input['chapterSnapshot'] as List? ?? [])
+        Map<String, dynamic>.from(chapter as Map),
+    ];
     const writingTools = {'propose_chapter', 'propose_lore'};
+    final tools = [
+      for (final tool in _editingTools)
+        if (!illustrationOnly ||
+            !writingTools.contains(tool['function']['name']))
+          tool,
+      if (input['image'] case final Map<String, dynamic> image)
+        _imageTool(image, batch: illustrationBatch),
+      if (!illustrationOnly) ...skillTools(skills),
+    ];
+    String? writtenRevisionId;
+    var canWrite = !illustrationOnly;
     await _toolLoop(
       task,
       provider,
       cancel,
       output,
       reasoning,
-      tools: [
-        for (final tool in _editingTools)
-          if (!illustrationOnly ||
-              !writingTools.contains(tool['function']['name']))
-            tool,
-        if (input['image'] case final Map<String, dynamic> image)
-          _imageTool(image, batch: illustrationBatch),
-        if (!illustrationOnly) ...skillTools(skills),
-      ],
+      tools: tools,
       imageRequired: illustrationOnly,
       execute: (call) async {
         if ((illustrationBatch && call.name == 'generate_image') ||
             (!illustrationBatch && call.name == 'generate_images')) {
           return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
         }
-        if (illustrationOnly && writingTools.contains(call.name)) {
-          return {
-            'error': '本轮仅生成插图，不能修改正文或提出资料建议。请使用生图工具；不可用时说明原因。',
-            'code': 'tool_not_allowed',
-            'retryable': false,
-          };
+        if (writingTools.contains(call.name)) {
+          if (illustrationOnly) {
+            return {
+              'error': '本轮仅生成插图，不能修改正文或提出资料建议。请使用生图工具；不可用时说明原因。',
+              'code': 'tool_not_allowed',
+              'retryable': false,
+            };
+          }
+          if (writtenRevisionId != null) {
+            return {
+              'error': '本轮正文已经写入，请向作者报告结果；继续写入或提出资料建议需要作者发起新一轮请求。',
+              'code': 'already_written',
+              'retryable': false,
+              'revisionId': writtenRevisionId,
+            };
+          }
         }
-        return _executeTool(task, call, cancel, !illustrationOnly);
+        final result = await _executeTool(
+          task,
+          call,
+          cancel,
+          chapters,
+          canWrite,
+        );
+        if (call.name == 'propose_chapter' && result['accepted'] == true) {
+          writtenRevisionId = result['revisionId'] as String;
+        }
+        if (writtenRevisionId != null || result['code'] == 'source_changed') {
+          canWrite = false;
+          tools.removeWhere(
+            (tool) => writingTools.contains(tool['function']['name']),
+          );
+        }
+        return result;
       },
       record: (role, content, metadata) => repository.appendAgentMessage(
         conversation,
@@ -309,7 +342,7 @@ extension _AgentExecution on TaskRunner {
       await for (final event in provider.generate(
         ProviderRequest(
           messages: messages,
-          tools: tools,
+          tools: List.of(tools),
           parameters: request.parameters,
         ),
         cancellation: cancel,
@@ -455,14 +488,13 @@ extension _AgentExecution on TaskRunner {
     GenerationTask task,
     ToolCallReady call,
     GenerationCancellation cancel,
+    List<Map<String, dynamic>> chapters,
     bool canWrite,
   ) async {
     final args = call.arguments;
     if (call.name == 'activate_skill' || call.name == 'read_skill_file') {
       return _skillTool(task, call);
     }
-    final chapters = (task.input['chapterSnapshot'] as List? ?? [])
-        .cast<Map<String, dynamic>>();
     final lore = (task.input['loreSnapshot'] as List? ?? [])
         .cast<Map<String, dynamic>>();
     if (call.name == 'list_lore') {
@@ -544,7 +576,11 @@ extension _AgentExecution on TaskRunner {
         });
       }
       if (!await repository.taskSourcesCurrent(task.id)) {
-        throw const FormatException('正文已变化，请重新提出建议');
+        return {
+          'error': '正文已变化，本轮不能继续写入或提出资料建议，请作者发起新一轮请求。',
+          'code': 'source_changed',
+          'retryable': false,
+        };
       }
       cancel.check();
       final proposal = await repository.createTask(
@@ -831,16 +867,23 @@ extension _AgentExecution on TaskRunner {
           args['append'] is! bool) {
         throw const FormatException('参数无效');
       }
-      if (args['chapterId'] != task.input['editChapterId'] ||
-          !await repository.taskSourcesCurrent(task.id)) {
-        throw const FormatException('不属于当前编辑位置，或正文已变化');
+      if (args['chapterId'] != task.input['editChapterId']) {
+        return {
+          'error': '目标不属于当前编辑位置，只能修改 list_chapters 中标有 canEdit 的章节。',
+          'code': 'out_of_scope',
+          'retryable': false,
+        };
+      }
+      if (!await repository.taskSourcesCurrent(task.id)) {
+        return {
+          'error': '正文已变化，本轮不能继续写入或提出资料建议，请作者发起新一轮请求。',
+          'code': 'source_changed',
+          'retryable': false,
+        };
       }
       final input = task.input;
       final service = WritingService(repository: repository, runner: this);
       final context = input['writingContext'] as Map<String, dynamic>? ?? {};
-      // ponytail: the write moves the chapter past this task's frozen
-      // sources, so later writes and lore suggestions in the same round are
-      // refused as stale; refresh the sources if one round needs several.
       final child = await service.generate(
         branchId: task.branchId,
         chapterId: args['chapterId'] as String,
@@ -879,16 +922,30 @@ extension _AgentExecution on TaskRunner {
       try {
         final result = await wait(child.id);
         cancel.check();
-        final proposal = result.result['proposalId'];
+        final proposalId = result.result['proposalId'];
+        final proposal = proposalId is String
+            ? await repository.getProposal(proposalId)
+            : null;
+        final accepted = proposal?.status == ProposalStatus.accepted;
+        final revisionId = accepted ? proposal!.acceptedRevisionId : null;
+        if (revisionId != null) {
+          final revision = await repository.getRevision(revisionId);
+          final chapter = chapters.firstWhere(
+            (c) => c['id'] == args['chapterId'],
+          );
+          // Only overlay our accepted revision; keep the frozen conflict checks.
+          chapter.addAll({
+            'revisionId': revisionId,
+            'text': revision.content.text,
+          });
+        }
         return {
           'taskId': child.id,
           'status': result.status.name,
           ...result.result,
           if (result.error.isNotEmpty) 'error': result.error,
-          'accepted':
-              proposal is String &&
-              (await repository.getProposal(proposal)).status ==
-                  ProposalStatus.accepted,
+          'accepted': accepted,
+          'revisionId': ?revisionId,
           // Entries the world info budget left out, for the author to hear.
           for (final d
               in (child.input['compiled'] as Map)['diagnostics'] as List)
