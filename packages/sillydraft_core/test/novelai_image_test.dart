@@ -81,6 +81,43 @@ void main() {
     },
   );
 
+  for (final model in ['nai-diffusion-5-full', 'nai-diffusion-5-curated']) {
+    test('$model uses version 4 parameters and V4 captions', () async {
+      provider.close();
+      provider = NovelAIImageProvider(
+        config: ModelConnection(
+          id: 'nai',
+          name: 'NovelAI',
+          baseUrl: 'http://127.0.0.1:${server.port}',
+          model: model,
+          protocol: ModelProtocol.novelAI,
+        ),
+        apiKey: 'private-token',
+      );
+      server.listen((r) async {
+        expect(r.uri.path, '/ai/generate-image');
+        final body = jsonDecode(await utf8.decoder.bind(r).join()) as Map;
+        r.response.add(imageZip());
+        await r.response.close();
+        expect(body['model'], model);
+        expect(body['input'], 'a quiet harbor');
+        expect(body['action'], 'generate');
+        final p = body['parameters'] as Map;
+        expect(p['params_version'], 4);
+        expect(p['n_samples'], 1);
+        expect(p['v4_prompt']['caption']['base_caption'], 'a quiet harbor');
+        expect(p['v4_negative_prompt']['caption']['base_caption'], 'blurry');
+      });
+      final result = await provider.generate(
+        ImageRequest(
+          prompt: 'a quiet harbor',
+          parameters: {'negative_prompt': 'blurry'},
+        ),
+      );
+      expect(result.bytes, testPicture());
+    });
+  }
+
   test('default parameters generate one image with a random seed', () async {
     server.listen((r) async {
       final body = jsonDecode(await utf8.decoder.bind(r).join()) as Map;
@@ -305,12 +342,14 @@ void main() {
     },
   );
 
-  test('model choices match pinned ST in its order', () {
+  test('model choices extend pinned ST with V5 and keep its default', () {
     final raw = jsonDecode(
       File('test/fixtures/st/novelai-models-reference.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     expect(NovelAIImageProvider.models, [
       for (final m in raw['models'] as List) (m as Map)['value'],
+      'nai-diffusion-5-full',
+      'nai-diffusion-5-curated',
     ]);
   });
 }

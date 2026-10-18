@@ -80,7 +80,7 @@
 ### 使用 NovelAI 生图
 
 1. 设置 → 添加连接，选择“NovelAI（生图）”。默认地址为 `https://image.novelai.net`，无需添加 `/v1` 或 `/ai/generate-image`。
-2. 在 API Key 中填写 NovelAI 账户设置中的 **Persistent API Token**。默认模型为 `nai-diffusion-4-5-full`；“选择常用模型”显示内置列表，不联网、不验证密钥，也可手动填写模型 ID。
+2. 在 API Key 中填写 NovelAI 账户设置中的 **Persistent API Token**。默认模型为 `nai-diffusion-4-5-full`；“选择常用模型”的内置列表也包含 V5 Full（`nai-diffusion-5-full`）和 V5 Curated（`nai-diffusion-5-curated`）。列表不联网、不验证密钥，也可手动填写模型 ID。
 3. 在插图生成页面选中该连接，填写画面描述并选择尺寸。默认生成一张 1024×1024 图片，28 步，引导强度 5，随机种子。
 4. 高级参数示例：`{"negative_prompt":"blurry, low quality","steps":28,"scale":5,"seed":123}`。还支持 `width`、`height`（64 的倍数）、`sampler`、`noise_schedule`、`cfg_rescale`、`sm`、`sm_dyn`、`dynamic_thresholding`；具体可用值受模型限制。显式选择的尺寸优先于 JSON 中的宽高；`seed: -1` 表示随机。
 

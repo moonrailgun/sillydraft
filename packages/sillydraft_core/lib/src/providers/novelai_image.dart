@@ -24,9 +24,9 @@ final class NovelAIImageProvider implements ImageProvider {
   final String _apiKey;
   final Dio _client;
   static const _maxBytes = 32 * 1024 * 1024;
-  // ST 1.19.0 stable-diffusion `loadNovelModels`, in its order (see
-  // test/fixtures/st/novelai-models-reference.json). Not a live model
-  // discovery API; manual IDs remain valid.
+  // ST 1.19.0 `loadNovelModels` order/default, followed by NovelAI's V5 models
+  // (official /image frontend, build b50892a, 2026-10-18; see compatibility doc).
+  // Not a live model discovery API; manual IDs remain valid.
   static const models = [
     'nai-diffusion-4-5-full',
     'nai-diffusion-4-5-curated',
@@ -35,6 +35,8 @@ final class NovelAIImageProvider implements ImageProvider {
     'nai-diffusion-3',
     'nai-diffusion-2',
     'nai-diffusion-furry-3',
+    'nai-diffusion-5-full',
+    'nai-diffusion-5-curated',
   ];
 
   @override
@@ -233,7 +235,8 @@ final class NovelAIImageProvider implements ImageProvider {
     // Match ST 1.19.0 (06bde939), src/endpoints/novelai.js /generate-image.
     return {
       ...p,
-      'params_version': 3,
+      // NovelAI's V5 frontend uses version 4 with the same caption structure.
+      'params_version': config.model.startsWith('nai-diffusion-5-') ? 4 : 3,
       'n_samples': 1,
       'prefer_brownian': true,
       'ucPreset': 0,

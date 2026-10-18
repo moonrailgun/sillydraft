@@ -80,9 +80,9 @@ git -C ~/Develop/SillyTavern diff --stat <旧提交> <新提交> -- \
 | 深度注入顺序 | `openai.js` `populationInjectionPrompts` | `core/st/prompt_compiler.dart` | `injection-reference.json`，`st_compiler_test.dart` |
 | 文本补全序列 | `instruct-mode.js` `formatInstructMode*`、`getInstructStoppingSequences`；`script.js` `Generate` | `core/st/text_compiler.dart` | `text-format-reference.json`，`st_compiler_test.dart` |
 | 文本补全预设的参数键 | `textgen-settings.js` `setting_names` | `core/st/preset_importer.dart` `_parameterKeys` 末尾一段 | `textgen-settings-reference.json`，`st_import_test.dart` |
-| NovelAI 生图模型列表（第一项是默认模型） | `extensions/stable-diffusion/index.js` `loadNovelModels` | `core/providers/novelai_image.dart` `models` | `novelai-models-reference.json`，`novelai_image_test.dart` |
+| NovelAI 生图模型列表的 ST 部分（第一项是默认模型） | `extensions/stable-diffusion/index.js` `loadNovelModels` | `core/providers/novelai_image.dart` `models`；V5 扩展见第四节 | `novelai-models-reference.json`，`novelai_image_test.dart` |
 
-文本补全参数键：`setting_names` 新增的项默认加进 `_parameterKeys`；如果它不是请求参数（模型选择、连接状态、界面设置），就加进 `st_import_test.dart` 的 `notParameters`，并在 `_parameterKeys` 的注释和文档里写明。NovelAI：模型列表跟着 JSON 改，顺序也相同；同时看 `novelai.js` 的请求体有没有按模型区分。
+文本补全参数键：`setting_names` 新增的项默认加进 `_parameterKeys`；如果它不是请求参数（模型选择、连接状态、界面设置），就加进 `st_import_test.dart` 的 `notParameters`，并在 `_parameterKeys` 的注释和文档里写明。NovelAI：ST 部分跟着 JSON 改，顺序也相同；保留官方 V5 扩展，ST 纳入后去重，同时看 `novelai.js` 的请求体有没有按模型区分。
 
 ### 没有对照数据、需要读源码比对的项
 
@@ -121,6 +121,7 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 | 酒馆助手预载的 lodash、jQuery、Font Awesome（只固定大版本） | 同上 | 酒馆助手源码中的预载列表 | `core/html/html_blocks.dart` 中的 CDN 地址 | `html_blocks_test.dart` |
 | [MVU MagVarUpdate](https://github.com/MagicalAstrogy/MagVarUpdate)（默认分支 `beta`，发布分支 `master`，两者都要看）：命令语法、JSONPatch、`$meta` 结构、记录字段、全局 `Mvu` 对象 | `docs/verification/mvu.md` 第一段 | 该段列出的 `src/function/` 文件与 `tests/` | `core/mvu/`、`core/html/tavern_runtime.dart` 的 `Mvu` 部分 | `mvu_test.dart`、`tavern_bridge_test.dart` |
 | ComfyUI 画布转 API 格式 | `docs/st-preset-compatibility.md`“ComfyUI 工作流读取”，`core/providers/comfy_workflow.dart` 注释 | Comfy-Org/workflow_templates 的 `scripts/comfyui_node_compat/workflow.py`、Comfy-Org/ComfyUI_frontend 的 `docs/WIDGET_SERIALIZATION.md`。按文件查最新提交：`gh api "repos/<仓库>/commits?path=<文件>&per_page=1" --jq '.[0].sha'` | `core/providers/comfy_workflow.dart` | `comfy_canvas_test.dart`、`comfy_workflow_files_test.dart` |
+| NovelAI 新增生图模型及请求格式 | `docs/st-preset-compatibility.md`“NovelAI 生图连接”（2026-10-18，官方前端构建 b50892a） | 官方模型文档、`novelai.net/image` 前端的模型 ID、参数版本与 caption 结构；当前 V5 Full/Curated 使用参数版本 4，ST 基准单独保留 | `core/providers/novelai_image.dart` | `novelai_image_test.dart`、`test/model_settings_flow_test.dart`（仓库根目录） |
 | Claude Code、Codex 命令行：参数、流式事件名、登录检查 | 无（按版本号） | `claude --version`、`codex --version` 及各自 `--help`；测试只用假脚本，**须用真实命令行跑一次写作**确认 | `core/providers/local_cli.dart` | `local_cli_test.dart` |
 | 工具链：Flutter 3.47.7 / Dart 3.13.5 | 无（按版本号） | Flutter stable 发布页 | `AGENTS.md`、`README.md`、`docs/building.md`（含 Impeller 绕过说明）、`.github/workflows/`、各 `pubspec.yaml` 的 sdk 约束 | CI |
 
