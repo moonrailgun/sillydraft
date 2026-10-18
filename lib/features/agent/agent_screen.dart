@@ -1748,7 +1748,11 @@ class _AgentState extends ConsumerState<AgentPanel> {
       ),
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(
+        left: mine ? 32 : 0,
+        right: mine ? 0 : 32,
+        bottom: 16,
+      ),
       child: Align(
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         child: touchPlatform
