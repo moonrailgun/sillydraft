@@ -1,6 +1,6 @@
 ---
 name: sync-baselines
-description: 定期检查并同步 SillyDraft 按外部标准照搬的名单、规则和版本固定点：SillyTavern 生态（ST 固定提交、酒馆助手、MVU）、对接的外部接口（ComfyUI、NovelAI、Claude Code/Codex 命令行）与工具链。用户说“同步 ST”“升级 ST 基线”“检查对齐对象更新”“定时同步配置”时使用，也用于定时任务的例行检查。
+description: 定期检查并同步 SillyDraft 按外部标准照搬的名单、规则和版本固定点：SillyTavern 生态（ST 固定提交、酒馆助手、MVU）、对接的外部接口（ComfyUI、NovelAI、Claude Code/Codex 命令行）与工具链。用户说“同步 ST”“升级 ST 基线”“同步 NovelAI”“更新 NovelAI 模型”“检查对齐对象更新”“定时同步配置”时使用，也用于定时任务的例行检查。
 ---
 
 # 同步对齐基线
@@ -113,7 +113,7 @@ git -C ~/Develop/SillyTavern diff --stat <旧提交> <新提交> -- \
 gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filename'
 ```
 
-只看表中“关注”的文件。核对并同步完，把新提交、日期和链接写回记录位置。Claude Code、Codex 和工具链没有可比对的提交，按版本号检查。
+只看表中“关注”的文件。核对并同步完，把新提交、日期和链接写回记录位置。NovelAI 按下方流程核对官方文档和前端构建；Claude Code、Codex 和工具链按版本号检查。
 
 | 对象 | 记录位置 | 关注 | 实现 | 测试 |
 |---|---|---|---|---|
@@ -121,9 +121,26 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 | 酒馆助手预载的 lodash、jQuery、Font Awesome（只固定大版本） | 同上 | 酒馆助手源码中的预载列表 | `core/html/html_blocks.dart` 中的 CDN 地址 | `html_blocks_test.dart` |
 | [MVU MagVarUpdate](https://github.com/MagicalAstrogy/MagVarUpdate)（默认分支 `beta`，发布分支 `master`，两者都要看）：命令语法、JSONPatch、`$meta` 结构、记录字段、全局 `Mvu` 对象 | `docs/verification/mvu.md` 第一段 | 该段列出的 `src/function/` 文件与 `tests/` | `core/mvu/`、`core/html/tavern_runtime.dart` 的 `Mvu` 部分 | `mvu_test.dart`、`tavern_bridge_test.dart` |
 | ComfyUI 画布转 API 格式 | `docs/st-preset-compatibility.md`“ComfyUI 工作流读取”，`core/providers/comfy_workflow.dart` 注释 | Comfy-Org/workflow_templates 的 `scripts/comfyui_node_compat/workflow.py`、Comfy-Org/ComfyUI_frontend 的 `docs/WIDGET_SERIALIZATION.md`。按文件查最新提交：`gh api "repos/<仓库>/commits?path=<文件>&per_page=1" --jq '.[0].sha'` | `core/providers/comfy_workflow.dart` | `comfy_canvas_test.dart`、`comfy_workflow_files_test.dart` |
-| NovelAI 新增生图模型及请求格式 | `docs/st-preset-compatibility.md`“NovelAI 生图连接”（2026-10-18，官方前端构建 b50892a） | 官方模型文档、`novelai.net/image` 前端的模型 ID、参数版本与 caption 结构；当前 V5 Full/Curated 使用参数版本 4，ST 基准单独保留 | `core/providers/novelai_image.dart` | `novelai_image_test.dart`、`test/model_settings_flow_test.dart`（仓库根目录） |
+| NovelAI 生图模型及请求格式 | `docs/st-preset-compatibility.md`“NovelAI 生图连接”中的日期、官方前端构建和来源链接 | 官方模型文档、图片 OpenAPI、前端实际可选模型与请求参数，按下方流程核对 | `core/providers/novelai_image.dart` | `novelai_image_test.dart`、`agent_image_test.dart`、`test/model_settings_flow_test.dart`（仓库根目录） |
 | Claude Code、Codex 命令行：参数、流式事件名、登录检查 | 无（按版本号） | `claude --version`、`codex --version` 及各自 `--help`；测试只用假脚本，**须用真实命令行跑一次写作**确认 | `core/providers/local_cli.dart` | `local_cli_test.dart` |
 | 工具链：Flutter 3.47.7 / Dart 3.13.5 | 无（按版本号） | Flutter stable 发布页 | `AGENTS.md`、`README.md`、`docs/building.md`（含 Impeller 绕过说明）、`.github/workflows/`、各 `pubspec.yaml` 的 sdk 约束 | CI |
+
+### NovelAI 生图同步操作
+
+每次例行检查都执行，即使 ST 没有更新。只要求检查时报告差异；要求同步 NovelAI 时按以下范围更新，不连带升级 ST 基线。
+
+1. 读取 `docs/st-preset-compatibility.md`“NovelAI 生图连接”的上次记录，对照 [官方模型说明](https://docs.novelai.net/en/image/models/)、[图片 OpenAPI](https://image.novelai.net/docs/doc.json)和[官方生图页面](https://novelai.net/image)。确认公开可用的模型、弃用情况及图片接口变化。
+2. 文档没有精确模型 ID 或参数时，从生图页面 HTML 找出本次构建加载的脚本，下载相关 JS 到临时目录，搜索 `nai-diffusion-`、`params_version`、`v4_prompt`、`v4_negative_prompt`、`generate-image`，沿模型菜单、默认参数和请求组装处核对。每次从页面重新定位脚本，不复用旧 chunk 文件名；被阻止时可用 `curl -L --fail -A 'Mozilla/5.0'` 读取公开页面，仍不可读则报告未核实项。只把实际出现在公开模型菜单、且受当前文生图接口支持的模型加入选项，不把 bundle 中每个字符串都当作可用模型。
+3. 比较 `core/providers/novelai_image.dart` 的 `models` 和请求体：模型 ID、`params_version`、正负 caption 结构、尺寸/步数/采样器限制、返回格式。先列出变化与证据。模型发现接口须确认返回的是**图片模型**；不能把文本补全的 `/oa/v1/models` 当作图片模型列表。未确认图片发现接口时继续维护内置名单，保留手填 ID。
+4. 同步已核实的模型与必需请求参数，保留现有默认模型和旧模型行为；新模型放在 ST 列表之后，ST 后续纳入时去重。官方菜单隐藏旧模型不等于接口已停用，删除选项需停用依据。NovelAI 单独同步不改 `capture_st_reference.mjs` 或 `novelai-models-reference.json`，新增模型在测试中单独断言。参考图等新增能力只记录缺口，不随模型名单同步扩展实现。
+5. 为新增或变化的模型补本地 HTTP 请求与 ZIP 响应测试，同时保留旧模型回归。从仓库根目录运行以下检查，并按 `AGENTS.md` 完成受影响代码的分析和格式检查；不调用付费模型：
+
+   ```sh
+   (cd packages/sillydraft_core && dart test test/novelai_image_test.dart test/agent_image_test.dart)
+   flutter test --no-pub test/model_settings_flow_test.dart
+   ```
+
+6. 更新 `docs/st-preset-compatibility.md` 的检查日期、前端构建标识、来源链接、参数差异与未核实项；用户可见的模型或配置变化同步到 `docs/user-guide.md`，代码来源注释一并更新。报告区分本地协议测试与真实服务验证，不能把前者写成实际生图成功。
 
 ## 已知缺口（待处理时从这里划掉）
 
