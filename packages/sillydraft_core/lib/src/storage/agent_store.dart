@@ -24,6 +24,20 @@ extension AgentOperations on StoryRepository {
         [branchId],
       );
 
+  /// Names an untitled conversation without overwriting a title set meanwhile.
+  Future<void> nameConversation(String id, String title) => _write(() async {
+    title = title.trim();
+    if (title.isEmpty ||
+        title.length > 30 ||
+        title.contains(RegExp(r'[\r\n]'))) {
+      throw ArgumentError('会话标题须为 1 到 30 个字的单行文本');
+    }
+    await _execute(
+      "UPDATE agent_conversations SET title = ? WHERE id = ? AND title = '创作会话'",
+      [title, id],
+    );
+  });
+
   Future<String> conversationBranch(String id) async =>
       (await _one('SELECT branch_id FROM agent_conversations WHERE id = ?', [
             id,

@@ -146,7 +146,7 @@ void main() {
       await tester.tap(findAction('发送给编辑助手'));
       await tester.pumpAndSettle();
 
-      final request = seen.single;
+      final request = seen.singleWhere((request) => request.tools.isNotEmpty);
       final contents = request.messages.map((m) => '${m['content']}').toList();
       expect(contents.first, contains('<available_skills>'));
       expect(

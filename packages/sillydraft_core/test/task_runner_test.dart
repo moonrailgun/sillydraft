@@ -9,16 +9,30 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
 final class ScriptProvider implements ModelProvider {
-  ScriptProvider(this.config, this.script);
+  ScriptProvider(this.config, this.script, {this.titleScript});
   @override
   final ModelConnection config;
   final Stream<ProviderEvent> Function(ProviderRequest, GenerationCancellation)
   script;
+  final Stream<ProviderEvent> Function(ProviderRequest, GenerationCancellation)?
+  titleScript;
   @override
   Stream<ProviderEvent> generate(
     ProviderRequest request, {
     GenerationCancellation? cancellation,
-  }) => script(request, cancellation ?? GenerationCancellation());
+  }) {
+    final cancel = cancellation ?? GenerationCancellation();
+    // Keep auxiliary naming separate from the scripted conversation/tool rounds.
+    if (request.executionId?.startsWith('conversation-title-') == true) {
+      return titleScript?.call(request, cancel) ??
+          Stream.fromIterable(const [
+            TextDelta('测试会话'),
+            GenerationFinished('stop'),
+          ]);
+    }
+    return script(request, cancel);
+  }
+
   @override
   Future<List<String>> listModels() async => [config.model];
   @override

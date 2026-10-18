@@ -41,7 +41,7 @@ class _StreamingProvider implements ModelProvider {
       [];
 }
 
-/// Answers every request at once with the next of [replies].
+/// Answers conversation turns with [replies], and naming requests separately.
 class _ReplyProvider implements ModelProvider {
   _ReplyProvider(this.config, this.replies);
   @override
@@ -52,6 +52,11 @@ class _ReplyProvider implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
+    if (request.executionId?.startsWith('conversation-title-') == true) {
+      yield const TextDelta('旧宅伏笔设计');
+      yield const GenerationFinished('stop');
+      return;
+    }
     replies.moveNext();
     yield TextDelta(replies.current);
     yield const GenerationFinished('stop');
@@ -106,6 +111,21 @@ Future<List<String>> _thread(StoryRepository repo, String branchId) async {
 }
 
 void main() {
+  testWidgets(
+    'the conversation selector shows the title after the first reply',
+    (tester) async {
+      final (:repo, :branchId) = await _replyingPanel(tester, ['首轮回复']);
+      await tester.enterText(find.byKey(const Key('agent-input')), '设计旧宅的伏笔');
+      await tester.tap(findAction('发送给编辑助手'));
+      await tester.pumpAndSettle();
+      expect(find.text('旧宅伏笔设计 · 1'), findsOneWidget);
+      expect(find.text('创作会话 · 1'), findsNothing);
+      expect(await _thread(repo, branchId), ['设计旧宅的伏笔', '首轮回复']);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('retrying an unsent turn keeps the previous conversation', (
     tester,
   ) async {
