@@ -460,16 +460,14 @@ class _NovelCard extends ConsumerWidget {
                   color: Color(0x66ffffff),
                 ),
               ),
-              Text(
-                novel.genre,
-                style: const TextStyle(color: Color(0xff514b65), fontSize: 12),
-              ),
             ],
           ),
         );
 
   Widget _footer(BuildContext context) {
     final theme = context.theme;
+    final synopsis = novel.synopsis.trim();
+    final genre = novel.genre.trim();
     return Row(
       children: [
         Expanded(
@@ -485,18 +483,22 @@ class _NovelCard extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (synopsis.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  synopsis,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.typography.body.sm.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
+                ),
+              ],
               const SizedBox(height: 6),
               Text(
-                novel.synopsis.isEmpty ? '一个正在生长的故事' : novel.synopsis,
+                '${genre.isEmpty ? '' : '$genre · '}${dateLabel(novel.updatedAt)} 更新',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.typography.body.sm.copyWith(
-                  color: theme.colors.foreground,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${dateLabel(novel.updatedAt)} 更新',
                 style: theme.typography.body.xs.copyWith(
                   color: theme.colors.mutedForeground,
                 ),

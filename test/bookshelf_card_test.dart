@@ -36,6 +36,7 @@ void main() {
 
       expect(find.text(novel.title), findsOneWidget);
       expect(find.text(novel.synopsis), findsOneWidget);
+      expect(find.textContaining('奇幻 · '), findsOneWidget);
       if (hasCover) {
         expect(
           tester.getTopLeft(find.text(novel.title)).dy,
@@ -48,6 +49,14 @@ void main() {
       tester.platformDispatcher.textScaleFactorTestValue = 2;
       await tester.pumpAndSettle();
       expect(find.text(novel.title), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await repo.updateNovel(novel.copyWith(synopsis: '  ', genre: ''));
+      await tester.pumpAndSettle();
+      expect(find.text(novel.title), findsOneWidget);
+      expect(find.text(novel.synopsis), findsNothing);
+      expect(find.text('一个正在生长的故事'), findsNothing);
+      expect(find.textContaining(' · '), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
