@@ -4,6 +4,7 @@ import 'package:forui/forui.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/bookshelf/novel_dialog.dart';
+import 'package:sillydraft/features/branches/branch_screen.dart';
 import 'package:sillydraft/features/editor/workspace_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -42,6 +43,7 @@ void main() {
 
       await openMenu(novel.title);
       expect(find.text('作品信息'), findsOneWidget);
+      expect(find.text('故事分支'), findsOneWidget);
       expect(find.text('归档作品'), findsOneWidget);
       expect(find.text('删除作品'), findsNothing);
       expect(find.byType(NovelWorkspace), findsNothing);
@@ -58,6 +60,17 @@ void main() {
       expect(find.text('改过书名的作品'), findsOneWidget);
       expect(find.text(novel.title), findsNothing);
       expect((await repo.getNovel(other.id)).title, other.title);
+
+      await openMenu('改过书名的作品');
+      await tester.tap(find.text('故事分支'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<BranchScreen>(find.byType(BranchScreen)).novelId,
+        novel.id,
+      );
+      expect(find.text('主线'), findsWidgets);
+      await tester.tap(findAction('返回'));
+      await tester.pumpAndSettle();
 
       expect(find.text('改过书名的作品'), findsOneWidget);
       expect(find.byType(NovelWorkspace), findsNothing);

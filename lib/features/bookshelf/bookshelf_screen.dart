@@ -10,6 +10,7 @@ import '../remote/library_switcher.dart';
 import '../remote/share_screen.dart';
 import '../../app/sample.dart';
 import '../../app/widgets.dart';
+import '../branches/branch_screen.dart';
 import '../editor/workspace_screen.dart';
 import 'novel_dialog.dart';
 import 'novel_start.dart';
@@ -514,6 +515,16 @@ class _NovelCard extends ConsumerWidget {
               '作品信息',
               () => showNovelDialog(context, novel: novel),
               icon: FLucideIcons.info,
+            ),
+            menuEntry(
+              '故事分支',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => BranchScreen(novelId: novel.id),
+                ),
+              ),
+              icon: FLucideIcons.gitBranch,
             ),
             menuEntry(
               novel.archived ? '恢复到书架' : '归档作品',
