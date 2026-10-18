@@ -222,14 +222,106 @@ void main() {
     expect(find.byType(HtmlBlockView), findsNothing);
     expect(find.text('图片暂不可用'), findsNothing);
 
-    await tester.tap(findAction('排版与主题').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('隐藏插图'));
+    expect(find.text('插图已隐藏'), findsOneWidget);
+    await tester.tap(find.text('显示插图'));
     await tester.pumpAndSettle(const Duration(seconds: 1));
     expect(find.byType(HtmlBlockView), findsNothing);
     expect(find.text('图片暂不可用'), findsOneWidget);
+    expect(find.text('插图已隐藏'), findsNothing);
     expect((await repo.getSetting('reader'))?['hideHtml'], isTrue);
     expect((await repo.getSetting('reader'))?['hideImages'], isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('inserting a hidden illustration offers to reveal only images', (
+    tester,
+  ) async {
+    _phone(tester);
+    final services = await _services();
+    addTearDown(services.close);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+    final repo = services.repository;
+    final novel = await repo.createNovel(title: '选段插图');
+    const quote = '被选中的段落。';
+    final chapter = await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('$quote\n后面的段落。\n'),
+    );
+    final asset = await repo.storeAsset(
+      branchId: chapter.branchId,
+      name: '选段插图',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 100,
+        height: 100,
+        byteLength: 200,
+      ),
+    );
+    await repo.setSetting('reader', {
+      'hideHtml': true,
+      'hideImages': true,
+      'indent': false,
+    });
+    await tester.pumpWidget(
+      _host(services, ReaderScreen(branchId: chapter.branchId, embedded: true)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('插图已隐藏'), findsNothing);
+
+    final conversation = await repo.createConversation(
+      branchId: chapter.branchId,
+    );
+    await repo.appendAgentMessage(
+      conversation,
+      role: 'user',
+      content: '为这段正文生成一张插图：\n\n$quote',
+      metadata: {
+        'illustrationAnchor': {
+          'chapterId': chapter.id,
+          'revisionId': chapter.revisionId,
+          'endOffset': quote.length,
+        },
+      },
+    );
+    final inserted = await repo.insertAgentIllustration(
+      branchId: chapter.branchId,
+      assetId: asset.id,
+      source: (await repo.getAgentMessages(conversation)).single,
+    );
+    await tester.pumpAndSettle();
+    expect(inserted.content.text, '$quote\n\uFFFC\n后面的段落。\n');
+    expect(find.text('插图已隐藏'), findsOneWidget);
+    expect(find.text('图片暂不可用'), findsNothing);
+    expect((await repo.getSetting('reader'))?['hideImages'], isTrue);
+
+    await tester.tap(find.text('显示插图'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.text('图片暂不可用'), findsOneWidget);
+    expect(find.text('插图已隐藏'), findsNothing);
+    expect((await repo.getSetting('reader'))?['hideHtml'], isTrue);
+    expect((await repo.getSetting('reader'))?['hideImages'], isFalse);
+    final shown = tester
+        .widget<RichText>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is RichText && widget.text.toPlainText().contains(quote),
+          ),
+        )
+        .text
+        .toPlainText();
+    expect(shown.indexOf('\uFFFC'), greaterThan(shown.indexOf(quote)));
+    expect(shown.indexOf('\uFFFC'), lessThan(shown.indexOf('后面的段落')));
+    expect(
+      (await repo.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+      )).content,
+      inserted.content,
+    );
     expect(tester.takeException(), isNull);
   });
 

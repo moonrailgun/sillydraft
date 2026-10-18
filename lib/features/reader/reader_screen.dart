@@ -1468,6 +1468,11 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final canPop =
         !widget.embedded &&
         (ModalRoute.of(context)?.impliesAppBarDismissal ?? false);
+    final hiddenImages =
+        _style.hideImages &&
+        (_displayRules ? presentation.content : chapter.content).delta.any(
+          (op) => op['insert'] is Map,
+        );
     return _slideIn(
       top: true,
       child: DecoratedBox(
@@ -1483,46 +1488,76 @@ class _ReaderState extends ConsumerState<ReaderScreen>
             ),
           ],
         ),
-        child: FHeader.nested(
-          title: Text(
-            widget.embedded ? _chapterTitle(chapter) : story.novel.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          prefixes: [if (canPop) const AppBackButton()],
-          suffixes: [
-            if (widget.onEdit case final edit?)
-              HeaderIconAction(
-                key: const Key('reader-edit-chapter'),
-                tooltip: '编辑本章',
-                icon: FLucideIcons.pencil,
-                onPress: () => edit(chapter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FHeader.nested(
+              title: Text(
+                widget.embedded ? _chapterTitle(chapter) : story.novel.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            HeaderIconAction(
-              tooltip: '搜索正文',
-              icon: FLucideIcons.search,
-              onPress: () => _search(story),
-            ),
-            MenuAction(
-              header: true,
-              tooltip: '阅读设置',
-              entries: [
-                menuEntry('排版与主题', _preferences, icon: FLucideIcons.type),
-                menuEntry(
-                  '书签',
-                  () => _bookmarks(story),
-                  icon: FLucideIcons.bookmark,
-                ),
-                if (presentation.content != chapter.content)
-                  menuEntry(
-                    _displayRules ? '显示原正文' : '应用显示正则',
-                    () => setState(() => _displayRules = !_displayRules),
-                    icon: _displayRules
-                        ? FLucideIcons.eyeOff
-                        : FLucideIcons.eye,
+              prefixes: [if (canPop) const AppBackButton()],
+              suffixes: [
+                if (widget.onEdit case final edit?)
+                  HeaderIconAction(
+                    key: const Key('reader-edit-chapter'),
+                    tooltip: '编辑本章',
+                    icon: FLucideIcons.pencil,
+                    onPress: () => edit(chapter),
                   ),
+                HeaderIconAction(
+                  tooltip: '搜索正文',
+                  icon: FLucideIcons.search,
+                  onPress: () => _search(story),
+                ),
+                MenuAction(
+                  header: true,
+                  tooltip: '阅读设置',
+                  entries: [
+                    menuEntry('排版与主题', _preferences, icon: FLucideIcons.type),
+                    menuEntry(
+                      '书签',
+                      () => _bookmarks(story),
+                      icon: FLucideIcons.bookmark,
+                    ),
+                    if (presentation.content != chapter.content)
+                      menuEntry(
+                        _displayRules ? '显示原正文' : '应用显示正则',
+                        () => setState(() => _displayRules = !_displayRules),
+                        icon: _displayRules
+                            ? FLucideIcons.eyeOff
+                            : FLucideIcons.eye,
+                      ),
+                  ],
+                ),
               ],
             ),
+            if (hiddenImages)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '插图已隐藏',
+                        style: ui.typography.body.sm.copyWith(
+                          color: ui.colors.mutedForeground,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () =>
+                          _setStyle(_style.copyWith(hideImages: false)),
+                      child: const Text('显示插图'),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
