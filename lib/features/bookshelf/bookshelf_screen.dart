@@ -11,6 +11,7 @@ import '../remote/share_screen.dart';
 import '../../app/sample.dart';
 import '../../app/widgets.dart';
 import '../editor/workspace_screen.dart';
+import 'novel_dialog.dart';
 import 'novel_start.dart';
 import 'search_screen.dart';
 import '../illustrations/asset_image.dart';
@@ -509,6 +510,11 @@ class _NovelCard extends ConsumerWidget {
         MenuAction(
           tooltip: '作品操作',
           entries: [
+            menuEntry(
+              '作品信息',
+              () => showNovelDialog(context, novel: novel),
+              icon: FLucideIcons.info,
+            ),
             menuEntry(
               novel.archived ? '恢复到书架' : '归档作品',
               onArchive,
