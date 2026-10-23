@@ -98,6 +98,7 @@ final class IllustrationService {
     required String name,
     required ImageRequest request,
     String? chapterId,
+    Map<String, dynamic>? illustrationAnchor,
     List<String> referenceAssetIds = const [],
     AssetPurpose purpose = AssetPurpose.illustration,
   }) async {
@@ -133,6 +134,7 @@ final class IllustrationService {
         'name': name.trim(),
         'purpose': purpose.name,
         'references': references,
+        'illustrationAnchor': ?illustrationAnchor,
       },
     );
   }

@@ -32,7 +32,16 @@ Future<GenerationTask> _pending(StoryRepository repo, String id) async {
 }
 
 void main() {
-  for (final outcome in ['complete', 'reject', 'fail', 'cancel', 'invalid']) {
+  for (final outcome in [
+    'complete',
+    'reject',
+    'fail',
+    'cancel',
+    'invalid',
+    'missing quote',
+    'ambiguous quote',
+    'changed',
+  ]) {
     test(
       'chapter image batch: $outcome, one approval and serial calls',
       () async {
@@ -44,7 +53,7 @@ void main() {
         final chapter = await repo.createChapter(
           branchId: novel.activeBranchId,
           title: '渡口',
-          content: ManuscriptContent.plainText('红伞过桥。白船靠岸。灯塔亮起。'),
+          content: ManuscriptContent.plainText('红伞过桥。\n白船靠岸。\n灯塔亮起。\n红伞。红伞。'),
         );
         final conversation = await repo.createConversation(
           branchId: novel.activeBranchId,
@@ -79,6 +88,15 @@ void main() {
                 ])
                   {
                     'name': prompt,
+                    'quote': outcome == 'missing quote'
+                        ? '不存在的段落'
+                        : outcome == 'ambiguous quote'
+                        ? '红伞'
+                        : switch (prompt) {
+                            'red umbrella' => '红伞过桥。',
+                            'white boat' => '白船靠岸。',
+                            _ => '灯塔亮起。',
+                          },
                     'prompt': outcome == 'invalid' && prompt == 'white boat'
                         ? ''
                         : prompt,
@@ -109,7 +127,7 @@ void main() {
           message: '提取本章亮点并批量生图',
         );
         final pending = await _pending(repo, task.id);
-        if (outcome == 'invalid') {
+        if (['invalid', 'missing quote', 'ambiguous quote'].contains(outcome)) {
           expect(pending.status, TaskStatus.failed);
           expect(pending.result['imageConfirmation'], isNull);
           expect(prompts, isEmpty);
@@ -154,12 +172,12 @@ void main() {
         }
         final done = await runner.wait(task.id);
         expect(done.status, switch (outcome) {
-          'complete' => TaskStatus.completed,
+          'complete' || 'changed' => TaskStatus.completed,
           'fail' => TaskStatus.failed,
           _ => TaskStatus.cancelled,
         });
         expect(prompts.length, switch (outcome) {
-          'complete' => 3,
+          'complete' || 'changed' => 3,
           'fail' => 2,
           'cancel' => 1,
           _ => 0,
@@ -168,14 +186,14 @@ void main() {
         final assets = await repo.listAssets(novel.id);
         expect(
           assets.length,
-          outcome == 'complete'
+          (outcome == 'complete' || outcome == 'changed')
               ? 3
               : outcome == 'fail'
               ? 1
               : 0,
         );
         if (outcome == 'fail') expect(done.error, contains('第二张失败'));
-        if (outcome == 'complete' || outcome == 'fail') {
+        if (['complete', 'changed', 'fail'].contains(outcome)) {
           expect(done.result['assetIds'], hasLength(assets.length));
           final messages = await repo.getAgentMessages(conversation);
           final result = messages
@@ -183,6 +201,61 @@ void main() {
               .single;
           for (final asset in assets) {
             expect(result.content, contains(asset.id));
+          }
+          final source = messages.firstWhere((m) => m.role == 'user');
+          if (outcome == 'changed') {
+            await repo.saveChapter(
+              branchId: chapter.branchId,
+              chapterId: chapter.id,
+              expectedRevisionId: chapter.revisionId,
+              content: ManuscriptContent.plainText('红伞过桥。\n白船已经离岸。'),
+            );
+            await expectLater(
+              repo.insertAgentIllustration(
+                branchId: chapter.branchId,
+                assetId: assets.first.id,
+                source: source,
+              ),
+              throwsA(isA<RevisionConflict>()),
+            );
+            return;
+          }
+          if (outcome == 'complete') {
+            final byName = {for (final asset in assets) asset.name: asset.id};
+            for (final name in ['white boat', 'red umbrella', 'lighthouse']) {
+              await repo.insertAgentIllustration(
+                branchId: chapter.branchId,
+                assetId: byName[name]!,
+                source: source,
+              );
+            }
+            final inserted = await repo.getChapter(
+              branchId: chapter.branchId,
+              chapterId: chapter.id,
+            );
+            expect(
+              inserted.content.text,
+              '红伞过桥。\n\uFFFC\n白船靠岸。\n\uFFFC\n灯塔亮起。\n\uFFFC\n红伞。红伞。\n',
+            );
+            expect(
+              inserted.content.delta
+                  .where((op) => op['insert'] is Map)
+                  .map((op) => (op['insert'] as Map)['image']),
+              [
+                'asset:${byName['red umbrella']}',
+                'asset:${byName['white boat']}',
+                'asset:${byName['lighthouse']}',
+              ],
+            );
+            await expectLater(
+              repo.insertAgentIllustration(
+                branchId: chapter.branchId,
+                assetId: byName['red umbrella']!,
+                source: source,
+              ),
+              throwsFormatException,
+            );
+            return;
           }
         }
         expect(

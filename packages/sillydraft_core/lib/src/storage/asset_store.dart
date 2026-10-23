@@ -156,7 +156,10 @@ extension AssetOperations on StoryRepository {
         await conversationBranch(source.conversationId) != branchId) {
       throw const FormatException('找不到这张图片引用的正文，请从插图库选择插入位置。');
     }
-    final anchor = source.raw['illustrationAnchor'];
+    final asset = await getAsset(assetId);
+    final anchor =
+        asset.metadata['illustrationAnchor'] ??
+        source.raw['illustrationAnchor'];
     final attachment = source.raw['attachment'];
     final chapterId = anchor is Map
         ? anchor['chapterId']
@@ -170,6 +173,34 @@ extension AssetOperations on StoryRepository {
     final text = chapter.content.text;
     late int end;
     if (anchor case {
+      'revisionId': final String revision,
+      'quote': final String quote,
+    }) {
+      // Earlier image insertions move offsets without changing the quoted prose.
+      var current = await getRevision(chapter.revisionId);
+      while (current.id != revision) {
+        if (current.reason != 'insert_illustration' ||
+            current.parentRevisionId == null) {
+          throw RevisionConflict(
+            expected: revision,
+            actual: chapter.revisionId,
+          );
+        }
+        current = await getRevision(current.parentRevisionId!);
+      }
+      if (chapter.content.delta.any(
+        (op) =>
+            op['insert'] is Map &&
+            (op['insert'] as Map)['image'] == 'asset:$assetId',
+      )) {
+        throw const FormatException('这张插图已在本章正文中。');
+      }
+      final start = quote.isEmpty ? -1 : text.indexOf(quote);
+      if (start < 0 || text.indexOf(quote, start + 1) >= 0) {
+        throw const FormatException('无法准确定位引用段落，请从插图库选择插入位置。');
+      }
+      end = start + quote.length;
+    } else if (anchor case {
       'revisionId': final String revision,
       'endOffset': final int offset,
     }) {

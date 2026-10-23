@@ -53,6 +53,7 @@ final _both = ModelConnection(
 Future<(AppServices, Chapter)> _book({
   bool configured = true,
   List<List<ProviderEvent>>? script,
+  String? prose,
 }) async {
   script ??= [];
   final services = AppServices(
@@ -65,7 +66,9 @@ Future<(AppServices, Chapter)> _book({
   final chapter = await services.repository.createChapter(
     branchId: novel.activeBranchId,
     title: '渡口',
-    content: ManuscriptContent.plainText('雨中的渡口，她撑着红伞🌂走过石桥/回头看了一眼。' * 6),
+    content: ManuscriptContent.plainText(
+      prose ?? '雨中的渡口，她撑着红伞🌂走过石桥/回头看了一眼。' * 6,
+    ),
   );
   return (services, chapter);
 }
@@ -122,12 +125,21 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final (services, chapter) = await _book(
         configured: false,
+        prose: '红伞过桥。\n白船靠岸。',
         script: [
           [
             ToolCallReady('batch', 'generate_images', {
               'images': [
-                {'name': '红伞', 'prompt': 'red umbrella on the bridge'},
-                {'name': '渡口', 'prompt': 'boat at the rainy harbor'},
+                {
+                  'name': '红伞',
+                  'prompt': 'red umbrella on the bridge',
+                  'quote': '红伞过桥。',
+                },
+                {
+                  'name': '渡口',
+                  'prompt': 'boat at the rainy harbor',
+                  'quote': '白船靠岸。',
+                },
               ],
             }),
             const GenerationFinished('tool_calls'),
@@ -176,6 +188,8 @@ void main() {
       expect(find.text('生成 2 张本章亮点插图？'), findsOneWidget);
       expect(find.text('red umbrella on the bridge'), findsOneWidget);
       expect(find.text('boat at the rainy harbor'), findsOneWidget);
+      expect(find.text('红伞过桥。'), findsOneWidget);
+      expect(find.text('白船靠岸。'), findsOneWidget);
       expect(find.text('确认生成'), findsOneWidget);
       final task = await repo.getTask(
         (await repo.listTasks(branchId: chapter.branchId)).single.id,
@@ -218,6 +232,14 @@ void main() {
             byteLength: 1,
           ),
           purpose: AssetPurpose.illustration,
+          metadata: {
+            if (i == 0)
+              'illustrationAnchor': {
+                'chapterId': chapter.id,
+                'revisionId': chapter.revisionId,
+                'quote': '红伞过桥。',
+              },
+          },
         );
         ids.add(asset.id);
       }
@@ -239,7 +261,17 @@ void main() {
         expect(find.byKey(Key('agent-image-$id')), findsOneWidget);
       }
       expect(findAction('下载到本地'), findsNWidgets(2));
-      expect(findAction('插入正文'), findsNothing);
+      expect(findAction('插入正文'), findsNWidgets(2));
+      await tester.ensureVisible(findAction('插入正文').first);
+      await tester.tap(findAction('插入正文').first);
+      await tester.pumpAndSettle();
+      expect(
+        (await repo.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
+        )).content.text,
+        '红伞过桥。\n\uFFFC\n白船靠岸。\n',
+      );
       expect(tester.takeException(), isNull);
     },
   );

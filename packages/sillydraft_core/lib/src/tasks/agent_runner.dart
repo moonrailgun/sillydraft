@@ -160,6 +160,11 @@ Map<String, dynamic> _imageTool(
           'description': '负面提示词，填写时替换作者默认的负面提示词',
         },
       'name': {'type': 'string', 'description': '图片的简短名称'},
+      if (batch)
+        'quote': {
+          'type': 'string',
+          'description': '照抄当前章节中与画面对应的原文片段，不跨段落，且在本章只出现一次。图片将插入该片段所在段落下方。',
+        },
       if (limit > 0)
         'references': {
           'type': 'array',
@@ -170,7 +175,7 @@ Map<String, dynamic> _imageTool(
               '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
         },
     },
-    'required': ['prompt', 'name'],
+    'required': ['prompt', 'name', if (batch) 'quote'],
     'additionalProperties': false,
   };
   return {
@@ -725,6 +730,7 @@ extension _AgentExecution on TaskRunner {
                 'name',
                 'negative_prompt',
                 'references',
+                if (batch) 'quote',
               ].contains(k),
             ) ||
             (negative != null &&
@@ -743,6 +749,29 @@ extension _AgentExecution on TaskRunner {
                           ),
                         )))) {
           throw const FormatException('参数无效');
+        }
+        Map<String, dynamic>? anchor;
+        if (batch) {
+          final chapter = chapters
+              .where((c) => c['id'] == image['chapterId'])
+              .firstOrNull;
+          final text = chapter?['text'] as String? ?? '';
+          final quote = item['quote'];
+          if (quote is! String ||
+              quote.trim().isEmpty ||
+              quote.contains('\n') ||
+              quote.contains('\uFFFC')) {
+            throw const FormatException('每张插图须引用本章一个段落中的原文片段。');
+          }
+          final start = text.indexOf(quote);
+          if (start < 0 || text.indexOf(quote, start + 1) >= 0) {
+            throw const FormatException('插图引用须与本章原文完全一致且只出现一次，请补充上下文以定位段落。');
+          }
+          anchor = {
+            'chapterId': chapter!['id'],
+            'revisionId': chapter['revisionId'],
+            'quote': quote,
+          };
         }
         final referenceIds = [...?(references as List?)?.cast<String>()];
         // Checked before the author is asked: a picture from another book
@@ -771,6 +800,7 @@ extension _AgentExecution on TaskRunner {
           'name': name,
           'prompt': request.prompt,
           'negativePrompt': ?request.parameters['negative_prompt'],
+          'illustrationAnchor': ?anchor,
           if (referenceIds.isNotEmpty) 'references': referenceIds,
         });
       }
@@ -824,6 +854,8 @@ extension _AgentExecution on TaskRunner {
                 name: previews[i]['name'] as String,
                 request: requests[i],
                 chapterId: image['chapterId'] as String?,
+                illustrationAnchor:
+                    previews[i]['illustrationAnchor'] as Map<String, dynamic>?,
                 referenceAssetIds:
                     (previews[i]['references'] as List?)?.cast<String>() ??
                     const [],

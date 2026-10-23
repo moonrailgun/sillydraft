@@ -560,6 +560,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
               Text('提示词', style: label),
               const SizedBox(height: 4),
               SelectableText('${preview['prompt']}'),
+              if (preview['illustrationAnchor'] case {
+                'quote': final String quote,
+              }) ...[
+                const SizedBox(height: 8),
+                Text('插入位置：以下原文所在段落下方', style: label),
+                const SizedBox(height: 4),
+                SelectableText(quote),
+              ],
               if (preview['negativePrompt'] case final String negative) ...[
                 const SizedBox(height: 8),
                 Text('负面提示词', style: label),
@@ -1809,14 +1817,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (metadata['tool_name'] == 'generate_image')
-                                    IconAction(
-                                      icon: FLucideIcons.filePlus,
-                                      tooltip: '插入正文',
-                                      onPress: _insertingImages.contains(id)
-                                          ? null
-                                          : () => _insertImage(id, message),
-                                    ),
+                                  IconAction(
+                                    icon: FLucideIcons.filePlus,
+                                    tooltip: '插入正文',
+                                    onPress: _insertingImages.contains(id)
+                                        ? null
+                                        : () => _insertImage(id, message),
+                                  ),
                                   IconAction(
                                     icon: FLucideIcons.download,
                                     tooltip: '下载到本地',
