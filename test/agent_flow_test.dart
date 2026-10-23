@@ -393,7 +393,9 @@ void main() {
         (await repo.listTasks(branchId: novel.activeBranchId)).single.status,
         TaskStatus.cancelled,
       );
-      await tester.tap(findAction('删除当前会话'));
+      await tester.tap(findAction('更多'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除当前会话'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除会话'));
       await tester.pumpAndSettle();

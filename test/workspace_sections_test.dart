@@ -311,7 +311,7 @@ void main() {
     await tester.tap(find.text('候选测试'));
     await tester.pumpAndSettle();
     await _section(tester, '助手');
-    await tester.tap(findAction('任务'));
+    await tester.tap(findAction('更多'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('未写入 · 1'));
     await tester.pumpAndSettle();
@@ -331,7 +331,7 @@ void main() {
         await tester.tap(find.byKey(const Key('editor-assistant')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('agent-input')), findsOneWidget);
-        expect(find.text('截至「灯塔」'), findsOneWidget);
+        expect(findAction('参考范围：截至「灯塔」'), findsOneWidget);
         // Docked or floating, the manuscript stays on screen with it.
         expect(find.byKey(const Key('manuscript-editor')), findsOneWidget);
         expect(

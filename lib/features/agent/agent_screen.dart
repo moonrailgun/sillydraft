@@ -664,7 +664,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   }
 
   /// A small outlined action with an icon, optionally explained by a hover
-  /// tooltip: the chips above the conversation.
+  /// tooltip: the skill suggestions above the input.
   Widget _chip({
     Key? key,
     String? tooltip,
@@ -685,15 +685,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
     return FTooltip(tipBuilder: (_, _) => Text(tooltip), child: button);
   }
 
-  Widget _skillsChip() {
+  Widget _skillsAction() {
     final on = (ref.watch(skillsProvider).value ?? const [])
         .where((e) => e.enabled)
         .length;
-    return _chip(
+    return IconAction(
       key: const Key('agent-skills'),
-      tooltip: '管理助手技能；对话开头输入 / 可直接启用',
+      tooltip: '技能 · $on',
       icon: FLucideIcons.puzzle,
-      label: Flexible(child: Text('技能 · $on', overflow: TextOverflow.ellipsis)),
       onPress: () => Navigator.push(
         context,
         MaterialPageRoute<void>(builder: (_) => const SkillsScreen()),
@@ -701,13 +700,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
-  /// One-tap requests above the input. Writing actions fill in a message about the
+  /// One-tap requests in a menu beside the input. Writing actions fill in a message about the
   /// chapter beside the chat, else the chapter at the assistant's position, for
   /// the author to finish or send. The assistant may only write the last
   /// chapter it can see, so continuing or revising another chapter, or asking
   /// about one beyond its position, first moves the position there. Ending
   /// ideas and image batches also stop there so later events cannot shape them.
-  Widget _quickActions(StorySnapshot? story) {
+  Widget _quickActions(StorySnapshot? story, {required double maxHeight}) {
     final chapters = story?.chapters ?? const <Chapter>[];
     final limit = _chapter == null
         ? chapters.length - 1
@@ -787,23 +786,32 @@ class _AgentState extends ConsumerState<AgentPanel> {
         ),
       ),
     ];
-    return SingleChildScrollView(
-      key: const Key('agent-quick-actions'),
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final (icon, label, tooltip, onPress) in actions)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: _chip(
+    return FPopoverMenu(
+      menuAnchor: Alignment.bottomLeft,
+      childAnchor: Alignment.topLeft,
+      maxHeight: maxHeight,
+      menuBuilder: (context, controller, _) => [
+        FItemGroup(
+          children: [
+            for (final (icon, label, description, onPress) in actions)
+              FItem(
                 key: Key('agent-quick-$label'),
-                tooltip: tooltip,
-                icon: icon,
-                label: Text(label),
-                onPress: onPress,
+                prefix: Icon(icon),
+                title: Text(label),
+                subtitle: Text(description),
+                onPress: () {
+                  controller.hide();
+                  onPress();
+                },
               ),
-            ),
-        ],
+          ],
+        ),
+      ],
+      builder: (context, controller, _) => IconAction(
+        key: const Key('agent-quick-actions'),
+        icon: FLucideIcons.zap,
+        tooltip: '快捷操作',
+        onPress: controller.toggle,
       ),
     );
   }
@@ -850,7 +858,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   }
 
   /// Which ST preset shapes this chat, and the way into the preset panel.
-  Widget _presetChip() {
+  Widget _presetAction() {
     final setting = ref
         .watch(settingProvider('writing/${widget.branchId}'))
         .value;
@@ -862,14 +870,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
     final off = setting?[assistantUsesPresetKey] == false;
     final customized =
         (setting?['presetOverrides'] as Map?)?.containsKey(id) == true;
-    return _chip(
+    return IconAction(
       key: const Key('agent-preset'),
-      tooltip:
-          'ST 预设${customized ? ' · 已自定义' : ''}${off ? '（未用于对话）' : ''}，点击选择与编辑',
+      tooltip: name == null
+          ? '未选择预设'
+          : 'ST 预设：$name${customized ? ' · 已自定义' : ''}${off ? '（未用于对话）' : ''}',
       icon: FLucideIcons.slidersHorizontal,
-      label: Flexible(
-        child: Text(name ?? '未选择预设', overflow: TextOverflow.ellipsis),
-      ),
+      selected: name != null && !off,
       onPress: () => Navigator.push(
         context,
         MaterialPageRoute<void>(
@@ -947,43 +954,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _modelBanner(),
-                  // Context on one line: the position and the skills are
-                  // capped, the preset name takes the rest, all truncate.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Row(
-                      children: [
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: (bounds.maxWidth - 32) * .35,
-                          ),
-                          child: _chip(
-                            key: const Key('agent-position'),
-                            tooltip: '参考范围：助手只读取截至此处的正文与资料',
-                            icon: FLucideIcons.mapPin,
-                            label: Flexible(
-                              child: Text(
-                                _chapter == null
-                                    ? '分支末尾'
-                                    : '截至「${chapter == null || chapter.title.isEmpty ? '当前章节' : chapter.title}」',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            onPress: _choosePosition,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(child: _presetChip()),
-                        const SizedBox(width: 8),
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: (bounds.maxWidth - 32) * .3,
-                          ),
-                          child: _skillsChip(),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // One row: the conversation, then the context as icons
+                  // (details in their tooltips), then the conversation
+                  // actions.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
                     child: Row(
@@ -1033,17 +1006,23 @@ class _AgentState extends ConsumerState<AgentPanel> {
                           ),
                         ),
                         IconAction(
+                          key: const Key('agent-position'),
+                          icon: FLucideIcons.mapPin,
+                          tooltip: _chapter == null
+                              ? '参考范围：分支末尾'
+                              : '参考范围：截至「${chapter == null || chapter.title.isEmpty ? '当前章节' : chapter.title}」',
+                          selected: _chapter != null,
+                          onPress: _choosePosition,
+                        ),
+                        _presetAction(),
+                        _skillsAction(),
+                        IconAction(
                           icon: FLucideIcons.messageSquarePlus,
                           tooltip: '新建编辑会话',
                           onPress: _newConversation,
                         ),
-                        IconAction(
-                          icon: FLucideIcons.trash2,
-                          tooltip: '删除当前会话',
-                          onPress: _conversation == null ? null : _delete,
-                        ),
                         MenuAction(
-                          tooltip: '任务',
+                          tooltip: '更多',
                           entries: [
                             if (pending > 0)
                               menuEntry(
@@ -1056,6 +1035,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
                               () => _openList('任务', _history),
                               icon: FLucideIcons.listChecks,
                             ),
+                            if (_conversation != null)
+                              menuEntry(
+                                '删除当前会话',
+                                _delete,
+                                icon: FLucideIcons.trash2,
+                                destructive: true,
+                              ),
                           ],
                         ),
                       ],
@@ -1280,8 +1266,6 @@ class _AgentState extends ConsumerState<AgentPanel> {
                       ),
                     ),
                   ),
-                _quickActions(story),
-                const SizedBox(height: 8),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: bounds.maxHeight * .2),
                   child: SingleChildScrollView(child: _skillSuggestions()),
@@ -1318,6 +1302,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    _quickActions(story, maxHeight: bounds.maxHeight * .7),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: Focus(
                         canRequestFocus: false,

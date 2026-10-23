@@ -114,7 +114,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('技能 · 6'), findsOneWidget);
+      expect(findAction('技能 · 6'), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('agent-input')), '/fore');
       await tester.pump();

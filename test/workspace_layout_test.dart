@@ -16,15 +16,27 @@ Future<void> _tool(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
-String _input(WidgetTester tester) => tester
-    .widget<EditableText>(
-      find.descendant(
-        of: find.byKey(const Key('agent-input')),
-        matching: find.byType(EditableText),
-      ),
-    )
-    .controller
-    .text;
+EditableText _editable(WidgetTester tester) => tester.widget<EditableText>(
+  find.descendant(
+    of: find.byKey(const Key('agent-input')),
+    matching: find.byType(EditableText),
+  ),
+);
+
+String _input(WidgetTester tester) => _editable(tester).controller.text;
+
+/// Picks a quick action from the menu beside the input; it fills the input
+/// and leaves the cursor there.
+Future<void> _quick(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const Key('agent-quick-actions')));
+  await tester.pumpAndSettle();
+  final action = find.byKey(Key('agent-quick-$label'));
+  await tester.ensureVisible(action);
+  await tester.pumpAndSettle();
+  await tester.tap(action);
+  await tester.pumpAndSettle();
+  expect(_editable(tester).focusNode.hasFocus, isTrue);
+}
 
 /// Picks a chapter in the outline pane.
 Future<void> _chapter(WidgetTester tester, String title) async {
@@ -235,31 +247,23 @@ void main() {
       // Quick actions act on the chapter in view. Revising one before the end
       // moves the assistant there, as it may only write the last chapter it
       // can see.
-      await tester.tap(find.byKey(const Key('agent-quick-修改')));
-      await tester.pumpAndSettle();
+      await _quick(tester, '修改');
       expect(_input(tester), '修改「码头」：');
-      expect(find.text('截至「码头」'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('agent-quick-查找')));
-      await tester.pumpAndSettle();
+      expect(findAction('参考范围：截至「码头」'), findsOneWidget);
+      await _quick(tester, '查找');
       expect(_input(tester), '在正文中查找：');
       await _chapter(tester, '灯塔');
-      await tester.tap(find.byKey(const Key('agent-quick-续写')));
-      await tester.pumpAndSettle();
+      await _quick(tester, '续写');
       expect(_input(tester), startsWith('续写「灯塔」'));
-      expect(find.text('分支末尾'), findsOneWidget);
-      final ending = find.byKey(const Key('agent-quick-推演结局'));
-      await tester.ensureVisible(ending);
-      await tester.pumpAndSettle();
-      await tester.tap(ending);
-      await tester.pumpAndSettle();
+      expect(findAction('参考范围：分支末尾'), findsOneWidget);
+      await _quick(tester, '推演结局');
       expect(_input(tester), contains('截至「灯塔」'));
       expect(_input(tester), contains('三个不同的结局'));
       expect(_input(tester), contains('不要修改正文或资料'));
       await _chapter(tester, '码头');
-      await tester.tap(ending);
-      await tester.pumpAndSettle();
+      await _quick(tester, '推演结局');
       expect(_input(tester), contains('截至「码头」'));
-      expect(find.text('截至「码头」'), findsOneWidget);
+      expect(findAction('参考范围：截至「码头」'), findsOneWidget);
       // Filling in never sends, so nothing was saved.
       expect(await repo.listConversations(novel.activeBranchId), isEmpty);
 

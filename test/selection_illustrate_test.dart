@@ -161,6 +161,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('agent-quick-actions')));
+      await tester.pumpAndSettle();
       final action = find.byKey(const Key('agent-quick-本章亮点生图'));
       expect(action, findsNothing);
       await services.saveConnection(_both);
