@@ -147,6 +147,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   late Future<void> _selecting;
   bool _sending = false;
   Object? _error;
+  final _expandedTools = <String>{};
 
   /// The author's message being rewritten in the input, if any.
   AgentMessage? _editing;
@@ -1174,14 +1175,11 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                   ),
                                 ),
                               ),
-                            for (final message in messages.reversed)
-                              _message(
-                                message,
-                                regenerate: message == messages.last
-                                    ? regenerate
-                                    : null,
-                                idle: active == null && !_sending,
-                              ),
+                            ..._threadMessages(
+                              messages,
+                              regenerate: regenerate,
+                              idle: active == null && !_sending,
+                            ).reversed,
                             if (messages.isEmpty) _starter(),
                           ],
                         ),
@@ -1455,6 +1453,141 @@ class _AgentState extends ConsumerState<AgentPanel> {
             },
           ),
   );
+
+  List<Widget> _threadMessages(
+    List<AgentMessage> messages, {
+    VoidCallback? regenerate,
+    required bool idle,
+  }) {
+    final entries = <Widget>[];
+    final tools = <AgentMessage>[];
+    void flushTools() {
+      if (tools.isEmpty) return;
+      entries.add(_toolGroup(List.of(tools)));
+      tools.clear();
+    }
+
+    for (final message in messages) {
+      final metadata = message.raw;
+      if ((message.role == 'tool' || metadata['tool_calls'] != null) &&
+          metadata['skill'] is! String &&
+          metadata['tool_name'] != 'generate_image' &&
+          metadata['tool_name'] != 'generate_images') {
+        tools.add(message);
+        continue;
+      }
+      flushTools();
+      entries.add(
+        _message(
+          message,
+          regenerate: message == messages.last ? regenerate : null,
+          idle: idle,
+        ),
+      );
+    }
+    flushTools();
+    return entries;
+  }
+
+  Widget _toolGroup(List<AgentMessage> messages) {
+    final groupId = 'tool-group-${messages.first.id}';
+    final expanded = _expandedTools.contains(groupId);
+    final color = context.theme.colors.mutedForeground;
+    final callCount = messages.fold<int>(
+      0,
+      (count, message) =>
+          count + ((message.raw['tool_calls'] as List?)?.length ?? 0),
+    );
+    return Padding(
+      key: ValueKey(groupId),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            expanded: expanded,
+            child: FButton(
+              variant: FButtonVariant.ghost,
+              mainAxisSize: MainAxisSize.min,
+              style: FButtonStyleDelta.delta(
+                contentStyle: FButtonContentStyleDelta.delta(
+                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+                  constraints: BoxConstraints(
+                    minHeight: touchPlatform ? 44 : 28,
+                  ),
+                ),
+              ),
+              onPress: () => setState(() {
+                expanded
+                    ? _expandedTools.remove(groupId)
+                    : _expandedTools.add(groupId);
+              }),
+              prefix: Icon(FLucideIcons.terminal, size: 14, color: color),
+              suffix: Icon(
+                expanded ? FLucideIcons.chevronUp : FLucideIcons.chevronDown,
+                size: 14,
+                color: color,
+              ),
+              child: Text(
+                '调用了 ${callCount == 0 ? messages.length : callCount} 个工具',
+                style: context.theme.typography.body.xs.copyWith(color: color),
+              ),
+            ),
+          ),
+          if (expanded)
+            FAccordion(
+              control: _toolExpansion([
+                for (final message in messages) message.id,
+              ]),
+              children: [
+                for (final message in messages)
+                  FAccordionItem(
+                    key: ValueKey(message.id),
+                    title: Text(
+                      message.role == 'tool'
+                          ? '结果 · ${message.raw['tool_name'] ?? '工具'}'
+                          : '调用 · ${[for (final call in message.raw['tool_calls'] as List? ?? [])
+                              if (call case {'function': {'name': final String name}}) name].join('、')}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: context.theme.colors.mutedForeground,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (message.role != 'tool' &&
+                            message.content.isNotEmpty) ...[
+                          _markdown(message.content),
+                          const SizedBox(height: 8),
+                        ],
+                        SelectableText(
+                          message.role == 'tool'
+                              ? message.content
+                              : const JsonEncoder.withIndent('  ')
+                                    .convert(message.raw),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Keep expansion tied to messages as new tool records arrive.
+  FAccordionControl _toolExpansion(List<String> ids) =>
+      FAccordionControl.lifted(
+        expanded: (index) => _expandedTools.contains(ids[index]),
+        onChange: (index, expanded) => setState(() {
+          expanded
+              ? _expandedTools.add(ids[index])
+              : _expandedTools.remove(ids[index]);
+        }),
+      );
 
   /// A collapsed card whose body is revealed on demand: loaded skills and
   /// tool traffic in the conversation.
