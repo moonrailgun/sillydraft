@@ -20,6 +20,7 @@ import 'devtool_trim.dart';
 import 'home_screen.dart';
 import 'library_host.dart';
 import 'services.dart';
+import 'task_activity.dart';
 import 'theme.dart';
 import 'widgets.dart' show showError;
 
@@ -160,7 +161,10 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
               child: Overlay.wrap(
                 child: RemoteFrame(
                   navigator: _navigator,
-                  child: DesktopCommands(invoke: _command, child: child!),
+                  child: TaskActivityFrame(
+                    navigator: _navigator,
+                    child: DesktopCommands(invoke: _command, child: child!),
+                  ),
                 ),
               ),
             ),

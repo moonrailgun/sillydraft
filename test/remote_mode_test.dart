@@ -135,14 +135,21 @@ void main() {
       addTearDown(services.close);
       await PairedDesktops(services.secrets).save(link());
       await tester.pumpWidget(SillyDraftApp(services: services));
-      await tester.pumpAndSettle();
+      // The active-task spinner keeps animating while the dialogs open.
+      Future<void> pumpActivity() async {
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
+      await pumpActivity();
       await tester.tap(find.text('SillyDraft'));
-      await tester.pumpAndSettle();
+      await pumpActivity();
       await tester.tap(find.textContaining('书房'));
-      await tester.pumpAndSettle();
+      await pumpActivity();
       expect(find.textContaining('切换会中断 1 个本机任务'), findsOneWidget);
       await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
+      await pumpActivity();
       expect(find.text('本机作品'), findsOneWidget);
     },
     variant: _phone,
