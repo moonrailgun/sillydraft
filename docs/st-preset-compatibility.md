@@ -16,6 +16,12 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 OpenAI 兼容接口按工具调用保留并回传 `extra_content`，包括 Gemini 的 `extra_content.google.thought_signature`。签名随流式片段或完整 JSON 响应接收，留在原来的工具调用上；后续工具轮次、会话日志和手机经桌面代理调用均保留该字段，不给同批其他调用补签名。依据为 [Gemini 官方协议](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures)，不改变 ST 预设语义。旧版本已经丢弃的签名无法恢复；重新发送用户消息会开始新的工具轮次。`provider_test.dart` 与 `remote_providers_test.dart` 覆盖本地模拟协议和日志保存，尚未验证真实 Gemini 服务或第三方网关。
 
+## Agent 工具循环
+
+编辑、插图助手和旁路整理共用的工具循环对照 Pi **v1.3.0**：不设固定工具轮数，模型不再调用工具时完成；取消、服务错误及原有写入保护仍生效。依据为 [`agent-loop.ts`](https://github.com/earendil-works/pi/blob/v1.3.0/packages/agent/src/agent-loop.ts)，核查日期 2026-10-23。这是执行机制的对齐，不改变 ST 预设语义，也不自动开放同一请求多次写入正文。
+
+当前仍受连接配置的上下文窗口限制，超出窗口时保留已有结果并明确报错。现有单轮最多 12 个工具调用、正文版本冲突检查与一次成功写入保护保留。`agent_compaction_test.dart` 覆盖编辑和旁路任务超过 8 轮后正常完成，只使用本地模拟模型。长任务会增加模型调用量。
+
 ## ComfyUI 工作流读取
 
 ST 1.19.0 的 [`stable-diffusion.js`](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/stable-diffusion.js#L446) 按文件名读取 ST 用户目录内的工作流，再提交 API 节点图到 ComfyUI。社区“智绘姬” [`st-chatu8`](https://github.com/damoshen123/st-chatu8/blob/8b07f4554355671e0a288afa94c1ae89ddfb8b8b/index.js#L45901) 也以 API JSON 保存工作流预设，导入时明确拒绝包含 UI 节点的画布格式。

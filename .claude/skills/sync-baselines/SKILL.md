@@ -118,6 +118,7 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 
 | 对象 | 记录位置 | 关注 | 实现 | 测试 |
 |---|---|---|---|---|
+| [Pi](https://github.com/earendil-works/pi) v1.3.0：工具循环 | `docs/st-preset-compatibility.md`“Agent 工具循环” | `packages/agent/src/agent-loop.ts`；只对照已采用的工具循环机制 | `core/tasks/agent_runner.dart` | `agent_compaction_test.dart`、`agent_write_state_test.dart`、`sidecar_test.dart` |
 | [智绘姬 st-chatu8](https://github.com/damoshen123/st-chatu8)：独立生图上下文、角色与服装视觉资料 | `docs/st-preset-compatibility.md`“插图的视觉资料与画面规则”，固定 `6e159481b15a975ba4ab2ba43d449d659eca6cd5` | `index.js` 的 `processImageLikeRequest`、`processCharacterPrompt`；只对照已采用的机制，不自动导入外部分发预设 | `core/agent/editor_agent.dart`、`core/agent/image_prompt.dart`、`core/agent/persona_service.dart` | `illustration_prompt_test.dart`、`persona_service_test.dart`、`agent_image_test.dart` |
 | [酒馆助手 JS-Slash-Runner](https://github.com/N0VI028/JS-Slash-Runner)（分支 `main`）：前端块识别、`srcdoc` 骨架与 `vh` 改写、高度算法、接口函数名、事件名、斜杠命令、助手宏 | `docs/verification/html-rendering.md` 第一段 | `src/util/is_frontend.ts`、`src/panel/render/iframe.ts`、`src/iframe/`、`src/function/`、`@types/function/` | `core/html/html_blocks.dart`、`core/html/tavern_runtime.dart`（接口列表、事件、高度）、`core/html/tavern_bridge.dart`、`lib/features/html/html_block_view.dart`、`core/st/macro_engine.dart` 助手宏 | `html_blocks_test.dart`、`tavern_bridge_test.dart`、`integration_test/html_*_test.dart` |
 | 酒馆助手预载的 lodash、jQuery、Font Awesome（只固定大版本） | 同上 | 酒馆助手源码中的预载列表 | `core/html/html_blocks.dart` 中的 CDN 地址 | `html_blocks_test.dart` |

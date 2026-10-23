@@ -395,7 +395,8 @@ extension _AgentExecution on TaskRunner {
     );
     final messages = request.messages;
     var missingImageReplies = 0;
-    for (var round = 0; round < 8; round++) {
+    // Pi v1.3.0 packages/agent/src/agent-loop.ts: run until the model finishes.
+    for (var round = 0; ; round++) {
       cancel.check();
       if (estimateTokens(jsonEncode(messages)) +
               provider.config.maxOutputTokens >
@@ -559,7 +560,6 @@ extension _AgentExecution on TaskRunner {
         }
       }
     }
-    throw ProviderException('round_limit', '$name任务达到 8 轮工具调用限制，已有结果已保留');
   }
 
   Future<Map<String, dynamic>> _executeTool(
