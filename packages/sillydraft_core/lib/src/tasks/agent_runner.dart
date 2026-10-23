@@ -118,8 +118,14 @@ const _editingTools = <Map<String, dynamic>>[
         'type': 'object',
         'properties': {
           'chapterId': {'type': 'string'},
-          'instructions': {'type': 'string'},
-          'append': {'type': 'boolean'},
+          'instructions': {
+            'type': 'string',
+            'description': '交给独立写作模型的完整要求。追加时只生成后续正文；替换时输出修改后的完整章节，明确应保留的故事和应移除的模板，不省略未要求改动的内容。',
+          },
+          'append': {
+            'type': 'boolean',
+            'description': 'true：保留整章原文并在末尾追加新正文。false：用生成结果替换整章。仅启动模板的开篇、重写或清理模板用 false；保留已有故事的续写用 true。先读取章节再选择。',
+          },
         },
         'required': ['chapterId', 'instructions', 'append'],
         'additionalProperties': false,
