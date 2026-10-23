@@ -25,6 +25,7 @@ export 'src/providers/provider.dart';
 export 'src/providers/openai_compatible.dart';
 export 'src/providers/remote_provider.dart';
 export 'src/providers/local_cli.dart';
+export 'src/providers/codex_image.dart';
 export 'src/providers/connection_probe.dart';
 export 'src/providers/usage_meter.dart';
 export 'src/model/usage.dart';
