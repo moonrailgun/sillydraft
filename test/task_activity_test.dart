@@ -1,4 +1,7 @@
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
@@ -28,6 +31,116 @@ void main() {
     wakelockPlusPlatformInstance = wakelock;
     addTearDown(() => wakelockPlusPlatformInstance = platform);
   });
+
+  testWidgets('desktop exit confirms active work and still saves drafts', (
+    tester,
+  ) async {
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+    final novel = await services.repository.createNovel(title: '退出测试');
+    await services.repository.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.writing,
+      input: {},
+    );
+    await tester.pumpWidget(SillyDraftApp(services: services));
+    await pumpActivity(tester);
+    var saved = 0;
+    final owner = Object();
+    services.registerDraft(owner, () async {
+      saved++;
+    });
+    addTearDown(() => services.unregisterDraft(owner));
+
+    final cancelled = tester.binding.handleRequestAppExit();
+    final duplicate = tester.binding.handleRequestAppExit();
+    await pumpActivity(tester);
+    expect(find.text('仍有任务进行中'), findsOneWidget);
+    expect(find.byKey(const Key('task-activity')), findsOneWidget);
+    await tester.tap(find.text('继续等待'));
+    await pumpActivity(tester);
+    expect(await cancelled, AppExitResponse.cancel);
+    expect(await duplicate, AppExitResponse.cancel);
+    expect(saved, 0);
+
+    final accepted = tester.binding.handleRequestAppExit();
+    await pumpActivity(tester);
+    await tester.tap(find.text('仍然退出'));
+    await pumpActivity(tester);
+    expect(await accepted, AppExitResponse.exit);
+    expect(saved, 1);
+  });
+
+  testWidgets(
+    'Android back leaves app only after confirmation, not on tab changes',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final services = AppServices(
+        repository: StoryRepository.memory(),
+        secrets: MemorySecrets(),
+      );
+      addTearDown(services.close);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+      });
+      final novel = await services.repository.createNovel(title: '返回测试');
+      await services.repository.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.writing,
+        input: {},
+      );
+      var exits = 0;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'SystemNavigator.pop') exits++;
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await tester.pumpWidget(SillyDraftApp(services: services));
+      await pumpActivity(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AppBottomBar),
+          matching: find.text('设置'),
+        ),
+      );
+      await pumpActivity(tester);
+      await tester.binding.handlePopRoute();
+      await pumpActivity(tester);
+      expect(find.text('仍有任务进行中'), findsNothing);
+      expect(exits, 0);
+      await tester.binding.handlePopRoute();
+      await pumpActivity(tester);
+      expect(find.text('仍有任务进行中'), findsOneWidget);
+      await tester.tap(find.text('继续等待'));
+      await pumpActivity(tester);
+      expect(exits, 0);
+      await tester.binding.handlePopRoute();
+      await pumpActivity(tester);
+      await tester.tap(find.text('仍然退出'));
+      await pumpActivity(tester);
+      expect(exits, 1);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.android}),
+  );
 
   for (final wide in [false, true]) {
     testWidgets(

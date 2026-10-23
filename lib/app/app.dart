@@ -3,11 +3,13 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart' as mui;
+import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../features/bookshelf/novel_start.dart';
 import '../features/bookshelf/search_screen.dart';
@@ -23,7 +25,7 @@ import 'screen_awake.dart';
 import 'services.dart';
 import 'task_activity.dart';
 import 'theme.dart';
-import 'widgets.dart' show showError;
+import 'widgets.dart' show confirmAction, showError;
 
 class SillyDraftApp extends StatefulWidget {
   const SillyDraftApp({super.key, required this.services, this.openLocal});
@@ -73,6 +75,7 @@ class _App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   final _navigator = GlobalKey<NavigatorState>();
   late final ScreenAwake _awake;
+  Future<AppExitResponse>? _exitRequest;
   int _selectedDestination = 0;
 
   void _selectDestination(int index) {
@@ -86,8 +89,31 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   }
 
   @override
-  Future<AppExitResponse> didRequestAppExit() async {
+  Future<AppExitResponse> didRequestAppExit() =>
+      _exitRequest ??= _confirmExit().whenComplete(() => _exitRequest = null);
+
+  Future<AppExitResponse> _confirmExit() async {
     try {
+      final tasks = await ref
+          .read(repositoryProvider)
+          .listTasks(activeOnly: true);
+      if (!mounted) return AppExitResponse.cancel;
+      if (tasks.isNotEmpty) {
+        final context = _navigator.currentState?.overlay?.context;
+        if (context == null ||
+            !context.mounted ||
+            !await confirmAction(
+              context,
+              title: '仍有任务进行中',
+              message: '还有 ${tasks.length} 个任务尚未完成。退出可能中断任务，建议保持应用打开并等待完成。',
+              confirmLabel: '仍然退出',
+              cancelLabel: '继续等待',
+              destructive: true,
+            )) {
+          return AppExitResponse.cancel;
+        }
+      }
+      if (!mounted) return AppExitResponse.cancel;
       await ref.read(servicesProvider).flushDrafts();
       return AppExitResponse.exit;
     } catch (e) {
@@ -205,6 +231,11 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
       home: HomeScreen(
         selectedIndex: _selectedDestination,
         onDestinationSelected: _selectDestination,
+        onExitRequested: () async {
+          if (await didRequestAppExit() == AppExitResponse.exit) {
+            await SystemNavigator.pop();
+          }
+        },
       ),
     );
   }

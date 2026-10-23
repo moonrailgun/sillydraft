@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/bookshelf/bookshelf_screen.dart';
 import '../features/resources/resource_library_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'widgets.dart';
+import 'task_activity.dart';
 
 /// Top-level destinations, in navigation order. The assistant is not one of
 /// them: it always works on a single novel, so it lives in the novel workspace.
@@ -17,21 +19,23 @@ const _destinations = <NavDestination>[
   (icon: FLucideIcons.settings, label: '设置', badge: 0),
 ];
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
     super.key,
     required this.selectedIndex,
     required this.onDestinationSelected,
+    required this.onExitRequested,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
+  final Future<void> Function() onExitRequested;
 
   @override
-  State<HomeScreen> createState() => _HomeState();
+  ConsumerState<HomeScreen> createState() => _HomeState();
 }
 
-class _HomeState extends State<HomeScreen> {
+class _HomeState extends ConsumerState<HomeScreen> {
   // Tabs are built on first visit and then kept alive, so filters and scroll
   // positions survive switching and nothing runs for a tab never opened.
   final _visited = <int>{};
@@ -45,13 +49,18 @@ class _HomeState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = widget.selectedIndex;
+    final active = ref.watch(
+      activeTasksProvider.select((tasks) => tasks.value?.isNotEmpty ?? false),
+    );
     _visited.add(selectedIndex);
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return PopScope(
-      canPop: selectedIndex == HomeTab.shelf,
+      canPop: selectedIndex == HomeTab.shelf && !active,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && selectedIndex != HomeTab.shelf) {
           widget.onDestinationSelected(HomeTab.shelf);
+        } else if (!didPop && active) {
+          widget.onExitRequested();
         }
       },
       child: AppScaffold(

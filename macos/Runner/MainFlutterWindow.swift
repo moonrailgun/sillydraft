@@ -4,6 +4,11 @@ import WebKit
 import webview_flutter_wkwebview
 
 class MainFlutterWindow: NSWindow {
+  override func performClose(_ sender: Any?) {
+    // Keep the window visible while Flutter confirms tasks and saves drafts.
+    NSApp.terminate(sender)
+  }
+
   static func makeWebViewTransparent(_ webView: WKWebView) -> FlutterError? {
     // shortcut: WebKit exposes this only through KVC; remove when the plugin supports macOS backgrounds.
     // https://bugs.webkit.org/show_bug.cgi?id=221663
