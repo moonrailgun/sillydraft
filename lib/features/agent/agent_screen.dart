@@ -321,6 +321,60 @@ class _AgentState extends ConsumerState<AgentPanel> {
           .where((m) => m.role == 'user')
           .lastOrNull;
       if (source == null) throw const FormatException('找不到这张图片引用的正文');
+      final asset = await services.repository.getAsset(assetId);
+      if (imageMessage.raw['tool_name'] == 'generate_images' &&
+          asset.metadata['illustrationAnchor'] == null) {
+        final chapterId =
+            asset.sourceChapterId ??
+            (source.raw['attachment'] as Map?)?['chapterId'] as String?;
+        if (chapterId == null) throw const FormatException('找不到这张图片引用的章节');
+        final chapter = await services.repository.getChapter(
+          branchId: widget.branchId,
+          chapterId: chapterId,
+        );
+        final paragraphs = <({String text, int offset})>[];
+        var end = 0;
+        for (final line in chapter.content.text.split('\n')) {
+          end += line.length + 1;
+          if (line.replaceAll('\uFFFC', '').trim().isNotEmpty) {
+            paragraphs.add((
+              text: line,
+              offset: end.clamp(0, chapter.content.text.length - 1),
+            ));
+          }
+        }
+        if (paragraphs.isEmpty) throw const FormatException('本章暂无可插入的正文段落');
+        if (!mounted) return;
+        final offset = await showAppSheet<int>(
+          context: context,
+          title: '选择段落，插入到下方',
+          builder: (context) => ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(12),
+            children: [
+              for (final paragraph in paragraphs)
+                FItem(
+                  title: Text(
+                    paragraph.text,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPress: () => Navigator.pop(context, paragraph.offset),
+                ),
+            ],
+          ),
+        );
+        if (offset == null) return;
+        await services.repository.insertIllustration(
+          branchId: widget.branchId,
+          chapterId: chapter.id,
+          expectedRevisionId: chapter.revisionId,
+          assetId: assetId,
+          offset: offset,
+        );
+        if (mounted) toast(context, '已插入所选段落下方');
+        return;
+      }
       await services.repository.insertAgentIllustration(
         branchId: widget.branchId,
         assetId: assetId,

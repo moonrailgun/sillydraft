@@ -272,6 +272,20 @@ void main() {
         )).content.text,
         '红伞过桥。\n\uFFFC\n白船靠岸。\n',
       );
+      // Old batches have no saved quote: let the author choose a paragraph.
+      await tester.ensureVisible(findAction('插入正文').last);
+      await tester.tap(findAction('插入正文').last);
+      await tester.pumpAndSettle();
+      expect(find.text('选择段落，插入到下方'), findsOneWidget);
+      await tester.tap(find.text('白船靠岸。'));
+      await tester.pumpAndSettle();
+      expect(
+        (await repo.getChapter(
+          branchId: chapter.branchId,
+          chapterId: chapter.id,
+        )).content.text,
+        '红伞过桥。\n\uFFFC\n白船靠岸。\n\uFFFC\n\n',
+      );
       expect(tester.takeException(), isNull);
     },
   );
