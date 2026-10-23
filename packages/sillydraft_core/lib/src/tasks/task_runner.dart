@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show max, min;
 import 'dart:typed_data';
 
 import '../agent/editor_agent.dart';
@@ -27,6 +28,7 @@ import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 
 part 'agent_runner.dart';
+part 'agent_compaction.dart';
 part 'illustration_runner.dart';
 part 'sidecar_runner.dart';
 

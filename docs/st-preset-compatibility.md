@@ -16,11 +16,13 @@ SillyDraft 将 SillyTavern（ST）预设作为正式的写作配置，支持用�
 
 OpenAI 兼容接口按工具调用保留并回传 `extra_content`，包括 Gemini 的 `extra_content.google.thought_signature`。签名随流式片段或完整 JSON 响应接收，留在原来的工具调用上；后续工具轮次、会话日志和手机经桌面代理调用均保留该字段，不给同批其他调用补签名。依据为 [Gemini 官方协议](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures)，不改变 ST 预设语义。旧版本已经丢弃的签名无法恢复；重新发送用户消息会开始新的工具轮次。`provider_test.dart` 与 `remote_providers_test.dart` 覆盖本地模拟协议和日志保存，尚未验证真实 Gemini 服务或第三方网关。
 
-## Agent 工具循环
+## Agent 循环与上下文压缩
 
-编辑、插图助手和旁路整理共用的工具循环对照 Pi **v1.3.0**：不设固定工具轮数，模型不再调用工具时完成；取消、服务错误及原有写入保护仍生效。依据为 [`agent-loop.ts`](https://github.com/earendil-works/pi/blob/v1.3.0/packages/agent/src/agent-loop.ts)，核查日期 2026-10-23。这是执行机制的对齐，不改变 ST 预设语义，也不自动开放同一请求多次写入正文。
+编辑、插图助手和旁路整理共用的工具循环对照 Pi **v1.3.0**：不设固定工具轮数，模型不再调用工具时完成；取消、服务错误及原有写入保护仍生效。依据为 [`agent-loop.ts`](https://github.com/earendil-works/pi/blob/v1.3.0/packages/agent/src/agent-loop.ts) 与[压缩机制](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/src/core/compaction/compaction.ts)，核查日期 2026-10-23。这是执行机制的对齐，不改变 ST 预设语义，也不自动开放同一请求多次写入正文。
 
-当前仍受连接配置的上下文窗口限制，超出窗口时保留已有结果并明确报错。现有单轮最多 12 个工具调用、正文版本冲突检查与一次成功写入保护保留。`agent_compaction_test.dart` 覆盖编辑和旁路任务超过 8 轮后正常完成，只使用本地模拟模型。长任务会增加模型调用量。
+每次模型调用前估算消息与工具定义的 token 数，接近连接配置的上下文窗口时，由同一模型生成旧记录摘要后继续。沿用 Pi 的 16,384 token 预留与 20,000 token 最近记录目标；小窗口把预留降至窗口的四分之一（不小于输出预算），最近记录降至扣除预留、系统规则、当前请求和工具定义后可用空间的一半。系统/开发者规则和当前用户请求逐字保留；最近记录按完整的工具调用及其全部结果切分，旧摘要参与下一次压缩。摘要请求不提供工具，要求保留事实、ID、已执行操作及结果、未完成事项；空白或未完整结束的摘要会明确报错，不继续执行工具。摘要没有缩短上下文时，原记录仍能容纳则继续使用原记录，否则报告上下文错误。摘要与原始记录分别保存，任务输入快照和已写入内容不被改写。
+
+与 Pi 的差异：这里使用项目现有 token 估算器，未接入服务端溢出分类和自动重试；超长的当前请求、单组工具结果或摘要输入仍可能无法容纳，会保留记录并报告上下文错误。摘要只在当前任务内续用，新一轮会话从原始记录重建后按需再次压缩；不实现 Pi 的会话树、分支摘要和扩展钩子。现有单轮最多 12 个工具调用、正文版本冲突检查与一次成功写入保护保留。回归见 `agent_compaction_test.dart`、`agent_write_state_test.dart`、`sidecar_test.dart`，只使用本地模拟模型；没有真实模型质量或费用对比。长任务和摘要会增加模型调用量。
 
 ## ComfyUI 工作流读取
 

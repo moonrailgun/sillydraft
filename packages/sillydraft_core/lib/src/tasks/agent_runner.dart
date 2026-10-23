@@ -393,15 +393,21 @@ extension _AgentExecution on TaskRunner {
     final request = ProviderRequest.fromJson(
       jsonObject(task.input['request'], 'request'),
     );
-    final messages = request.messages;
+    final context = _AgentContext(request);
+    final messages = context.messages;
     var missingImageReplies = 0;
     // Pi v1.3.0 packages/agent/src/agent-loop.ts: run until the model finishes.
     for (var round = 0; ; round++) {
       cancel.check();
-      if (estimateTokens(jsonEncode(messages)) +
-              provider.config.maxOutputTokens >
-          provider.config.contextWindow) {
-        throw ProviderException('context_limit', overflow);
+      final summary = await context.prepare(
+        provider,
+        cancel,
+        tools: tools,
+        taskId: task.id,
+        overflow: overflow,
+      );
+      if (summary != null) {
+        await record('system', summary, {'compaction': true});
       }
       final text = StringBuffer();
       final calls = <ToolCallReady>[];
