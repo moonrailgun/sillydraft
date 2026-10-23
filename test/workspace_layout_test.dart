@@ -44,6 +44,112 @@ Finder _page(String text) => find.descendant(
 
 void main() {
   testWidgets(
+    'window resizing preserves the reader bounds and reading position when space allows',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final services = AppServices(
+        repository: StoryRepository.memory(),
+        secrets: MemorySecrets(),
+      );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        await services.close();
+      });
+      final repo = services.repository;
+      await repo.setSetting('workspaceLayout', {
+        'toolsWidth': 460.0,
+        'outlineWidth': 320.0,
+      });
+      final novel = await repo.createNovel(title: '缩放时继续阅读');
+      await repo.createChapter(
+        branchId: novel.activeBranchId,
+        title: '长夜',
+        content: ManuscriptContent.plainText(
+          List.generate(100, (i) => '第 $i 段：雨落在渡口，远处的灯光渐渐亮起来。').join('\n\n'),
+        ),
+      );
+      await tester.pumpWidget(SillyDraftApp(services: services));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(novel.title));
+      await tester.pumpAndSettle();
+
+      final reader = find.byKey(const Key('reader-page'));
+      final outline = find.byKey(const Key('workspace-outline'));
+      final tools = find.byKey(const Key('workspace-tools'));
+      final viewport = find.descendant(
+        of: reader,
+        matching: find.byType(SingleChildScrollView),
+      );
+      await tester.drag(viewport, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      final scroll = tester.widget<SingleChildScrollView>(viewport).controller!;
+      final offset = scroll.offset;
+      final page = tester.getRect(reader);
+      expect(offset, greaterThan(0));
+      expect(tester.getSize(outline).width, 320);
+      expect(tester.getSize(tools).width, 460);
+
+      Future<void> resize(double width, [double height = 900]) async {
+        tester.view.physicalSize = Size(width, height);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+
+      for (final width in [1600.0, 2200.0, 1250.0, 1400.0]) {
+        await resize(width);
+        expect(tester.getRect(reader), page);
+        expect(scroll.offset, offset);
+      }
+      await resize(1600, 1000);
+      expect(tester.getRect(reader).topLeft, page.topLeft);
+      expect(tester.getSize(reader).width, page.width);
+      expect(scroll.offset, offset);
+
+      // Narrowing may squeeze the reader, but must not replace its preference.
+      await resize(950);
+      expect(tester.getSize(reader).width, lessThan(page.width));
+      await resize(1400);
+      expect(tester.getRect(reader), page);
+      expect(scroll.offset, offset);
+
+      // Drag from the divider's visible position after the window grew.
+      await resize(1600);
+      await tester.drag(
+        find.byKey(const Key('workspace-tools-divider')),
+        const Offset(-60, 0),
+      );
+      await tester.pumpAndSettle();
+      final resized = tester.getRect(reader);
+      expect(resized.left, page.left);
+      expect(resized.width, closeTo(page.width - 60, 1));
+      await resize(1800);
+      expect(tester.getRect(reader), resized);
+
+      await tester.drag(
+        find.byKey(const Key('workspace-divider')),
+        const Offset(40, 0),
+      );
+      await tester.pumpAndSettle();
+      final shifted = tester.getRect(reader);
+      expect(shifted.left, closeTo(resized.left + 40, 1));
+      expect(shifted.width, closeTo(resized.width - 40, 1));
+      await resize(1900);
+      expect(tester.getRect(reader), shifted);
+
+      // Folding still deliberately gives the page the released space.
+      await tester.tap(find.byKey(const Key('workspace-tools-toggle')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(reader).width, greaterThan(shifted.width));
+      await tester.tap(find.byKey(const Key('workspace-tools-toggle')));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(reader), shifted);
+    },
+  );
+  testWidgets(
     'wide screens keep the outline on the left, the page in the middle and folding tools on the right',
     (tester) async {
       tester.view.physicalSize = const Size(1400, 900);

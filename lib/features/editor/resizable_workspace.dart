@@ -11,7 +11,8 @@ import '../../app/widgets.dart';
 /// The wide workspace: outline on the left, the page in the middle and the
 /// tools on the right. Either side folds away without losing its state;
 /// dragging a divider, or the arrow keys on it, resizes that side, and the
-/// widths are kept.
+/// widths are kept. Window resizing gives space to the tools first so the page
+/// keeps its position and width as far as the pane minimums allow.
 class ResizableWorkspace extends ConsumerStatefulWidget {
   const ResizableWorkspace({
     super.key,
@@ -29,12 +30,22 @@ class ResizableWorkspace extends ConsumerStatefulWidget {
 
 class _ResizableState extends ConsumerState<ResizableWorkspace> {
   double? _tools, _outline;
+  double? _pageWidth;
 
   static const _toolsRange = (min: 280.0, initial: 380.0);
   static const _outlineRange = (min: 200.0, max: 420.0, initial: 280.0);
 
   /// The page keeps at least this much; the sides give way first.
   static const _page = 360.0;
+
+  @override
+  void didUpdateWidget(ResizableWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.toolsOpen != oldWidget.toolsOpen ||
+        widget.outlineOpen != oldWidget.outlineOpen) {
+      _pageWidth = null;
+    }
+  }
 
   Future<void> _persist() async {
     try {
@@ -51,25 +62,33 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
 
   @override
   Widget build(BuildContext context) {
-    final saved = ref.watch(settingProvider('workspaceLayout')).value;
+    final layout = ref.watch(settingProvider('workspaceLayout'));
+    final saved = layout.value;
     double stored(String key, double fallback) =>
         saved?[key] is num ? (saved![key] as num).toDouble() : fallback;
     return LayoutBuilder(
       builder: (context, constraints) {
         final open = [widget.toolsOpen, widget.outlineOpen];
         final room = constraints.maxWidth - 12 * open.where((o) => o).length;
-        final toolsMax = math.max(_toolsRange.min, room * .45);
         // A folded pane keeps its width offstage: its contents stay laid out
         // as they were and return unchanged.
-        var tools = (_tools ?? stored('toolsWidth', _toolsRange.initial)).clamp(
-          _toolsRange.min,
-          toolsMax,
-        );
         var outline =
             (_outline ?? stored('outlineWidth', _outlineRange.initial)).clamp(
               _outlineRange.min,
               _outlineRange.max,
             );
+        final toolsMax = math.max(
+          _toolsRange.min,
+          room - (widget.outlineOpen ? outline : 0) - _page,
+        );
+        var tools = _tools ?? stored('toolsWidth', _toolsRange.initial);
+        if (widget.toolsOpen) {
+          tools =
+              (_pageWidth == null
+                      ? tools
+                      : room - (widget.outlineOpen ? outline : 0) - _pageWidth!)
+                  .clamp(_toolsRange.min, toolsMax);
+        }
         // Too narrow for all three: narrow the tools, then the outline.
         var over =
             (widget.toolsOpen ? tools : 0) +
@@ -83,6 +102,16 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
         }
         if (over > 0 && widget.outlineOpen) {
           outline -= math.min(over, outline - _outlineRange.min);
+        }
+        if (!layout.isLoading) {
+          // Keep the preferred page width through temporary space constraints.
+          _pageWidth ??= math.max(
+            _page,
+            room -
+                (widget.toolsOpen ? tools : 0) -
+                (widget.outlineOpen ? outline : 0),
+          );
+          if (widget.toolsOpen) _tools = tools;
         }
         return Row(
           children: [
@@ -101,12 +130,15 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
                 width: outline,
                 min: _outlineRange.min,
                 max: _outlineRange.max,
-                onResize: (delta) => setState(
-                  () => _outline = ((_outline ?? outline) + delta).clamp(
+                onResize: (delta) => setState(() {
+                  _pageWidth = null;
+                  _tools = tools;
+                  outline = (outline + delta).clamp(
                     _outlineRange.min,
                     _outlineRange.max,
-                  ),
-                ),
+                  );
+                  _outline = outline;
+                }),
                 onEnd: _persist,
               ),
             Expanded(child: widget.content),
@@ -118,12 +150,12 @@ class _ResizableState extends ConsumerState<ResizableWorkspace> {
                 min: _toolsRange.min,
                 max: toolsMax,
                 end: true,
-                onResize: (delta) => setState(
-                  () => _tools = ((_tools ?? tools) + delta).clamp(
-                    _toolsRange.min,
-                    toolsMax,
-                  ),
-                ),
+                onResize: (delta) => setState(() {
+                  _pageWidth = null;
+                  _outline = outline;
+                  tools = (tools + delta).clamp(_toolsRange.min, toolsMax);
+                  _tools = tools;
+                }),
                 onEnd: _persist,
               ),
             Offstage(
