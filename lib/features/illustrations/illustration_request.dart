@@ -47,6 +47,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   Object? _error;
   bool get _comfy => _connection?.protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _connection?.protocol == ModelProtocol.novelAI;
+  bool get _codex => _connection?.protocol == ModelProtocol.codexCli;
   int get _referenceLimit =>
       _connection == null ? 0 : referenceLimit(_connection!);
   bool get _canReference => _referenceLimit > 0;
@@ -431,6 +432,12 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
+                if (_codex) ...[
+                  const Text(
+                    '使用 Codex 订阅额度。尺寸和质量作为画面要求，不保证精确像素；高级参数仅支持 negative_prompt。取消后已开始的生成仍可能消耗额度。',
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Text(
                   '参考图片 · ${_references.length}/$_referenceLimit',
                   style: theme.typography.body.md.copyWith(
@@ -544,11 +551,13 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                                   ? '例如 {"seed": 123}；其他参数在工作流中配置'
                                   : _novelAI
                                   ? '例如 {"negative_prompt": "blurry", "steps": 28, "scale": 5, "seed": 123}'
+                                  : _codex
+                                  ? '例如 {"negative_prompt": "文字、水印"}；不支持 seed 和采样步数'
                                   : '例如 output_format、seed；支持范围由连接决定',
                             ),
                           ),
                           const SizedBox(height: 16),
-                          if (!_comfy && !_novelAI)
+                          if (!_comfy && !_novelAI && !_codex)
                             FTextField(
                               control: FTextFieldControl.managed(
                                 controller: _hosts,

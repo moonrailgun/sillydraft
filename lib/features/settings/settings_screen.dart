@@ -584,6 +584,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
       models: selected,
       kind: _comfy || _novelAI
           ? ModelKind.image
+          : _protocol == ModelProtocol.codexCli
+          ? ModelKind.both
           : _cli
           ? ModelKind.text
           : _kind,
@@ -959,7 +961,8 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   '使用你在终端登录的 ${_protocol == ModelProtocol.claudeCode ? 'Claude' : 'ChatGPT'} 订阅，不需要 API Key。'
-                  '请先在终端运行 $_tool 完成登录。生成时会关闭它读写文件和执行命令的能力；不支持插画和文本补全模板，采样参数不会生效。',
+                  '请先在终端运行 $_tool 完成登录。不支持文本补全模板，采样参数不会生效。'
+                  '${_protocol == ModelProtocol.codexCli ? '支持插画和参考图生图，需要 Codex 内置生图工具；尺寸和质量作为画面要求传递。连接测试仅验证文本。' : '不支持插画。'}',
                   style: theme.typography.body.sm.copyWith(
                     color: theme.colors.mutedForeground,
                   ),

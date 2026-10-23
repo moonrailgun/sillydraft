@@ -157,7 +157,9 @@ final class ModelConnection extends JsonSource {
   String get model => raw['model'] as String;
   List<String> get models =>
       raw['models'] == null ? [model] : stringList(raw['models'], 'models');
-  ModelKind get kind => protocol.isLocalCli
+  ModelKind get kind => protocol == ModelProtocol.codexCli
+      ? ModelKind.both
+      : protocol.isLocalCli
       ? ModelKind.text
       : protocol == ModelProtocol.comfyUI || protocol == ModelProtocol.novelAI
       ? ModelKind.image

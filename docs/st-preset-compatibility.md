@@ -255,6 +255,12 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 
 对照测试固定 ST 提交、人物卡、预设、历史、变量、时钟和随机输入；涉及预算截断时，还需固定模型和 tokenizer，或明确记录估算差异。用 ST 实际组装结果作为基准，逐项记录小说输入映射造成的差异。升级基线时先更新样本和差异说明，再扩大兼容声明。
 
+## Codex 订阅生图连接
+
+这是 SillyDraft 的独立扩展，不对应 ST 预设行为。桌面 Codex 连接同时提供文本和插画能力；文本仍使用 `codex exec`，插画通过 `codex app-server --stdio` 的 `thread/start`、`turn/start` 和 `item/completed` 中的 `imageGeneration` 结果接入现有插画任务。协议依据 `codex-cli 0.163.0` 导出的实验性 JSON Schema（`app-server generate-json-schema --experimental`）以及 [Codex 生图说明](https://learn.chatgpt.com/docs/image-generation)。使用 CLI 自身登录状态，不读取或复制登录凭据。
+
+支持单图生成及 PNG/JPEG/WebP 参考图；只接收协议返回的内联图片，不读取模型返回的任意文件路径。尺寸、质量、负面提示词作为提示要求传递，无法保证精确参数；其余参数报错，不冒充 Images API 兼容。生成使用临时会话、只读沙箱，禁用 shell、MCP、插件和 hooks；失败、取消、超时均不自动重试。没有实际生图结果时明确报错，文本连接测试不等于生图验证。协议回归见 `codex_image_test.dart`，设置与任务选用见 `local_subscription_test.dart`，测试不调用付费模型。
+
 ## NovelAI 生图连接
 
 NovelAI 文生图对齐固定基线 [SillyTavern 1.19.0 的 NovelAI 图片接口](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/src/endpoints/novelai.js#L306)：Bearer 密钥、`/ai/generate-image`、`action: generate`、`params_version: 3`、单图 `n_samples: 1`、正负提示词的 V4 caption 结构，以及 ZIP 内 PNG 的返回格式。默认使用 V4.5 Full、1024×1024、28 步、引导强度 5；提示词原样发送，不隐式加入质量标签。

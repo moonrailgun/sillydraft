@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
+import 'package:sillydraft/features/illustrations/illustration_request.dart';
 import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
@@ -31,6 +32,44 @@ Future<AppServices> _openDialog(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Codex subscriptions can serve text and illustration tasks', (
+    tester,
+  ) async {
+    final services = await _openDialog(tester);
+    await tester.tap(find.text('OpenAI 兼容接口'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Codex（本地订阅）').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+
+    final saved = (await services.connections()).single;
+    expect(saved.supportsText, isTrue);
+    expect(saved.supportsImages, isTrue);
+    expect((await services.connectionFor('image'))?.id, saved.id);
+    expect(find.text('插画生成'), findsOneWidget);
+    final provider = await services.imageProvider(saved);
+    provider.close();
+
+    final novel = await services.repository.createNovel(title: 'Codex 插画');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(
+          IllustrationRequestScreen(branchId: novel.activeBranchId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('使用 Codex 订阅额度'), findsOneWidget);
+    expect(find.text('参考图片 · 0/16'), findsOneWidget);
+    await tester.ensureVisible(find.text('高级参数'));
+    await tester.tap(find.text('高级参数'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('不支持 seed 和采样步数'), findsOneWidget);
+    expect(find.text('图片下载域名（可选）'), findsNothing);
+  });
+
   testWidgets('a Claude Code subscription needs no endpoint or key', (
     tester,
   ) async {

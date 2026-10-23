@@ -419,6 +419,9 @@ final class AppServices {
       return DesktopImageProvider(session, connection);
     }
     await _checkEndpoint(connection);
+    if (connection.protocol == ModelProtocol.codexCli) {
+      return _meter.image(CodexImageProvider(config: connection));
+    }
     final key = await secrets.read('model/${connection.id}') ?? '';
     return _meter.image(switch (connection.protocol) {
       ModelProtocol.comfyUI => ComfyUIProvider(config: connection, apiKey: key),

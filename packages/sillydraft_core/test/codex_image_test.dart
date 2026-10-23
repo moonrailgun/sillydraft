@@ -163,16 +163,25 @@ void main() {
     },
   );
 
-  test('default uses Codex model selection', () async {
-    final provider = _provider(await _server(dir, [_image(), _done()]));
-    addTearDown(provider.close);
-    await provider.generate(ImageRequest(prompt: '灯塔'));
-    final input = (await File(
-      '${dir.path}/input',
-    ).readAsLines()).map(jsonDecode);
-    final thread = input.singleWhere((m) => m['method'] == 'thread/start');
-    expect((thread['params'] as Map).containsKey('model'), isFalse);
-  });
+  test(
+    'default uses Codex model selection and upgrades old text-only settings',
+    () async {
+      final provider = _provider(await _server(dir, [_image(), _done()]));
+      addTearDown(provider.close);
+      await provider.generate(ImageRequest(prompt: '灯塔'));
+      final input = (await File(
+        '${dir.path}/input',
+      ).readAsLines()).map(jsonDecode);
+      final thread = input.singleWhere((m) => m['method'] == 'thread/start');
+      expect((thread['params'] as Map).containsKey('model'), isFalse);
+      final old = ModelConnection.fromJson({
+        ...provider.config.raw,
+        'kind': 'text',
+      });
+      expect(old.supportsText, isTrue);
+      expect(old.supportsImages, isTrue);
+    },
+  );
 
   for (final (name, events) in <(String, List<Object>)>[
     ('no image', [_done()]),
