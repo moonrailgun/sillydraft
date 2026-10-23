@@ -49,7 +49,16 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('编辑助手正在工作…'), findsOneWidget);
+      expect(find.text('正在处理…'), findsOneWidget);
+      await tester.tap(find.text('查看任务'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        tester.widget<TaskScreen>(find.byType(TaskScreen)).taskId,
+        task.id,
+      );
+      Navigator.of(tester.element(find.byType(TaskScreen))).pop();
+      await tester.pumpAndSettle();
 
       await repo.updateTask(
         task.id,
@@ -58,7 +67,7 @@ void main() {
         partialText: status == TaskStatus.failed ? '' : '已收到的部分回复',
       );
       await tester.pumpAndSettle();
-      expect(find.text('编辑助手正在工作…'), findsNothing);
+      expect(find.text('正在处理…'), findsNothing);
       expect(find.textContaining('Invalid tool response'), findsOneWidget);
       expect(
         find.text('已收到的部分回复'),

@@ -1106,6 +1106,53 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             if (active?.result['imageConfirmation']
                                 case final Map<String, dynamic> pending)
                               _imageConfirmation(active!, pending)
+                            else if (active != null &&
+                                active.partialText.isEmpty &&
+                                active.error.isEmpty)
+                              Row(
+                                children: [
+                                  Icon(
+                                    FLucideIcons.ellipsis,
+                                    size: 24,
+                                    color: colors.mutedForeground,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '正在处理…',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: context.theme.typography.body.sm
+                                          .copyWith(
+                                            color: colors.mutedForeground,
+                                          ),
+                                    ),
+                                  ),
+                                  FButton(
+                                    variant: FButtonVariant.ghost,
+                                    size: FButtonSizeVariant.sm,
+                                    mainAxisSize: MainAxisSize.min,
+                                    onPress: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            TaskScreen(taskId: active.id),
+                                      ),
+                                    ),
+                                    suffix: Icon(
+                                      FLucideIcons.chevronRight,
+                                      size: 14,
+                                      color: colors.mutedForeground,
+                                    ),
+                                    child: Text(
+                                      '查看任务',
+                                      style: TextStyle(
+                                        color: colors.mutedForeground,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
                             else if (task != null &&
                                 task.status != TaskStatus.completed)
                               FCard(
