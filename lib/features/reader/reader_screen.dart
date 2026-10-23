@@ -18,7 +18,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../agent/agent_providers.dart';
 import '../agent/task_screen.dart';
@@ -35,6 +34,7 @@ import 'story_directions.dart';
 import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
+import '../../app/screen_awake.dart';
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
 
@@ -117,6 +117,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   /// scrolled clear of the bars.
   EdgeInsets _barOverlap = EdgeInsets.zero;
   late final AppServices _services;
+  late final ScreenAwake _screenAwake;
   late final Ticker _ticker = createTicker(_autoScrollTick);
   Timer? _timer, _saveStyle;
   int _index = 0;
@@ -185,6 +186,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   void initState() {
     super.initState();
     _services = ref.read(servicesProvider);
+    _screenAwake = ref.read(screenAwakeProvider);
     _services.registerDraft(this, _saveProgress);
     _scroll.addListener(_onScroll);
   }
@@ -205,8 +207,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     super.dispose();
   }
 
-  void _awake(bool on) =>
-      unawaited(WakelockPlus.toggle(enable: on).catchError((Object _) {}));
+  void _awake(bool on) => unawaited(_screenAwake.set(this, on));
 
   void _onScroll() {
     _timer?.cancel();
