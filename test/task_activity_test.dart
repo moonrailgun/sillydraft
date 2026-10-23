@@ -4,6 +4,14 @@ import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+
+class _RecordingWakelock extends WakelockPlusMacOSPlugin {
+  final calls = <bool>[];
+
+  @override
+  Future<void> toggle({required bool enable}) async => calls.add(enable);
+}
 
 // Active progress indicators intentionally never settle.
 Future<void> pumpActivity(WidgetTester tester) async {
@@ -13,6 +21,14 @@ Future<void> pumpActivity(WidgetTester tester) async {
 }
 
 void main() {
+  late _RecordingWakelock wakelock;
+  setUp(() {
+    final platform = wakelockPlusPlatformInstance;
+    wakelock = _RecordingWakelock();
+    wakelockPlusPlatformInstance = wakelock;
+    addTearDown(() => wakelockPlusPlatformInstance = platform);
+  });
+
   for (final wide in [false, true]) {
     testWidgets(
       '${wide ? 'desktop' : 'phone'} shows tasks across novels and navigation',
@@ -31,6 +47,7 @@ void main() {
         addTearDown(() => tester.pumpWidget(const SizedBox()));
         final first = await services.repository.createNovel(title: '第一部');
         final second = await services.repository.createNovel(title: '第二部');
+        final wakeCalls = wakelock.calls;
         await tester.pumpWidget(SillyDraftApp(services: services));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('task-activity')), findsNothing);
@@ -52,6 +69,7 @@ void main() {
         );
         await pumpActivity(tester);
         expect(find.text('2 个任务进行中'), findsOneWidget);
+        expect(wakeCalls, [true]);
         expect(
           tester
               .widget<EditableText>(find.byType(EditableText))
@@ -97,6 +115,7 @@ void main() {
         );
         await pumpActivity(tester);
         expect(find.text('1 个任务进行中'), findsOneWidget);
+        expect(wakeCalls, [true]);
         await services.repository.updateTask(
           running.id,
           status: TaskStatus.failed,
@@ -104,6 +123,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(indicator, findsNothing);
+        expect(wakeCalls, [true, false]);
         expect(find.text('生成任务'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },

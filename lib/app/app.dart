@@ -19,6 +19,7 @@ import 'desktop_commands.dart';
 import 'devtool_trim.dart';
 import 'home_screen.dart';
 import 'library_host.dart';
+import 'screen_awake.dart';
 import 'services.dart';
 import 'task_activity.dart';
 import 'theme.dart';
@@ -37,6 +38,8 @@ class SillyDraftApp extends StatefulWidget {
 
 class _SillyDraftAppState extends State<SillyDraftApp> {
   late final _host = LibraryHost(widget.services, openLocal: widget.openLocal);
+  // Keep wake ownership across library switches, whose provider scopes reset.
+  final _awake = ScreenAwake();
 
   @override
   void dispose() {
@@ -54,6 +57,7 @@ class _SillyDraftAppState extends State<SillyDraftApp> {
       overrides: [
         servicesProvider.overrideWithValue(_host.services),
         libraryHostProvider.overrideWithValue(_host),
+        screenAwakeProvider.overrideWithValue(_awake),
       ],
       child: const _App(),
     ),
@@ -68,6 +72,7 @@ class _App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   final _navigator = GlobalKey<NavigatorState>();
+  late final ScreenAwake _awake;
   int _selectedDestination = 0;
 
   void _selectDestination(int index) {
@@ -122,6 +127,7 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _awake = ref.read(screenAwakeProvider);
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = _navigator.currentContext;
@@ -132,11 +138,13 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_awake.set(this, false));
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_awake.refresh());
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       unawaited(
@@ -149,6 +157,9 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(activeTasksProvider, (_, next) {
+      unawaited(_awake.set(this, next.value?.isNotEmpty ?? false));
+    });
     final mode = ref.watch(settingProvider('appearance')).value?['mode'];
     return MaterialApp(
       navigatorKey: _navigator,
