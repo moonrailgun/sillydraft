@@ -1621,7 +1621,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
               mainAxisSize: MainAxisSize.min,
               style: FButtonStyleDelta.delta(
                 contentStyle: FButtonContentStyleDelta.delta(
-                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+                  padding: EdgeInsetsGeometryDelta.value(
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
                   constraints: BoxConstraints(
                     minHeight: touchPlatform ? 44 : 28,
                   ),
