@@ -61,7 +61,7 @@ macOS 在 `macos/Runner/Info.plist` 里设置了 `FLTEnableImpeller=false`（绕
 
 ### 正文与显示的分离
 
-存储、导出和模型上下文永远使用正式正文。`ManuscriptPresentation` 是一次性的显示投影：对正文跑 ST 显示阶段的正则（有任务时用任务里冻结的规则，否则用分支当前规则，见 `display_store.dart`），并维护显示偏移到原文偏移的映射，书签和搜索据此落回原文。
+存储、导出和模型上下文永远使用正式正文。`ManuscriptPresentation` 是一次性的显示投影：阅读器按分支当前的 ST 显示正则呈现正文，有任务时沿用任务冻结的宏环境；未指定分支的历史版本投影与 proposal 预览使用任务冻结规则（见 `proposal_store.dart`、`display_store.dart`）。投影维护显示偏移到原文偏移的映射，书签和搜索据此落回原文。
 
 阅读器渲染（`lib/features/reader/`）：`ReaderDocument` 把显示文本拆成段落；`HtmlBlocks.find` 找出 HTML 块：含页面的围栏代码块是 frontend，在隔离网页视图里运行酒馆助手风格接口；行首的原始 HTML 是 fragment，按 DOMPurify 规则净化，不给接口。其余文字由 `ProseMarkup` 按 ST `messageFormatting` 标出对话引号、强调和隐藏标记。
 
