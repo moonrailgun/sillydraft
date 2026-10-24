@@ -12,8 +12,8 @@ final activeTasksProvider = FutureProvider<List<GenerationTask>>((ref) {
   return ref.watch(repositoryProvider).listTasks(activeOnly: true);
 });
 
-/// Sits above the navigator so immersive readers and dialogs keep the status.
-class TaskActivityFrame extends ConsumerWidget {
+/// Sits above the navigator; immersive pages can hide it with their controls.
+class TaskActivityFrame extends ConsumerStatefulWidget {
   const TaskActivityFrame({
     super.key,
     required this.navigator,
@@ -24,9 +24,22 @@ class TaskActivityFrame extends ConsumerWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TaskActivityFrame> createState() => _TaskActivityFrameState();
+}
+
+class _TaskActivityFrameState extends ConsumerState<TaskActivityFrame> {
+  final _hiddenBy = <Object>{};
+
+  void _setHidden(Object owner, bool hidden) {
+    if (!mounted) return;
+    final changed = hidden ? _hiddenBy.add(owner) : _hiddenBy.remove(owner);
+    if (changed) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tasks = ref.watch(activeTasksProvider).value ?? const [];
-    final active = tasks.isNotEmpty;
+    final active = tasks.isNotEmpty && _hiddenBy.isEmpty;
     final theme = context.theme;
     // Keep the navigator at the same position when the banner appears/disappears.
     return Column(
@@ -99,13 +112,15 @@ class TaskActivityFrame extends ConsumerWidget {
                                               ),
                                               onPress: () {
                                                 popover.hide();
-                                                navigator.currentState?.push(
-                                                  MaterialPageRoute<void>(
-                                                    builder: (_) => TaskScreen(
-                                                      taskId: task.id,
-                                                    ),
-                                                  ),
-                                                );
+                                                widget.navigator.currentState
+                                                    ?.push(
+                                                      MaterialPageRoute<void>(
+                                                        builder: (_) =>
+                                                            TaskScreen(
+                                                              taskId: task.id,
+                                                            ),
+                                                      ),
+                                                    );
                                               },
                                             ),
                                         ],
@@ -147,10 +162,57 @@ class TaskActivityFrame extends ConsumerWidget {
           child: MediaQuery.removePadding(
             context: context,
             removeTop: active,
-            child: child,
+            child: widget.child,
           ),
         ),
       ],
     );
   }
+}
+
+/// Matches the global task banner to the controls of the current page.
+class TaskActivityVisibility extends StatefulWidget {
+  const TaskActivityVisibility({
+    super.key,
+    required this.visible,
+    required this.child,
+  });
+  final bool visible;
+  final Widget child;
+
+  @override
+  State<TaskActivityVisibility> createState() => _TaskActivityVisibilityState();
+}
+
+class _TaskActivityVisibilityState extends State<TaskActivityVisibility> {
+  _TaskActivityFrameState? _frame;
+  bool _onstage = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _frame = context.findAncestorStateOfType<_TaskActivityFrameState>();
+    // Overlay keeps this enabled behind dialogs, but disables covered pages.
+    _onstage = TickerMode.valuesOf(context).enabled;
+    _update();
+  }
+
+  @override
+  void didUpdateWidget(TaskActivityVisibility oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _update();
+  }
+
+  void _update() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    _frame?._setHidden(this, mounted && _onstage && !widget.visible);
+  });
+
+  @override
+  void dispose() {
+    _update();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -35,6 +35,7 @@ import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
 import '../../app/screen_awake.dart';
+import '../../app/task_activity.dart';
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
 
@@ -798,7 +799,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   @override
-  Widget build(BuildContext context) => AsyncView(
+  Widget build(BuildContext context) =>
+      TaskActivityVisibility(visible: _chrome, child: _buildPage(context));
+
+  Widget _buildPage(BuildContext context) => AsyncView(
     value: ref.watch(_readerStoryProvider(_branchId)),
     builder: (book) {
       final story = book.story;

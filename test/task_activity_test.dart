@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
+import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -18,7 +19,7 @@ class _RecordingWakelock extends WakelockPlusMacOSPlugin {
 
 // Active progress indicators intentionally never settle.
 Future<void> pumpActivity(WidgetTester tester) async {
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
 }
@@ -31,6 +32,81 @@ void main() {
     wakelockPlusPlatformInstance = wakelock;
     addTearDown(() => wakelockPlusPlatformInstance = platform);
   });
+
+  testWidgets(
+    'reader hides task activity with its toolbar and restores it on exit',
+    (tester) async {
+      final services = AppServices(
+        repository: StoryRepository.memory(),
+        secrets: MemorySecrets(),
+      );
+      addTearDown(services.close);
+      addTearDown(() => tester.pumpWidget(const SizedBox()));
+      final novel = await services.repository.createNovel(title: '沉浸阅读');
+      await services.repository.createChapter(
+        branchId: novel.activeBranchId,
+        content: ManuscriptContent.plainText('港口起雾了。'),
+      );
+      await tester.pumpWidget(SillyDraftApp(services: services));
+      await tester.pumpAndSettle();
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ReaderScreen(branchId: novel.activeBranchId),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('reader-page'))),
+      );
+      await tester.pumpAndSettle();
+
+      await services.repository.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.illustration,
+        input: {},
+      );
+      await pumpActivity(tester);
+      final activity = find.byKey(const Key('task-activity'));
+      expect(activity, findsNothing);
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('reader-page'))),
+      );
+      await pumpActivity(tester);
+      expect(activity.hitTestable(), findsOneWidget);
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('reader-page'))),
+      );
+      await pumpActivity(tester);
+      expect(activity, findsNothing);
+      final readerContext = tester.element(find.byType(ReaderScreen));
+      showAppDialog<void>(
+        context: readerContext,
+        builder: (_) => const Center(child: Text('图片预览')),
+      );
+      await pumpActivity(tester);
+      expect(activity, findsNothing);
+      navigator.pop();
+      await pumpActivity(tester);
+      expect(activity, findsNothing);
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const PageScaffold(title: '其他页面', body: SizedBox()),
+        ),
+      );
+      await pumpActivity(tester);
+      expect(activity.hitTestable(), findsOneWidget);
+      navigator.pop();
+      await pumpActivity(tester);
+      expect(activity, findsNothing);
+      navigator.pop();
+      await pumpActivity(tester);
+      expect(activity.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('desktop exit confirms active work and still saves drafts', (
     tester,
