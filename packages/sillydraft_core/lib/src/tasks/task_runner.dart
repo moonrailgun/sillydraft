@@ -652,6 +652,19 @@ Map<String, dynamic> _structuredResult(TaskKind kind, String text) {
         }
       }
     }
+    if (result.containsKey('recommendation')) {
+      final recommendation = jsonObject(
+        result['recommendation'],
+        'recommendation',
+      );
+      final index = recommendation['index'];
+      if (index is! int ||
+          index < 0 ||
+          index >= candidates.length ||
+          stringField(recommendation, 'reason').trim().isEmpty) {
+        throw const FormatException('候选推荐无效');
+      }
+    }
   } else if (result['entries'] is! List) {
     throw const FormatException('分析缺少 entries');
   }

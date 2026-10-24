@@ -16,12 +16,19 @@ import 'support/host.dart';
 /// sentences, the second once [gate] allows. The first [failures] chapters
 /// fail.
 class _Model implements ModelProvider {
-  _Model(this.config, this.requests, [this.gate, this.failures]);
+  _Model(
+    this.config,
+    this.requests,
+    this.gate,
+    this.failures,
+    this.recommendation,
+  );
   @override
   final ModelConnection config;
   final List<ProviderRequest> requests;
   final Future<void>? gate;
   final List<int>? failures;
+  final bool recommendation;
   @override
   Stream<ProviderEvent> generate(
     ProviderRequest request, {
@@ -31,6 +38,11 @@ class _Model implements ModelProvider {
     if (jsonEncode(request.messages).contains('后续走向')) {
       yield TextDelta(
         jsonEncode({
+          if (recommendation)
+            'recommendation': {
+              'index': 1,
+              'reason': '延续克制的悬疑风格，先让风暴兑现章末的危机，再推进寻父线索。',
+            },
           'candidates': [
             for (final (title, summary) in [
               ('出海', '她登上货船，追查父亲的下落'),
@@ -72,7 +84,7 @@ Future<_Open> _open(
   List<int>? failures,
   bool model = true,
   bool workspace = false,
-  int contextWindow = 200000,
+  bool recommendation = true,
   String text = '风暴要来了。',
   Map<String, Object>? reader,
   Widget Function(HtmlBlockRequest)? htmlBuilder,
@@ -88,7 +100,7 @@ Future<_Open> _open(
     repository: repo,
     secrets: MemorySecrets(),
     modelProviderFactory: (c) async =>
-        _Model(c, requests ?? [], gate, failures),
+        _Model(c, requests ?? [], gate, failures, recommendation),
   );
   addTearDown(services.close);
   if (model) {
@@ -98,7 +110,6 @@ Future<_Open> _open(
         name: '测试模型',
         baseUrl: 'http://localhost:1/v1',
         model: 'test',
-        contextWindow: contextWindow,
       ),
     );
   }
@@ -145,6 +156,43 @@ Future<List<GenerationTask>> _directionRuns(_Open book) async => [
 ];
 
 void main() {
+  testWidgets('the model recommendation belongs to its chosen direction', (
+    tester,
+  ) async {
+    final book = await _open(tester);
+    final recommended = find.byKey(const Key('direction-1'));
+    expect(
+      find.descendant(of: recommended, matching: find.text('推荐')),
+      findsOneWidget,
+    );
+    expect(find.text('推荐'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: recommended,
+        matching: find.textContaining('先让风暴兑现章末的危机'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('按推荐写下一章'), findsOneWidget);
+    expect(find.text('写下一章'), findsNWidgets(2));
+    expect(await _directionRuns(book), hasLength(1));
+    expect(
+      (await book.services.repository.getStory(book.branchId)).chapters,
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('directions without a recommendation remain usable', (
+    tester,
+  ) async {
+    await _open(tester, recommendation: false);
+    expect(find.text('推荐'), findsNothing);
+    expect(find.textContaining('此批走向未附推荐'), findsOneWidget);
+    expect(find.text('写下一章'), findsNWidgets(3));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final workspace in [false, true]) {
     testWidgets(
       'a direction forks and writes in ${workspace ? 'the workspace' : 'the reader'}',
@@ -538,7 +586,7 @@ void main() {
   ) async {
     final book = await _open(tester, failures: [1]);
     final pick = find.byKey(const Key('direction-continue-0'));
-    await tester.ensureVisible(pick);
+    await Scrollable.ensureVisible(tester.element(pick), alignment: 0.5);
     await tester.pumpAndSettle();
     await tester.tap(pick);
     await tester.pumpAndSettle();
@@ -615,12 +663,17 @@ void main() {
     testWidgets(
       'a ${fork ? 'forked' : 'current'} write that cannot start says why',
       (tester) async {
-        // Room for the directions, not for a chapter with 2048 tokens of reply.
-        final book = await _open(tester, contextWindow: 2300);
+        final book = await _open(tester);
+        // Limit writing only after the directions have been generated.
+        final connection = (await book.services.connections()).single;
+        await book.services.saveConnection(
+          ModelConnection.fromJson({...connection.raw, 'contextWindow': 2300}),
+        );
+        await tester.pumpAndSettle();
         final pick = find.byKey(
           Key('direction-${fork ? 'fork' : 'continue'}-0'),
         );
-        await tester.ensureVisible(pick);
+        await Scrollable.ensureVisible(tester.element(pick), alignment: 0.5);
         await tester.pumpAndSettle();
         await tester.tap(pick);
         await tester.pumpAndSettle();
@@ -680,6 +733,10 @@ void main() {
       expect(find.byKey(const Key('chapter-draft')), findsOneWidget);
       expect(find.textContaining('她推开门。', findRichText: true), findsOneWidget);
       expect(jsonEncode(requests.last.messages), contains('她守住灯塔，等风暴过去'));
+      expect(
+        jsonEncode(requests.last.messages),
+        isNot(contains('先让风暴兑现章末的危机')),
+      );
 
       gate.complete();
       await tester.pumpAndSettle();

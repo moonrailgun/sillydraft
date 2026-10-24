@@ -397,7 +397,11 @@ final class WritingService {
       connection,
       TaskKind.branches,
       '根据已发生故事，提出 $count 个不同的${endings ? '结局' : '后续走向'}。候选不是已经发生的事实。'
-      '只返回 JSON：{"candidates":[{"title":"短标题","summary":"动机、因果与后果","opening":"候选开头正文"}]}。',
+      '结合小说的题材、风格、叙事视角和正文体现的语气与节奏，比较各候选与既有剧情、人物动机及未回收伏笔的衔接，'
+      '从中推荐最适合的一项，不要默认推荐第一项或冲突最激烈的一项。'
+      '用一两句话说明推荐理由，引用素材中实际存在的风格或剧情依据，不要把候选内容当作已发生事实。'
+      '只返回 JSON：{"candidates":[{"title":"短标题","summary":"动机、因果与后果","opening":"候选开头正文"}],'
+      '"recommendation":{"index":0,"reason":"推荐理由"}}。recommendation.index 是推荐项在 candidates 中从 0 开始的索引。',
     );
   }
 
@@ -492,6 +496,9 @@ final class WritingService {
           'content': jsonEncode({
             'title': story.novel.title,
             'synopsis': story.novel.synopsis,
+            'genre': story.novel.genre,
+            'style': story.novel.style,
+            'pointOfView': story.novel.pointOfView,
             'chapters': [
               for (final chapter in story.chapters)
                 {'chapterId': chapter.id, 'text': chapter.content.text},

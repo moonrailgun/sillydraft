@@ -577,9 +577,14 @@ void main() {
   });
 
   test('branch candidates are structured side artifacts and never change facts or prose', () async {
-    script = (_, _) async* {
+    await repository.updateNovel(
+      novel.copyWith(genre: '悬疑', style: '克制冷峻', pointOfView: '第三人称'),
+    );
+    final requests = <ProviderRequest>[];
+    script = (request, _) async* {
+      requests.add(request);
       yield const TextDelta(
-        '{"candidates":[{"title":"离港","summary":"去寻找父亲","opening":"船驶离港口。"},{"title":"留守","summary":"调查旧信","opening":"他回到灯塔。"}]}',
+        '{"recommendation":{"index":1,"reason":"延续冷峻风格，调查旧信承接已有线索。"},"candidates":[{"title":"离港","summary":"去寻找父亲","opening":"船驶离港口。"},{"title":"留守","summary":"调查旧信","opening":"他回到灯塔。"}]}',
       );
       yield const GenerationFinished('stop');
     };
@@ -591,9 +596,54 @@ void main() {
     final result = await runner.wait(task.id);
     expect(result.status, TaskStatus.completed);
     expect(result.result['candidates'], hasLength(2));
+    expect(result.result['recommendation'], {
+      'index': 1,
+      'reason': '延续冷峻风格，调查旧信承接已有线索。',
+    });
+    final context =
+        jsonDecode(requests.single.messages.last['content'] as String) as Map;
+    expect(context['genre'], '悬疑');
+    expect(context['style'], '克制冷峻');
+    expect(context['pointOfView'], '第三人称');
+    expect((context['chapters'] as List).single['text'], '原文\n');
     expect(await repository.listBranches(novel.id), hasLength(1));
     expect(await repository.listProposals(novel.activeBranchId), isEmpty);
   });
+
+  for (final recommendation in [
+    null,
+    {'index': -1, 'reason': '理由'},
+    {'index': 2, 'reason': '理由'},
+    {'index': '1', 'reason': '理由'},
+    {'index': 1, 'reason': '  '},
+    {'index': 1, 'reason': 123},
+  ]) {
+    test(
+      'invalid direction recommendation is rejected: $recommendation',
+      () async {
+        final output = jsonEncode({
+          'recommendation': recommendation,
+          'candidates': [
+            {'title': '离港', 'summary': '去寻找父亲', 'opening': '船驶离港口。'},
+            {'title': '留守', 'summary': '调查旧信', 'opening': '他回到灯塔。'},
+          ],
+        });
+        script = (_, _) async* {
+          yield TextDelta(output);
+          yield const GenerationFinished('stop');
+        };
+        final task = await service.suggestBranches(
+          branchId: novel.activeBranchId,
+          connection: connection,
+          count: 2,
+        );
+        final result = await runner.wait(task.id);
+        expect(result.status, TaskStatus.failed);
+        expect(result.partialText, output);
+        expect(result.error, '返回结果未满足格式要求，原始输出已保留。');
+      },
+    );
+  }
 
   test(
     'invalid model output keeps its text and reports a response format error',

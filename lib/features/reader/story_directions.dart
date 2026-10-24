@@ -233,6 +233,8 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
               if (c is Map) c,
           ]
         : const <Map>[];
+    final recommendation = task?.result['recommendation'] as Map?;
+    final recommendedIndex = recommendation?['index'];
     final failed =
         task != null &&
         current &&
@@ -272,7 +274,11 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
         ),
         const SizedBox(height: 4),
         Text(
-          directions.isEmpty ? 'AI 根据全书内容提出三种走向，选一个即可续写。' : '选一个走向，直接写成下一章。',
+          directions.isEmpty
+              ? 'AI 根据小说风格与已有剧情提出三种走向，并推荐最适合的一种。'
+              : recommendation == null
+              ? '此批走向未附推荐，可换一批获取。'
+              : '可按推荐续写，也可以选择其他走向。',
           textAlign: TextAlign.center,
           style: muted,
         ),
@@ -280,7 +286,11 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
         if (task != null && task.isActive && current) ...[
           const FProgress(),
           const SizedBox(height: 8),
-          Text('正在根据全书构思三种走向…', textAlign: TextAlign.center, style: muted),
+          Text(
+            '正在结合小说风格与剧情构思并推荐走向…',
+            textAlign: TextAlign.center,
+            style: muted,
+          ),
           const SizedBox(height: 8),
           Center(
             child: FButton(
@@ -341,12 +351,22 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        '${i + 1}. ${d['title']}',
-                        style: theme.typography.body.md.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colors.foreground,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${i + 1}. ${d['title']}',
+                              style: theme.typography.body.md.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colors.foreground,
+                              ),
+                            ),
+                          ),
+                          if (i == recommendedIndex) ...[
+                            const SizedBox(width: 8),
+                            FBadge(child: const Text('推荐')),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -356,6 +376,13 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                           color: theme.colors.foreground,
                         ),
                       ),
+                      if (i == recommendedIndex) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '推荐理由：${recommendation!['reason']}',
+                          style: muted.copyWith(height: 1.6),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       if (_adjusting == i) ...[
                         FTextField(
@@ -375,6 +402,10 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                         children: [
                           FButton(
                             key: Key('direction-continue-$i'),
+                            variant:
+                                recommendation == null || i == recommendedIndex
+                                ? FButtonVariant.primary
+                                : FButtonVariant.outline,
                             size: FButtonSizeVariant.sm,
                             mainAxisSize: MainAxisSize.min,
                             onPress: _busy
@@ -383,7 +414,13 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                                       ? _write(d, brief: _brief.text.trim())
                                       : _write(d),
                             prefix: const Icon(FLucideIcons.penLine),
-                            child: Text(_adjusting == i ? '按要求写下一章' : '写下一章'),
+                            child: Text(
+                              _adjusting == i
+                                  ? '按要求写下一章'
+                                  : i == recommendedIndex
+                                  ? '按推荐写下一章'
+                                  : '写下一章',
+                            ),
                           ),
                           FButton(
                             key: Key('direction-fork-$i'),
