@@ -974,7 +974,12 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                           ),
                         ),
                       _topBar(story, presentation, chapter, background, ui),
-                      _bottomBar(story, background, ui),
+                      _bottomBar(
+                        story,
+                        background,
+                        ui,
+                        writing: writing != null,
+                      ),
                       if (_ticker.isActive || writing != null)
                         AnimatedPositioned(
                           duration: const Duration(milliseconds: 200),
@@ -1639,7 +1644,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     );
   }
 
-  Widget _bottomBar(StorySnapshot story, Color background, FThemeData ui) {
+  /// While [writing] the chapter has no length to estimate the time left by.
+  Widget _bottomBar(
+    StorySnapshot story,
+    Color background,
+    FThemeData ui, {
+    bool writing = false,
+  }) {
     final count = story.chapters.length;
     final seeking = _seeking;
     final shown = seeking?.round() ?? _index;
@@ -1673,6 +1684,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                 Text(
                   seeking != null
                       ? '${shown + 1} / $count · ${_chapterTitle(story.chapters[shown])}'
+                      : writing
+                      ? '${_index + 1} / $count · 本章写作中'
                       : '${_index + 1} / $count · 本章约剩 ${math.max(left, 0)} 分钟',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
