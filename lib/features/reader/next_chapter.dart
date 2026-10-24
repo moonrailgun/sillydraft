@@ -146,8 +146,9 @@ class ChapterDraft extends ConsumerStatefulWidget {
   });
   final GenerationTask task;
 
-  /// Sets text the way the page sets the book.
-  final Widget Function(String text) prose;
+  /// Sets text the way the page sets the book, with a caret after it while
+  /// more is coming.
+  final Widget Function(String text, {bool caret}) prose;
 
   /// Wraps the buttons, e.g. so tapping them never turns the page.
   final Widget Function(Widget child) controls;
@@ -203,6 +204,16 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
             )
             .firstOrNull;
     final text = pending?.content.text.trim() ?? task.partialText.trim();
+    // Progress and the stop button float over the page meanwhile, so the
+    // page only shows where the text goes.
+    if (task.isActive) {
+      return KeyedSubtree(
+        key: const Key('chapter-draft'),
+        child: text.isEmpty
+            ? const _GhostText()
+            : widget.prose(text, caret: true),
+      );
+    }
     Widget button(
       String label,
       VoidCallback onPress, {
@@ -220,17 +231,7 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
     );
     final String status;
     final List<Widget> actions;
-    if (task.isActive) {
-      status = text.isEmpty ? '正在构思这一章…' : '正在写这一章…';
-      actions = [
-        button(
-          '停止',
-          () => _run(() => ref.read(servicesProvider).runner.cancel(task.id)),
-          key: const Key('chapter-stop'),
-          icon: FLucideIcons.circleStop,
-        ),
-      ];
-    } else if (pending != null) {
+    if (pending != null) {
       status = '正文或故事变量在生成期间有变化，这一章没有自动写入。';
       actions = [
         button(
@@ -270,7 +271,6 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
       children: [
         if (text.isNotEmpty) widget.prose(text),
         const SizedBox(height: 20),
-        if (task.isActive) ...[const FProgress(), const SizedBox(height: 8)],
         Text(status, textAlign: TextAlign.center, style: muted),
         const SizedBox(height: 10),
         widget.controls(
@@ -284,4 +284,78 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
       ],
     );
   }
+}
+
+/// Faint paragraph outlines where a chapter's text is about to appear.
+class _GhostText extends StatelessWidget {
+  const _GhostText();
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        (DefaultTextStyle.of(context).style.color ?? const Color(0xFF808080))
+            .withValues(alpha: .08);
+    Widget line(double width, {bool indent = false}) => Padding(
+      padding: EdgeInsets.only(left: indent ? 32 : 0, bottom: 16),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: width,
+        child: Container(
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(5),
+          ),
+        ),
+      ),
+    );
+    return Pulse(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          line(1, indent: true),
+          line(1),
+          line(1),
+          line(.6),
+          const SizedBox(height: 8),
+          line(1, indent: true),
+          line(1),
+          line(.4),
+        ],
+      ),
+    );
+  }
+}
+
+/// Breathes [child] in and out, or with [blink] switches it on and off like
+/// a caret: the page's sign that a chapter is still being written.
+class Pulse extends StatefulWidget {
+  const Pulse({super.key, required this.child, this.blink = false});
+  final Widget child;
+  final bool blink;
+
+  @override
+  State<Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  )..repeat(reverse: !widget.blink);
+  late final Animation<double> _opacity = widget.blink
+      ? CurvedAnimation(parent: _controller, curve: const Threshold(.5))
+      : Tween<double>(begin: .4, end: 1).animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+        );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FadeTransition(opacity: _opacity, child: widget.child);
 }

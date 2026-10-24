@@ -118,6 +118,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   /// keeps that much room at both ends, so its start and end can always be
   /// scrolled clear of the bars.
   EdgeInsets _barOverlap = EdgeInsets.zero;
+
+  /// The bottom bar's height, for the pills to float above it.
+  double _bottomBarHeight = 0;
   late final AppServices _services;
   late final ScreenAwake _screenAwake;
   late final Ticker _ticker = createTicker(_autoScrollTick);
@@ -830,6 +833,10 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       }
       _index = _index.clamp(0, story.chapters.length - 1);
       final chapter = story.chapters[_index];
+      final writing = switch (_chapterTask(chapter).draft) {
+        final draft? when draft.isActive => draft,
+        _ => null,
+      };
       // Only the chapter on screen is presented: presenting every chapter
       // as the book opened ran each one's display regex at once.
       final page = ref.watch(
@@ -968,13 +975,24 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                         ),
                       _topBar(story, presentation, chapter, background, ui),
                       _bottomBar(story, background, ui),
-                      if (_ticker.isActive)
-                        Positioned(
+                      if (_ticker.isActive || writing != null)
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
                           left: 0,
                           right: 0,
-                          bottom: 24,
+                          // Above the bottom bar while it shows.
+                          bottom: _chrome ? _bottomBarHeight + 12 : 24,
                           child: SafeArea(
-                            child: Center(child: _autoScrollPill(ui)),
+                            bottom: !_chrome,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [
+                                if (writing != null) _writingPill(writing, ui),
+                                if (_ticker.isActive) _autoScrollPill(ui),
+                              ],
+                            ),
                           ),
                         ),
                     ],
@@ -1121,25 +1139,12 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     }
   }
 
-  /// The page itself: running header, the text, and a running footer with
-  /// progress and the time, like a printed book.
-  Widget _reading(
-    StorySnapshot story,
+  /// The latest writing task of [chapter], and the same task as its draft
+  /// while the page shows it inline, saved text kept. A selection rewrite is
+  /// only a fragment of the chapter, so it stays on its task page.
+  ({GenerationTask? latest, GenerationTask? draft, bool pending}) _chapterTask(
     Chapter chapter,
-    Color foreground,
-    int before,
-    int total,
   ) {
-    final faint = foreground.withValues(alpha: .5);
-    final small = TextStyle(color: faint, fontSize: 12);
-    final last = _index == story.chapters.length - 1;
-    _canIllustrate = ['editor', 'image'].every(
-      (role) => ref.watch(
-        roleConnectionProvider(role).select((c) => c.value != null),
-      ),
-    );
-    // Show inline generation while preserving any saved text. A selection
-    // rewrite is only a fragment of the chapter, so it stays on its task page.
     final tasks = ref.watch(tasksProvider(_branchId)).value ?? const [];
     final latest = tasks
         .where(
@@ -1166,6 +1171,29 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                         latest.status != TaskStatus.completed)))
         ? latest
         : null;
+    return (latest: latest, draft: draft, pending: pending);
+  }
+
+  /// The page itself: running header, the text, and a running footer with
+  /// progress and the time, like a printed book.
+  Widget _reading(
+    StorySnapshot story,
+    Chapter chapter,
+    Color foreground,
+    int before,
+    int total,
+  ) {
+    final faint = foreground.withValues(alpha: .5);
+    final small = TextStyle(color: faint, fontSize: 12);
+    final last = _index == story.chapters.length - 1;
+    _canIllustrate = ['editor', 'image'].every(
+      (role) => ref.watch(
+        roleConnectionProvider(role).select((c) => c.value != null),
+      ),
+    );
+    final tasks = ref.watch(tasksProvider(_branchId)).value ?? const [];
+    final (:latest, :draft, :pending) = _chapterTask(chapter);
+    final hasText = chapter.content.text.trim().isNotEmpty;
     final writing = draft != null && (draft.isActive || pending);
     final canWrite =
         !_startingChapter &&
@@ -1268,7 +1296,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                 ChapterDraft(
                                   key: ValueKey('draft:${draft.id}'),
                                   task: draft,
-                                  prose: (text) => _prose(text, foreground),
+                                  prose: (text, {caret = false}) =>
+                                      _prose(text, foreground, caret: caret),
                                   controls: _noTap,
                                 )
                               else if (hasText)
@@ -1412,28 +1441,48 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     return max <= 0 ? 1 : (_scroll.offset / max).clamp(0, 1);
   }
 
-  /// Sets [text] the way the page sets the book.
-  Widget _prose(String text, Color foreground) {
+  /// Sets [text] the way the page sets the book, with a blinking [caret]
+  /// after it while it is still being written.
+  Widget _prose(String text, Color foreground, {bool caret = false}) {
     final theme = _pageTheme;
     return Text.rich(
       ReaderDocument.build(
-        ManuscriptPresentation.identity(ManuscriptContent.plainText(text)),
+        ManuscriptPresentation.identity(
+          ManuscriptContent.fromDelta([
+            {'insert': text},
+            // Set as an embed so it follows the last character.
+            if (caret)
+              {
+                'insert': {'caret': ''},
+              },
+          ]),
+        ),
         fontSize: _style.fontSize,
         hideHtml: _style.hideHtml,
-        hideImages: _style.hideImages,
+        // Plain text has no images; the only embed is the caret.
+        hideImages: false,
         paragraphSpacing: _style.paragraphSpacing,
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,
         italicColor: _style.dimItalics ? theme.italic : null,
-        image: (_) => const SizedBox.shrink(),
+        image: (_) => Pulse(
+          blink: true,
+          child: Container(
+            width: 2,
+            height: _style.fontSize * 1.1,
+            margin: const EdgeInsets.only(left: 2),
+            color: foreground,
+          ),
+        ),
       ).span,
       textAlign: _style.justify ? TextAlign.justify : TextAlign.start,
       style: _style.body(foreground),
     );
   }
 
-  /// Measures [_barOverlap] against the area the text scrolls in, which a
-  /// short chapter does not shrink, so the room is the same in every chapter.
+  /// Measures [_barOverlap] and [_bottomBarHeight] against the area the text
+  /// scrolls in, which a short chapter does not shrink, so the room is the
+  /// same in every chapter.
   /// Sizes are taken from layout, which the bars' slide does not change, so
   /// the room stays put as they come and go.
   void _measureBars() {
@@ -1446,13 +1495,18 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     if (page == null || viewport == null) return;
     final top = viewport.localToGlobal(Offset.zero, ancestor: page).dy;
     final bottom = page.size.height - top - viewport.size.height;
+    final bar = box(_bottomBarKey)?.size.height ?? 0;
     final next = EdgeInsets.only(
       top: math.max(0, (box(_topBarKey)?.size.height ?? 0) - top),
-      bottom: math.max(0, (box(_bottomBarKey)?.size.height ?? 0) - bottom),
+      bottom: math.max(0, bar - bottom),
     );
     if ((next.top - _barOverlap.top).abs() > .5 ||
-        (next.bottom - _barOverlap.bottom).abs() > .5) {
-      setState(() => _barOverlap = next);
+        (next.bottom - _barOverlap.bottom).abs() > .5 ||
+        (bar - _bottomBarHeight).abs() > .5) {
+      setState(() {
+        _barOverlap = next;
+        _bottomBarHeight = bar;
+      });
     }
   }
 
@@ -1706,6 +1760,80 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     );
   }
 
+  BoxDecoration _pill(FThemeData ui) => BoxDecoration(
+    color: ui.colors.background,
+    borderRadius: ui.style.borderRadius.pill,
+    border: Border.all(color: ui.colors.border),
+    boxShadow: const [
+      BoxShadow(color: Color(0x22000000), blurRadius: 16, offset: Offset(0, 6)),
+    ],
+  );
+
+  /// Floats over the page while the chapter on screen is being written, so
+  /// stopping it or catching up with the newest text never means scrolling
+  /// to the end first.
+  Widget _writingPill(GenerationTask task, FThemeData ui) {
+    final written = task.partialText.trim().length;
+    final label = ui.typography.body.sm.copyWith(color: ui.colors.foreground);
+    Widget action(
+      String text,
+      IconData icon,
+      VoidCallback onPress, {
+      Key? key,
+    }) => FButton(
+      key: key,
+      variant: FButtonVariant.ghost,
+      size: FButtonSizeVariant.sm,
+      mainAxisSize: MainAxisSize.min,
+      onPress: onPress,
+      prefix: Icon(icon),
+      child: Text(text),
+    );
+    return _noTap(
+      DecoratedBox(
+        key: const Key('reader-writing'),
+        decoration: _pill(ui),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 8,
+            children: [
+              const FCircularProgress(size: FCircularProgressSizeVariant.sm),
+              if (task.status == TaskStatus.queued)
+                Text('排队中', style: label)
+              else if (written == 0)
+                _Planning(since: task.createdAt, style: label)
+              else
+                Text('正在写 · $written 字', style: label),
+              if (written > 0)
+                action('最新', FLucideIcons.arrowDown, () {
+                  if (!_scroll.hasClients) return;
+                  unawaited(
+                    _scroll.animateTo(
+                      _scroll.position.maxScrollExtent,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                    ),
+                  );
+                }),
+              action(
+                '停止',
+                FLucideIcons.circleStop,
+                () => unawaited(
+                  _services.runner.cancel(task.id).catchError((Object e) {
+                    if (mounted) showError(context, e);
+                  }),
+                ),
+                key: const Key('chapter-stop'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _autoScrollPill(FThemeData ui) {
     void speed(double delta) => _setStyle(
       _style.copyWith(
@@ -1718,18 +1846,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     return _noTap(
       DecoratedBox(
         key: const Key('reader-autoscroll'),
-        decoration: BoxDecoration(
-          color: ui.colors.background,
-          borderRadius: ui.style.borderRadius.pill,
-          border: Border.all(color: ui.colors.border),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 16,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
+        decoration: _pill(ui),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
@@ -1807,6 +1924,42 @@ class _BarAction extends StatelessWidget implements ActionLabel {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// How long the model has been planning a chapter, updated each second.
+class _Planning extends StatefulWidget {
+  const _Planning({required this.since, required this.style});
+  final DateTime since;
+  final TextStyle style;
+  @override
+  State<_Planning> createState() => _PlanningState();
+}
+
+class _PlanningState extends State<_Planning> {
+  Timer? _timer;
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seconds = math.max(
+      0,
+      DateTime.now().difference(widget.since).inSeconds,
+    );
+    return Text(
+      '构思中 ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+      style: widget.style,
     );
   }
 }
