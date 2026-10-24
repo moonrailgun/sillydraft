@@ -1602,7 +1602,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
   Widget _toolGroup(List<AgentMessage> messages) {
     final groupId = 'tool-group-${messages.first.id}';
     final expanded = _expandedTools.contains(groupId);
-    final color = context.theme.colors.mutedForeground;
+    final theme = context.theme;
+    final color = theme.colors.mutedForeground;
     final callCount = messages.fold<int>(
       0,
       (count, message) =>
@@ -1647,43 +1648,78 @@ class _AgentState extends ConsumerState<AgentPanel> {
             ),
           ),
           if (expanded)
-            FAccordion(
-              control: _toolExpansion([
-                for (final message in messages) message.id,
-              ]),
-              children: [
-                for (final message in messages)
-                  FAccordionItem(
-                    key: ValueKey(message.id),
-                    title: Text(
-                      message.role == 'tool'
-                          ? '结果 · ${message.raw['tool_name'] ?? '工具'}'
-                          : '调用 · ${[for (final call in message.raw['tool_calls'] as List? ?? [])
-                              if (call case {'function': {'name': final String name}}) name].join('、')}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.theme.colors.mutedForeground,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (message.role != 'tool' &&
-                            message.content.isNotEmpty) ...[
-                          _markdown(message.content),
-                          const SizedBox(height: 8),
-                        ],
-                        SelectableText(
-                          message.role == 'tool'
-                              ? message.content
-                              : const JsonEncoder.withIndent('  ')
-                                    .convert(message.raw),
-                        ),
-                      ],
+            Container(
+              margin: const EdgeInsets.only(top: 4),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: theme.colors.muted.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: FAccordion(
+                style: FAccordionStyleDelta.delta(
+                  titlePadding: EdgeInsetsGeometryDelta.value(
+                    EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: touchPlatform ? 14 : 6,
                     ),
                   ),
-              ],
+                  titleTextStyle: FVariants.from(
+                    theme.typography.body.xs.copyWith(color: color),
+                    variants: {
+                      [.hovered, .pressed]: TextStyleDelta.delta(
+                        color: theme.colors.foreground,
+                      ),
+                    },
+                  ),
+                  iconStyle: FVariants.all(
+                    IconThemeData(size: 14, color: color),
+                  ),
+                  dividerStyle: FDividerStyleDelta.delta(
+                    color: theme.colors.border.withValues(
+                      alpha: theme.colors.border.a * 0.45,
+                    ),
+                  ),
+                  childPadding: EdgeInsetsGeometryDelta.value(
+                    const EdgeInsets.fromLTRB(10, 4, 10, 10),
+                  ),
+                  childTextStyle: TextStyleDelta.delta(
+                    fontSize: theme.typography.body.xs.fontSize,
+                  ),
+                ),
+                control: _toolExpansion([
+                  for (final message in messages) message.id,
+                ]),
+                children: [
+                  for (final message in messages)
+                    FAccordionItem(
+                      key: ValueKey(message.id),
+                      title: Text(
+                        message.role == 'tool'
+                            ? '结果 · ${message.raw['tool_name'] ?? '工具'}'
+                            : '调用 · ${[for (final call in message.raw['tool_calls'] as List? ?? [])
+                                if (call case {'function': {'name': final String name}}) name].join('、')}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (message.role != 'tool' &&
+                              message.content.isNotEmpty) ...[
+                            _markdown(message.content),
+                            const SizedBox(height: 8),
+                          ],
+                          SelectableText(
+                            message.role == 'tool'
+                                ? message.content
+                                : const JsonEncoder.withIndent('  ')
+                                      .convert(message.raw),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
         ],
       ),
