@@ -873,9 +873,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               704,
             ),
             child: _noTap(
-              FButton.raw(
-                variant: FButtonVariant.ghost,
+              FTappable(
+                style: const FTappableStyleDelta.delta(
+                  cursor: FVariants.all(SystemMouseCursors.zoomIn),
+                ),
+                focusedOutlineStyle: const FFocusedOutlineStyleDelta.delta(),
                 semanticsLabel: '放大查看图片',
+                excludeSemantics: true,
                 onPress: () => showIllustrationDetail(
                   context,
                   assetId: uri.substring(6),
