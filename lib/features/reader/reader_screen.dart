@@ -32,6 +32,7 @@ import 'reader_style.dart';
 import 'next_chapter.dart';
 import 'story_directions.dart';
 import '../illustrations/asset_image.dart';
+import '../illustrations/illustration_detail.dart';
 
 import '../../app/services.dart';
 import '../../app/screen_awake.dart';
@@ -871,7 +872,18 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               0,
               704,
             ),
-            child: AssetImageView(assetId: uri.substring(6), height: 300),
+            child: _noTap(
+              FButton.raw(
+                variant: FButtonVariant.ghost,
+                semanticsLabel: '放大查看图片',
+                onPress: () => showIllustrationDetail(
+                  context,
+                  assetId: uri.substring(6),
+                  branchId: _branchId,
+                ),
+                child: AssetImageView(assetId: uri.substring(6), height: 300),
+              ),
+            ),
           );
         },
       );

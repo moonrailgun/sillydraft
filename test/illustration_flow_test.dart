@@ -299,6 +299,25 @@ void main() {
       await settleImages();
       expect(find.byType(AssetImageView), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
+      final reader = find.byKey(const Key('reader-page'));
+      await tester.tapAt(tester.getTopLeft(reader) + const Offset(5, 350));
+      await tester.pumpAndSettle();
+      expect(findAction('阅读设置').hitTestable(), findsNothing);
+      final scroll = tester
+          .widget<SingleChildScrollView>(
+            find.byType(SingleChildScrollView).first,
+          )
+          .controller!;
+      final offset = scroll.offset;
+      await tester.tap(find.byType(AssetImageView));
+      await settleImages();
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.byType(IllustrationDetail), findsOneWidget);
+      await tester.tap(findAction('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.byType(IllustrationDetail), findsNothing);
+      expect(findAction('阅读设置').hitTestable(), findsNothing);
+      expect(scroll.offset, offset);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
