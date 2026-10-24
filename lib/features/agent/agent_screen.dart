@@ -1872,7 +1872,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
                       borderRadius: context.theme.style.borderRadius.lg,
                       child: Stack(
                         children: [
-                          AssetImageView(assetId: id, height: 280),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 280),
+                            child: AssetImageView(assetId: id),
+                          ),
                           Positioned(
                             left: 8,
                             bottom: 8,
