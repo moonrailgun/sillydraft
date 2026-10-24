@@ -619,6 +619,11 @@ void main() {
     await settle();
     expect(await drawings(), 0);
     expect(find.text('已取消生图'), findsOneWidget);
+    expect(find.byKey(const Key('agent-image-confirmation')), findsNothing);
+
+    await tester.enterText(find.byKey(const Key('agent-input')), '再画一张');
+    await tester.tap(findAction('发送给编辑助手'));
+    await settle();
     expect(inCard(find.textContaining('红伞少女')), findsOneWidget);
 
     await tester.tap(inCard(find.text('确认生成')));

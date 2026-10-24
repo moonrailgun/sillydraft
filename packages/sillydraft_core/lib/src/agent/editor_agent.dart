@@ -279,6 +279,7 @@ final class EditorAgent {
             imageConnection,
             imageDefaults!,
             batch: illustrationBatch,
+            canBatch: !illustrationOnly && focus != null,
           );
     final purpose = illustrationBatch
         ? '\n本轮任务是从附带的当前章节提取 3 个不同的视觉亮点，每个亮点写成一段完整生图提示词；内容不足时可减少，不得编造章节里没有的情节。'
@@ -568,11 +569,13 @@ String imageInstructions(
   ModelConnection connection,
   Map<String, dynamic> defaults, {
   bool batch = false,
+  bool canBatch = false,
 }) =>
     '\n生图工具：${batch ? 'generate_images' : 'generate_image'}。作者要求生图、画图或生成插图时，按需读取资料，写好图片名称和完整绘画提示词后，必须在本轮立即调用该工具。'
     '工具调用会由应用展示确认卡片；只有作者在卡片上确认后才会调用生图引擎，图片会存入作品资产库。'
     '确认交互由工具和应用处理，调用前不要要求作者回复“确认生成”，也不能用提示词文本、计划、口头承诺或模拟工具调用代替真实调用。'
     '作者仅要求编写或修改提示词、讨论画面，且未要求实际生图时，不调用生图工具。'
+    '${canBatch ? '本轮还提供 generate_images，可一次提交当前章节 1–6 张插图的 name、prompt 和唯一原文 quote，避免逐张确认。' : ''}'
     '作者取消或生图失败后不要自动重试。'
     '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
     '作者保存的默认设置：${jsonEncode(defaults)}。'

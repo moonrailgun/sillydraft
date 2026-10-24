@@ -32,18 +32,23 @@ Future<GenerationTask> _pending(StoryRepository repo, String id) async {
 }
 
 void main() {
-  for (final outcome in [
-    'complete',
-    'reject',
-    'fail',
-    'cancel',
-    'invalid',
-    'missing quote',
-    'ambiguous quote',
-    'changed',
+  for (final (illustrationBatch, outcome) in [
+    for (final outcome in [
+      'complete',
+      'reject',
+      'fail',
+      'cancel',
+      'invalid',
+      'missing quote',
+      'ambiguous quote',
+      'changed',
+    ])
+      (true, outcome),
+    for (final outcome in ['complete', 'reject', 'fail', 'cancel'])
+      (false, outcome),
   ]) {
     test(
-      'chapter image batch: $outcome, one approval and serial calls',
+      '${illustrationBatch ? 'chapter' : 'chat'} image batch: $outcome, one approval and serial calls',
       () async {
         final repo = StoryRepository.memory();
         addTearDown(repo.close);
@@ -72,12 +77,35 @@ void main() {
           assetLibrary: AssetLibrary(repository: repo, directory: dir),
           providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
             modelCalls++;
+            if (!illustrationBatch && modelCalls == 2) {
+              expect(request.messages.last['content'], contains('completed'));
+              expect(
+                (await repo.getChapter(
+                  branchId: chapter.branchId,
+                  chapterId: chapter.id,
+                )).revisionId,
+                chapter.revisionId,
+              );
+              yield const TextDelta('图片已生成');
+              yield const GenerationFinished('stop');
+              return;
+            }
             final names = [
               for (final tool in request.tools) tool['function']['name'],
             ];
             expect(names, contains('generate_images'));
-            expect(names, isNot(contains('generate_image')));
-            expect(names, isNot(contains('propose_chapter')));
+            expect(
+              names,
+              illustrationBatch
+                  ? isNot(contains('generate_image'))
+                  : contains('generate_image'),
+            );
+            expect(
+              names,
+              illustrationBatch
+                  ? isNot(contains('propose_chapter'))
+                  : contains('propose_chapter'),
+            );
             expect(request.messages.toString(), contains(chapter.content.text));
             yield ToolCallReady('batch', 'generate_images', {
               'images': [
@@ -123,7 +151,7 @@ void main() {
           connection: connection,
           imageConnection: connection,
           attachChapterId: chapter.id,
-          illustrationBatch: true,
+          illustrationBatch: illustrationBatch,
           message: '提取本章亮点并批量生图',
         );
         final pending = await _pending(repo, task.id);
@@ -182,7 +210,7 @@ void main() {
           'cancel' => 1,
           _ => 0,
         });
-        expect(modelCalls, 1);
+        expect(modelCalls, !illustrationBatch && outcome == 'complete' ? 2 : 1);
         final assets = await repo.listAssets(novel.id);
         expect(
           assets.length,

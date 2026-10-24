@@ -42,9 +42,14 @@ Future<GenerationTask> _awaitConfirmation(
 }
 
 void main() {
-  for (final approve in [false, true]) {
+  for (final (illustrationOnly, approve) in [
+    (false, false),
+    (false, true),
+    (true, false),
+    (true, true),
+  ]) {
     test(
-      'illustration ${approve ? 'failure' : 'cancellation'} stops without another paid request',
+      '${illustrationOnly ? 'illustration' : 'chat'} ${approve ? 'failure' : 'cancellation'} stops without another paid request',
       () async {
         final repo = StoryRepository.memory();
         addTearDown(repo.close);
@@ -83,7 +88,7 @@ void main() {
           connection: connection,
           imageConnection: connection,
           message: '生成插图',
-          illustrationOnly: true,
+          illustrationOnly: illustrationOnly,
         );
         final pending = await _awaitConfirmation(repo, task.id);
         await runner.respondToImageConfirmation(

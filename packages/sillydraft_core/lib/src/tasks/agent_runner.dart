@@ -234,13 +234,22 @@ extension _AgentExecution on TaskRunner {
         Map<String, dynamic>.from(chapter as Map),
     ];
     const writingTools = {'propose_chapter', 'propose_lore'};
+    final canBatchImages =
+        illustrationBatch ||
+        (!illustrationOnly &&
+            chapters.any(
+              (c) => c['id'] == (input['image'] as Map?)?['chapterId'],
+            ));
     final tools = [
       for (final tool in _editingTools)
         if (!illustrationOnly ||
             !writingTools.contains(tool['function']['name']))
           tool,
-      if (input['image'] case final Map<String, dynamic> image)
+      if (input['image'] case final Map<String, dynamic> image) ...[
         _imageTool(image, batch: illustrationBatch),
+        if (!illustrationBatch && canBatchImages)
+          _imageTool(image, batch: true),
+      ],
       if (!illustrationOnly) ...skillTools(skills),
     ];
     String? writtenRevisionId;
@@ -255,7 +264,7 @@ extension _AgentExecution on TaskRunner {
       imageRequired: illustrationOnly,
       execute: (call) async {
         if ((illustrationBatch && call.name == 'generate_image') ||
-            (!illustrationBatch && call.name == 'generate_images')) {
+            (!canBatchImages && call.name == 'generate_images')) {
           return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
         }
         if (writingTools.contains(call.name)) {
@@ -539,14 +548,14 @@ extension _AgentExecution on TaskRunner {
           'content': content,
           'tool_call_id': call.id,
         });
-        if (imageRequired &&
-            (call.name == 'generate_image' || call.name == 'generate_images')) {
+        if (call.name == 'generate_image' || call.name == 'generate_images') {
           if (result['cancelled'] == true || result['status'] == 'cancelled') {
             await record('assistant', '已取消本次生图。', const {});
             throw const GenerationCancelled();
           }
           if (result['status'] == 'completed' &&
               (result['assetId'] is String || result['images'] is List)) {
+            if (!imageRequired) continue;
             final reply = call.name == 'generate_images'
                 ? '${(result['images'] as List).length} 张插图已生成并保存到作品素材。'
                 : '插图已生成并保存到作品素材。';
