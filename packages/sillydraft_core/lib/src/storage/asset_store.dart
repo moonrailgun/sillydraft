@@ -151,12 +151,13 @@ extension AssetOperations on StoryRepository {
     required String branchId,
     required List<String> assetIds,
     required AgentMessage source,
+    Map<String, Map<String, dynamic>> anchors = const {},
   }) => _write(() async {
     var inserted = 0;
     // Insertion prepends to a paragraph's images; reverse to keep result order.
     for (final assetId in assetIds.reversed) {
       final asset = await getAsset(assetId);
-      final anchor = asset.metadata['illustrationAnchor'];
+      final anchor = anchors[assetId] ?? asset.metadata['illustrationAnchor'];
       if (anchor is! Map || anchor['chapterId'] is! String) {
         throw const FormatException('部分图片未保存引用段落，请逐张选择位置插入。');
       }
@@ -175,6 +176,7 @@ extension AssetOperations on StoryRepository {
         branchId: branchId,
         assetId: assetId,
         source: source,
+        illustrationAnchor: anchor.cast<String, dynamic>(),
       );
       inserted++;
     }
@@ -185,6 +187,7 @@ extension AssetOperations on StoryRepository {
     required String branchId,
     required String assetId,
     required AgentMessage source,
+    Map<String, dynamic>? illustrationAnchor,
   }) async {
     if (source.role != 'user' ||
         await conversationBranch(source.conversationId) != branchId) {
@@ -192,6 +195,7 @@ extension AssetOperations on StoryRepository {
     }
     final asset = await getAsset(assetId);
     final anchor =
+        illustrationAnchor ??
         asset.metadata['illustrationAnchor'] ??
         source.raw['illustrationAnchor'];
     final attachment = source.raw['attachment'];

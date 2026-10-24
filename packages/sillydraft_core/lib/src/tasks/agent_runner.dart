@@ -110,6 +110,38 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
+      'name': 'insert_images',
+      'description': '仅在作者本轮明确要求将图片插入正文时调用。将已有图片批量插入指定章节的引用段落下方，不生成图片；使用生图工具返回的 assetId。普通生图请求不代表插入授权。整批插入或整批撤回，正文已编辑时拒绝插入。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'chapterId': {'type': 'string'},
+          'images': {
+            'type': 'array',
+            'minItems': 1,
+            'maxItems': 6,
+            'items': {
+              'type': 'object',
+              'properties': {
+                'assetId': {'type': 'string'},
+                'quote': {
+                  'type': 'string',
+                  'description': '照抄目标章节中唯一且不跨段落的原文片段，图片插入该段下方。',
+                },
+              },
+              'required': ['assetId', 'quote'],
+              'additionalProperties': false,
+            },
+          },
+        },
+        'required': ['chapterId', 'images'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'propose_chapter',
       'description':
           '用独立写作模型生成或改写正文，写完直接写入该章节，作者可从版本历史恢复。'
@@ -233,7 +265,7 @@ extension _AgentExecution on TaskRunner {
       for (final chapter in input['chapterSnapshot'] as List? ?? [])
         Map<String, dynamic>.from(chapter as Map),
     ];
-    const writingTools = {'propose_chapter', 'propose_lore'};
+    const writingTools = {'propose_chapter', 'propose_lore', 'insert_images'};
     final canBatchImages =
         illustrationBatch ||
         (!illustrationOnly &&
@@ -712,6 +744,68 @@ extension _AgentExecution on TaskRunner {
         'accepted': false,
         'message': '资料建议已保存，等待作者逐条审阅。',
       };
+    }
+    if (call.name == 'insert_images') {
+      final chapter = chapters
+          .where((c) => c['id'] == args['chapterId'])
+          .firstOrNull;
+      final items = args['images'];
+      if (chapter == null ||
+          args.length != 2 ||
+          items is! List ||
+          items.isEmpty ||
+          items.length > 6) {
+        throw const FormatException('请选择可见章节和 1–6 张已有图片');
+      }
+      final anchors = <String, Map<String, dynamic>>{};
+      final text = chapter['text'] as String;
+      for (final item in items) {
+        if (item is! Map || item.length != 2 || item['assetId'] is! String) {
+          throw const FormatException('图片参数无效');
+        }
+        final id = item['assetId'] as String;
+        final quote = item['quote'];
+        if (id.isEmpty ||
+            anchors.containsKey(id) ||
+            quote is! String ||
+            quote.trim().isEmpty ||
+            quote.contains('\n') ||
+            quote.contains('\uFFFC')) {
+          throw const FormatException('每张图片须引用一个段落中的唯一原文片段');
+        }
+        final start = text.indexOf(quote);
+        if (start < 0 || text.indexOf(quote, start + 1) >= 0) {
+          throw const FormatException('无法准确定位引用段落');
+        }
+        anchors[id] = {
+          'chapterId': chapter['id'],
+          'revisionId': chapter['revisionId'],
+          'quote': quote,
+        };
+      }
+      final source = (await repository.getAgentMessages(
+        task.input['conversationId'] as String,
+      )).firstWhere((m) => m.id == task.input['sourceMessageId']);
+      cancel.check();
+      try {
+        final inserted = await repository.insertAgentIllustrations(
+          branchId: task.branchId,
+          assetIds: anchors.keys.toList(),
+          source: source,
+          anchors: anchors,
+        );
+        return {
+          'insertedCount': inserted,
+          'chapterId': chapter['id'],
+          'assetIds': anchors.keys.toList(),
+        };
+      } on RevisionConflict {
+        return {
+          'error': '正文已变化，本批图片未插入。图片仍保留在作品素材中。',
+          'code': 'source_changed',
+          'insertedCount': 0,
+        };
+      }
     }
     if (call.name == 'generate_image' || call.name == 'generate_images') {
       final image = task.input['image'];
