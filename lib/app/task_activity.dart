@@ -95,35 +95,38 @@ class _TaskActivityFrameState extends ConsumerState<TaskActivityFrame> {
                                       constraints: const BoxConstraints(
                                         maxHeight: 240,
                                       ),
-                                      child: ListView(
+                                      child: ListView.separated(
                                         shrinkWrap: true,
                                         padding: EdgeInsets.zero,
-                                        children: [
-                                          for (final task in tasks)
-                                            FTile(
-                                              title: Text(
-                                                taskKindLabels[task.kind]!,
-                                              ),
-                                              subtitle: Text(
-                                                taskStatusLabels[task.status]!,
-                                              ),
-                                              suffix: const Icon(
-                                                FLucideIcons.chevronRight,
-                                              ),
-                                              onPress: () {
-                                                popover.hide();
-                                                widget.navigator.currentState
-                                                    ?.push(
-                                                      MaterialPageRoute<void>(
-                                                        builder: (_) =>
-                                                            TaskScreen(
-                                                              taskId: task.id,
-                                                            ),
-                                                      ),
-                                                    );
-                                              },
+                                        itemCount: tasks.length,
+                                        separatorBuilder: (_, _) =>
+                                            const SizedBox(height: 8),
+                                        itemBuilder: (context, index) {
+                                          final task = tasks[index];
+                                          return FTile(
+                                            title: Text(
+                                              taskKindLabels[task.kind]!,
                                             ),
-                                        ],
+                                            subtitle: Text(
+                                              taskStatusLabels[task.status]!,
+                                            ),
+                                            suffix: const Icon(
+                                              FLucideIcons.chevronRight,
+                                            ),
+                                            onPress: () {
+                                              popover.hide();
+                                              widget.navigator.currentState
+                                                  ?.push(
+                                                    MaterialPageRoute<void>(
+                                                      builder: (_) =>
+                                                          TaskScreen(
+                                                            taskId: task.id,
+                                                          ),
+                                                    ),
+                                                  );
+                                            },
+                                          );
+                                        },
                                       ),
                                     ),
                                   ],
