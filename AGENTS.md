@@ -72,5 +72,6 @@ macOS 上的数据库位于 `~/Library/Application Support/com.moonrailgun.silly
 ## 约定
 
 - 文档与界面默认中文，代码与注释用英文。
+- 产品设计与开发遵守[系统与设计规范](docs/design-guidelines.md)，其中汇总系统定位、界面交互、数据与生成流程、兼容边界和交付要求。独立元素之间必须保留可见的外部间距，按钮、消息卡片等不得直接贴合；紧凑布局和动态内容同样适用。
 - 提交信息用 Conventional Commits 加作用域，如 `fix(reader): …`、`feat(core): …`。
 - 测试使用本地协议服务器，不调用付费模型。
