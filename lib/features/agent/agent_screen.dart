@@ -307,9 +307,12 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   final _insertingImages = <String>{};
 
-  Future<void> _insertImage(String assetId, AgentMessage imageMessage) async {
-    if (!_insertingImages.add(assetId)) return;
-    setState(() {});
+  Future<void> _insertImages(
+    List<String> assetIds,
+    AgentMessage imageMessage,
+  ) async {
+    if (assetIds.any(_insertingImages.contains)) return;
+    setState(() => _insertingImages.addAll(assetIds));
     try {
       final services = ref.read(servicesProvider);
       await services.flushDrafts();
@@ -321,6 +324,18 @@ class _AgentState extends ConsumerState<AgentPanel> {
           .where((m) => m.role == 'user')
           .lastOrNull;
       if (source == null) throw const FormatException('找不到这张图片引用的正文');
+      if (assetIds.length > 1) {
+        final inserted = await services.repository.insertAgentIllustrations(
+          branchId: widget.branchId,
+          assetIds: assetIds,
+          source: source,
+        );
+        if (mounted) {
+          toast(context, inserted == 0 ? '这些图片已在正文中' : '已插入 $inserted 张插图');
+        }
+        return;
+      }
+      final assetId = assetIds.single;
       final asset = await services.repository.getAsset(assetId);
       if (imageMessage.raw['tool_name'] == 'generate_images' &&
           asset.metadata['illustrationAnchor'] == null) {
@@ -384,7 +399,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
-      _insertingImages.remove(assetId);
+      _insertingImages.removeAll(assetIds);
       if (mounted) setState(() {});
     }
   }
@@ -1876,7 +1891,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                     tooltip: '插入正文',
                                     onPress: _insertingImages.contains(id)
                                         ? null
-                                        : () => _insertImage(id, message),
+                                        : () => _insertImages([id], message),
                                   ),
                                   IconAction(
                                     icon: FLucideIcons.download,
@@ -1893,6 +1908,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
                     ),
                   ),
                 ),
+              ),
+            if (ids.length > 1)
+              _chip(
+                icon: FLucideIcons.filePlus,
+                label: const Text('全部插入正文'),
+                onPress: ids.any(_insertingImages.contains)
+                    ? null
+                    : () => _insertImages(ids, message),
               ),
           ],
         );

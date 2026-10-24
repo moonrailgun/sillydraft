@@ -117,6 +117,87 @@ CupertinoTextSelectionToolbarButton _drawButton(WidgetTester tester) =>
 
 void main() {
   testWidgets(
+    'batch images can all be inserted with one click without duplicates',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (services, chapter) = await _book(prose: '红伞过桥。\n白船靠岸。');
+      addTearDown(services.close);
+      final repo = services.repository;
+      final conversation = await repo.createConversation(
+        branchId: chapter.branchId,
+      );
+      await repo.appendAgentMessage(
+        conversation,
+        role: 'user',
+        content: '本章亮点生图',
+      );
+      final ids = <String>[];
+      for (final quote in ['红伞过桥。', '白船靠岸。']) {
+        ids.add(
+          (await repo.storeAsset(
+            branchId: chapter.branchId,
+            name: quote,
+            prepared: PreparedAsset(
+              hash: 'a' * 64,
+              thumbnailHash: 'b' * 64,
+              width: 1,
+              height: 1,
+              byteLength: 1,
+            ),
+            metadata: {
+              'illustrationAnchor': {
+                'chapterId': chapter.id,
+                'revisionId': chapter.revisionId,
+                'quote': quote,
+              },
+            },
+          )).id,
+        );
+      }
+      await repo.appendAgentMessage(
+        conversation,
+        role: 'tool',
+        content: jsonEncode({
+          'images': [
+            for (final id in ids) {'assetId': id},
+          ],
+        }),
+        metadata: {'tool_name': 'generate_images'},
+      );
+      await _pump(
+        tester,
+        services,
+        AppScaffold(child: AgentPanel(branchId: chapter.branchId)),
+      );
+      await tester.pumpAndSettle();
+      final insertAll = find.text('全部插入正文');
+      expect(insertAll, findsOneWidget);
+      expect(findAction('插入正文'), findsNWidgets(2));
+      await tester.ensureVisible(findAction('插入正文').first);
+      await tester.tap(findAction('插入正文').first);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 2; i++) {
+        await tester.ensureVisible(insertAll);
+        await tester.tap(insertAll);
+        await tester.pumpAndSettle();
+        expect(
+          (await repo.getChapter(
+                branchId: chapter.branchId,
+                chapterId: chapter.id,
+              )).content.delta
+              .where((op) => op['insert'] is Map)
+              .map((op) => (op['insert'] as Map)['image']),
+          ids.map((id) => 'asset:$id'),
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'chapter highlights require an image channel and confirm the batch once',
     (tester) async {
       tester.view.physicalSize = const Size(900, 1200);

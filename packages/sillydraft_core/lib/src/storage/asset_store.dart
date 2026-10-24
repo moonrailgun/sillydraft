@@ -147,6 +147,40 @@ extension AssetOperations on StoryRepository {
     }
   }
 
+  Future<int> insertAgentIllustrations({
+    required String branchId,
+    required List<String> assetIds,
+    required AgentMessage source,
+  }) => _write(() async {
+    var inserted = 0;
+    // Insertion prepends to a paragraph's images; reverse to keep result order.
+    for (final assetId in assetIds.reversed) {
+      final asset = await getAsset(assetId);
+      final anchor = asset.metadata['illustrationAnchor'];
+      if (anchor is! Map || anchor['chapterId'] is! String) {
+        throw const FormatException('部分图片未保存引用段落，请逐张选择位置插入。');
+      }
+      final chapter = await getChapter(
+        branchId: branchId,
+        chapterId: anchor['chapterId'] as String,
+      );
+      if (chapter.content.delta.any(
+        (op) =>
+            op['insert'] is Map &&
+            (op['insert'] as Map)['image'] == 'asset:$assetId',
+      )) {
+        continue;
+      }
+      await insertAgentIllustration(
+        branchId: branchId,
+        assetId: assetId,
+        source: source,
+      );
+      inserted++;
+    }
+    return inserted;
+  });
+
   Future<Chapter> insertAgentIllustration({
     required String branchId,
     required String assetId,
