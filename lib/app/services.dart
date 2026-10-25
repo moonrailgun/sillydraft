@@ -300,49 +300,79 @@ final class AppServices {
 
   final _drafts = <Object, Future<void> Function()>{};
 
+  // File locks are process-wide on Unix, so also reject a second local owner.
+  static final _openDirectories = <String>{};
+  RandomAccessFile? _libraryLock;
+
   static Future<AppServices> open({bool checkUpdates = true}) async {
-    final dir = await getApplicationSupportDirectory();
-    await dir.create(recursive: true);
-    final secretsFile = File('${dir.path}/secrets.json');
-    // A brand-new install has nothing in the keychain to move, so it never
-    // touches the keychain (or needs a desktop keyring) at all.
-    final fresh =
-        !File('${dir.path}/library.sqlite').existsSync() &&
-        !secretsFile.existsSync();
-    final secrets = FileSecrets(
-      secretsFile,
-      legacy: fresh ? null : KeychainSecrets(),
-    );
-    try {
-      await secrets.migrateLegacy();
-    } catch (e) {
-      // Keys still in the keychain are read on demand; retried next launch.
-      stderr.writeln('SillyDraft: keychain migration postponed: $e');
+    final support = await getApplicationSupportDirectory();
+    await support.create(recursive: true);
+    final path = await support.resolveSymbolicLinks();
+    if (!_openDirectories.add(path)) {
+      throw StateError('本地作品库已在使用，请关闭其他 SillyDraft 窗口后重试');
     }
-    final services = AppServices(
-      repository: StoryRepository.open('${dir.path}/library.sqlite'),
-      secrets: secrets,
-      dataDirectory: dir,
-      updateEndpoint: checkUpdates && !Platform.isIOS ? latestReleaseUrl : null,
-    );
-    await services.runner.recoverInterrupted();
-    // A desktop shares its library again when the author left it on.
-    if (desktopPlatform) unawaited(services.hosting.restore());
+    final dir = Directory(path);
+    RandomAccessFile? lock;
+    AppServices? services;
     try {
-      await services.repository.migrateLegacyPersonas();
-    } catch (e) {
-      // Unmigrated profiles read as “我” until the next launch retries.
-      stderr.writeln('SillyDraft: persona migration postponed: $e');
-    }
-    try {
-      await services.assets?.pruneOrphans();
-    } catch (e) {
-      // Maintenance failure must not prevent access to saved manuscripts.
-      stderr.writeln(
-        'SillyDraft: unused asset cleanup failed; will retry on next launch: $e',
+      lock = File('$path/library.lock').openSync(mode: FileMode.append);
+      try {
+        lock.lockSync(FileLock.exclusive);
+      } on FileSystemException catch (e) {
+        throw StateError('无法独占打开本地作品库，请关闭其他 SillyDraft 窗口后重试：$e');
+      }
+      final secretsFile = File('${dir.path}/secrets.json');
+      // A brand-new install has nothing in the keychain to move, so it never
+      // touches the keychain (or needs a desktop keyring) at all.
+      final fresh =
+          !File('${dir.path}/library.sqlite').existsSync() &&
+          !secretsFile.existsSync();
+      final secrets = FileSecrets(
+        secretsFile,
+        legacy: fresh ? null : KeychainSecrets(),
       );
+      try {
+        await secrets.migrateLegacy();
+      } catch (e) {
+        // Keys still in the keychain are read on demand; retried next launch.
+        stderr.writeln('SillyDraft: keychain migration postponed: $e');
+      }
+      services = AppServices(
+        repository: StoryRepository.open('${dir.path}/library.sqlite'),
+        secrets: secrets,
+        dataDirectory: dir,
+        updateEndpoint: checkUpdates && !Platform.isIOS
+            ? latestReleaseUrl
+            : null,
+      );
+      services._libraryLock = lock;
+      await services.runner.recoverInterrupted();
+      // A desktop shares its library again when the author left it on.
+      if (desktopPlatform) unawaited(services.hosting.restore());
+      try {
+        await services.repository.migrateLegacyPersonas();
+      } catch (e) {
+        // Unmigrated profiles read as “我” until the next launch retries.
+        stderr.writeln('SillyDraft: persona migration postponed: $e');
+      }
+      try {
+        await services.assets?.pruneOrphans();
+      } catch (e) {
+        // Maintenance failure must not prevent access to saved manuscripts.
+        stderr.writeln(
+          'SillyDraft: unused asset cleanup failed; will retry on next launch: $e',
+        );
+      }
+      return services;
+    } catch (_) {
+      if (services != null) {
+        await services.close(flushDrafts: false);
+      } else {
+        lock?.closeSync();
+        _openDirectories.remove(path);
+      }
+      rethrow;
     }
-    return services;
   }
 
   final ProviderFactory? _modelProviderFactory;
@@ -557,6 +587,11 @@ final class AppServices {
         await session.close();
       } else {
         await repository.close();
+      }
+      if (_libraryLock case final lock?) {
+        lock.closeSync();
+        _libraryLock = null;
+        _openDirectories.remove(dataDirectory!.path);
       }
     }
   }
