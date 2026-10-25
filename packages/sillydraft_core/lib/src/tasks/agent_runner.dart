@@ -282,7 +282,12 @@ extension _AgentExecution on TaskRunner {
         if (!illustrationBatch && canBatchImages)
           _imageTool(image, batch: true),
       ],
-      if (!illustrationOnly) ...skillTools(skills),
+      if (!illustrationOnly)
+        ...skillTools(
+          skills,
+          activeSkills: (input['activeSkills'] as List? ?? const [])
+              .whereType<String>(),
+        ),
     ];
     String? writtenRevisionId;
     var canWrite = !illustrationOnly;
@@ -1191,13 +1196,18 @@ extension _AgentExecution on TaskRunner {
       for (final s in task.input['skills'] as List? ?? const [])
         AgentSkill.fromJson(s as Map<String, dynamic>),
     ];
+    final active = (task.input['activeSkills'] as List? ?? const []);
     final skill = skills
-        .where((s) => s.modelInvocable && s.name == args['name'])
+        .where(
+          (s) =>
+              s.name == args['name'] &&
+              (s.modelInvocable ||
+                  (call.name == 'read_skill_file' && active.contains(s.name))),
+        )
         .firstOrNull;
     if (skill == null) throw const FormatException('没有这个技能');
     if (call.name == 'activate_skill') {
       if (args.length != 1) throw const FormatException('参数无效');
-      final active = (task.input['activeSkills'] as List? ?? const []);
       if (active.contains(skill.name)) {
         return {'loaded': false, 'note': '技能「${skill.name}」已在本会话中加载，无需重复加载。'};
       }

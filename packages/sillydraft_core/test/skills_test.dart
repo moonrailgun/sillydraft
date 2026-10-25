@@ -272,4 +272,102 @@ body''', directory: 'plot');
     expect(contents.where((c) => c.contains('手动技能正文')).length, 1);
     expect(contents.last, '帮我检查', reason: 'the command is not sent as text');
   });
+
+  for (final withAutomaticSkill in [false, true]) {
+    test(
+      'an explicitly selected manual skill can read its files ${withAutomaticSkill ? 'alongside an automatic skill' : 'on its own'}',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final novel = await repo.createNovel(title: '雾港');
+        final conversation = await repo.createConversation(
+          branchId: novel.activeBranchId,
+        );
+        final skill = AgentSkill(
+          name: 'manual-only',
+          description: '只能手动启用。',
+          body: '请读取 references/guide.md。',
+          modelInvocable: false,
+          files: {'references/guide.md': '手动技能的参考资料'},
+        );
+        final requests = <ProviderRequest>[];
+        var round = 0;
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (connection) async =>
+              ScriptProvider(connection, (request, _) async* {
+                requests.add(request);
+                if (round++ % 2 == 0) {
+                  yield ToolCallReady('read-$round', 'read_skill_file', {
+                    'name': skill.name,
+                    'path': 'references/guide.md',
+                  });
+                  yield const GenerationFinished('tool_calls');
+                } else {
+                  yield const TextDelta('已读取');
+                  yield const GenerationFinished('stop');
+                }
+              }),
+        );
+        addTearDown(runner.close);
+        final agent = EditorAgent(repository: repo, runner: runner);
+        for (final (message, active) in [
+          ('请检查', false),
+          ('/manual-only 帮我检查', true),
+          ('继续使用参考资料', true),
+        ]) {
+          requests.clear();
+          final task = await agent.send(
+            conversationId: conversation,
+            connection: ModelConnection(
+              id: 'test',
+              name: 'test',
+              baseUrl: 'http://localhost:1',
+              model: 'test',
+            ),
+            message: message,
+            skills: [
+              skill,
+              if (withAutomaticSkill)
+                AgentSkill(
+                  name: 'automatic',
+                  description: '自动技能',
+                  body: '正文',
+                  files: {'references/other.md': '其他资料'},
+                ),
+            ],
+          );
+          await runner.wait(task.id);
+          expect((await repo.getTask(task.id)).status, TaskStatus.completed);
+          final functions = requests.first.tools.map(
+            (tool) => tool['function'] as Map,
+          );
+          final read = functions.where(
+            (function) => function['name'] == 'read_skill_file',
+          );
+          final readableNames = [
+            for (final function in read)
+              ...function['parameters']['properties']['name']['enum'] as List,
+          ];
+          expect(
+            readableNames,
+            active ? contains(skill.name) : isNot(contains(skill.name)),
+          );
+          final activate = functions.where(
+            (function) => function['name'] == 'activate_skill',
+          );
+          for (final function in activate) {
+            expect(
+              function['parameters']['properties']['name']['enum'],
+              isNot(contains(skill.name)),
+            );
+          }
+          expect(
+            requests[1].messages.last['content'],
+            active ? contains('手动技能的参考资料') : isNot(contains('手动技能的参考资料')),
+          );
+        }
+      },
+    );
+  }
 }

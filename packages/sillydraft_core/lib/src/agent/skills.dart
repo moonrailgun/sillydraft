@@ -335,28 +335,39 @@ String _escape(String value) => value
     .replaceAll('"', '&quot;');
 
 /// Tools for activation and tier-3 resources; names are an enum so the model
-/// cannot invent skills. None when there is nothing to activate.
-List<Map<String, dynamic>> skillTools(List<AgentSkill> skills) {
-  final visible = skills.where((s) => s.modelInvocable).toList();
-  if (visible.isEmpty) return const [];
-  final names = [for (final s in visible) s.name];
+/// cannot invent skills. Explicitly active skills also expose their resources.
+List<Map<String, dynamic>> skillTools(
+  List<AgentSkill> skills, {
+  Iterable<String> activeSkills = const [],
+}) {
+  final names = [
+    for (final s in skills)
+      if (s.modelInvocable) s.name,
+  ];
+  final readable = [
+    for (final s in skills)
+      if (s.files.isNotEmpty &&
+          (s.modelInvocable || activeSkills.contains(s.name)))
+        s.name,
+  ];
   return [
-    {
-      'type': 'function',
-      'function': {
-        'name': 'activate_skill',
-        'description': '加载一个技能的完整说明。任务与技能描述相符时先调用。',
-        'parameters': {
-          'type': 'object',
-          'properties': {
-            'name': {'type': 'string', 'enum': names},
+    if (names.isNotEmpty)
+      {
+        'type': 'function',
+        'function': {
+          'name': 'activate_skill',
+          'description': '加载一个技能的完整说明。任务与技能描述相符时先调用。',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'name': {'type': 'string', 'enum': names},
+            },
+            'required': ['name'],
+            'additionalProperties': false,
           },
-          'required': ['name'],
-          'additionalProperties': false,
         },
       },
-    },
-    if (visible.any((s) => s.files.isNotEmpty))
+    if (readable.isNotEmpty)
       {
         'type': 'function',
         'function': {
@@ -365,7 +376,7 @@ List<Map<String, dynamic>> skillTools(List<AgentSkill> skills) {
           'parameters': {
             'type': 'object',
             'properties': {
-              'name': {'type': 'string', 'enum': names},
+              'name': {'type': 'string', 'enum': readable},
               'path': {'type': 'string'},
             },
             'required': ['name', 'path'],
