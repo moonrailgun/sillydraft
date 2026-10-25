@@ -52,10 +52,10 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
   /// Variables of the chapters opened on the message tab, read on demand.
   final _chapterVariables = <String, Map<String, dynamic>>{};
 
-  /// Version of the branch variables when they were loaded; a save with
+  /// Version loaded by each editor; a save with
   /// an older version is refused, so edits never roll back changes made
   /// elsewhere (an accepted proposal, an HTML page) meanwhile.
-  int? _headVersion;
+  final _editorVersions = <String, int>{};
 
   /// The text each editor held when its error was reported; editing it
   /// away clears the error.
@@ -91,32 +91,38 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
   static String _pretty(Map<String, dynamic> value) =>
       const JsonEncoder.withIndent('  ').convert(value);
 
-  TextEditingController _editor(String key, Map<String, dynamic> value) {
+  TextEditingController _editor(
+    String key,
+    Map<String, dynamic> value, {
+    int? version,
+  }) {
     final text = _pretty(value);
     final existing = _editors[key];
     if (existing != null) {
-      // Keep text the author is still editing; refresh the rest.
+      // Keep an unsaved draft and its original version together.
       final dirty = existing.text != _loadedText[key];
-      if (!dirty && existing.text != text) existing.text = text;
+      if (dirty && existing.text != text) return existing;
+      if (existing.text != text) existing.text = text;
       _loadedText[key] = text;
+      if (version != null) _editorVersions[key] = version;
       return existing;
     }
     _loadedText[key] = text;
+    if (version != null) _editorVersions[key] = version;
     return _editors[key] = TextEditingController(text: text);
   }
 
   /// Reads one chapter's variables for its editor on the message tab.
   Future<void> _loadChapter(Chapter chapter) async {
-    final variables = decodeVariables(
-      (await _repo.getBranchVariables(
-        widget.branchId,
-        throughChapterId: chapter.id,
-      )).local,
+    final snapshot = await _repo.getBranchVariables(
+      widget.branchId,
+      throughChapterId: chapter.id,
     );
+    final variables = decodeVariables(snapshot.local);
     if (!mounted) return;
     setState(() {
       _chapterVariables[chapter.id] = variables;
-      _editor('chapter:${chapter.id}', variables);
+      _editor('chapter:${chapter.id}', variables, version: snapshot.version);
     });
   }
 
@@ -132,32 +138,32 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
               .cast<String, dynamic>();
       final entries = await _mvu.initEntries(widget.branchId);
       final checks = await _mvu.schemaChecks(widget.branchId);
-      final head = await _repo.getBranchVariables(widget.branchId);
       if (_expanded.isEmpty && story.chapters.isNotEmpty) {
         _expanded.add(story.chapters.last.id);
       }
-      final perChapter = <String, Map<String, dynamic>>{};
+      final perChapter = <String, BranchVariables>{};
       for (final chapter in story.chapters.where(
         (s) => _expanded.contains(s.id),
       )) {
-        perChapter[chapter.id] = decodeVariables(
-          (await _repo.getBranchVariables(
-            widget.branchId,
-            throughChapterId: chapter.id,
-          )).local,
+        perChapter[chapter.id] = await _repo.getBranchVariables(
+          widget.branchId,
+          throughChapterId: chapter.id,
         );
       }
       if (!mounted) return;
       setState(() {
         _story = story;
         _latest = latest;
-        _headVersion = head.version;
         _other = other;
         _initEntries = entries;
         _schemaChecks = checks;
         _loadError = null;
-        _editor('global', decodeVariables(latest.global));
-        _editor('chat', decodeVariables(latest.local));
+        _editor(
+          'global',
+          decodeVariables(latest.global),
+          version: latest.version,
+        );
+        _editor('chat', decodeVariables(latest.local), version: latest.version);
         for (final scope in ['character', 'preset']) {
           _editor(
             scope,
@@ -166,9 +172,14 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
                 : <String, dynamic>{},
           );
         }
-        _chapterVariables.addAll(perChapter);
         for (final entry in perChapter.entries) {
-          _editor('chapter:${entry.key}', entry.value);
+          final variables = decodeVariables(entry.value.local);
+          _chapterVariables[entry.key] = variables;
+          _editor(
+            'chapter:${entry.key}',
+            variables,
+            version: entry.value.version,
+          );
         }
       });
     } catch (error) {
@@ -203,6 +214,7 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
   }
 
   Future<void> _saveBranch(String key) async {
+    final text = _editors[key]!.text;
     final value = _parse(key);
     if (value == null) return;
     await _run(() async {
@@ -212,31 +224,37 @@ class _VariablesState extends ConsumerState<VariablesScreen> {
         widget.branchId,
         throughChapterId: chapterId,
       );
-      await _repo.setBranchVariables(
+      final saved = await _repo.setBranchVariables(
         branchId: widget.branchId,
         chapterId: chapterId,
-        expectedVersion: _headVersion!,
+        expectedVersion: _editorVersions[key]!,
         local: key == 'chat' ? encodeVariables(value) : current.local,
         global: key == 'global' ? encodeVariables(value) : current.global,
       );
+      _editorVersions[key] = saved.version;
+      _loadedText[key] = text;
     }, done: '已保存');
   }
 
   Future<void> _saveChapter(Chapter chapter) async {
-    final value = _parse('chapter:${chapter.id}');
+    final key = 'chapter:${chapter.id}';
+    final text = _editors[key]!.text;
+    final value = _parse(key);
     if (value == null) return;
     await _run(() async {
       final current = await _repo.getBranchVariables(
         widget.branchId,
         throughChapterId: chapter.id,
       );
-      await _repo.setBranchVariables(
+      final saved = await _repo.setBranchVariables(
         branchId: widget.branchId,
         chapterId: chapter.id,
-        expectedVersion: _headVersion!,
+        expectedVersion: _editorVersions[key]!,
         local: encodeVariables(value),
         global: current.global,
       );
+      _editorVersions[key] = saved.version;
+      _loadedText[key] = text;
     }, done: '已保存第 ${_story!.chapters.indexOf(chapter)} 楼的变量');
   }
 
