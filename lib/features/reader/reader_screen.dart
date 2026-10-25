@@ -262,12 +262,13 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       });
     }
     _awake(_style.keepAwake);
+    final fraction =
+        index >= 0 && story.chapters[index].id == progress?['chapterId']
+        ? (progress?['fraction'] as num? ?? 0).toDouble().clamp(0, 1)
+        : 0.0;
     _whenShown(_index, () {
       if (mounted && _scroll.hasClients) {
-        _scroll.jumpTo(
-          _scroll.position.maxScrollExtent *
-              (progress?['fraction'] as num? ?? 0).toDouble().clamp(0, 1),
-        );
+        _scroll.jumpTo(_scroll.position.maxScrollExtent * fraction);
       }
     });
   }

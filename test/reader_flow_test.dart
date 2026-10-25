@@ -1,13 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/finders.dart';
+import 'support/host.dart';
 
 void main() {
+  for (final sameChapter in [false, true]) {
+    testWidgets(
+      'explicit chapter ${sameChapter ? "restores its own" : "ignores another chapter’s"} progress',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final repo = StoryRepository.memory();
+        final services = AppServices(
+          repository: repo,
+          secrets: MemorySecrets(),
+        );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await tester.pumpAndSettle();
+          await services.close();
+        });
+        await repo.setSetting('reader', {
+          'autoDirections': false,
+          'keepAwake': false,
+        });
+        final novel = await repo.createNovel(title: '阅读位置');
+        final a = await repo.createChapter(branchId: novel.activeBranchId);
+        final b = await repo.createChapter(
+          branchId: novel.activeBranchId,
+          content: ManuscriptContent.plainText(
+            List.generate(100, (i) => '第 $i 段：雨落在渡口，远处的灯光渐渐亮起来。').join('\n\n'),
+          ),
+        );
+        await repo.setReadingProgress(
+          branchId: novel.activeBranchId,
+          chapterId: sameChapter ? b.id : a.id,
+          fraction: .8,
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [servicesProvider.overrideWithValue(services)],
+            child: testHost(
+              ReaderScreen(branchId: novel.activeBranchId, chapterId: b.id),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final scroll = tester
+            .widget<SingleChildScrollView>(
+              find.descendant(
+                of: find.byKey(const Key('reader-page')),
+                matching: find.byType(SingleChildScrollView),
+              ),
+            )
+            .controller!;
+        expect(scroll.position.maxScrollExtent, greaterThan(0));
+        expect(scroll.offset, sameChapter ? greaterThan(0) : isZero);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
   testWidgets(
     'reader bookmarks and restores the current position in a long chapter',
     (tester) async {
