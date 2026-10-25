@@ -276,6 +276,24 @@ final class PresetImporter {
     final body = kind == PresetKind.promptPack
         ? jsonObject(raw['data'], 'data')
         : raw;
+    // ST 1.19.0 (06bde939fb1e9c4c8d8641d810f0a916b5bce127), openai.js:
+    // settingsToUpdate retains these settings; sendOpenAIRequest maps them
+    // through ST's backend, so they cannot be forwarded blindly.
+    for (final setting in const {
+      'verbosity': '回复详细程度',
+      'show_thoughts': '推理内容设置',
+      'enable_web_search': '联网搜索设置',
+    }.entries) {
+      if (body.containsKey(setting.key)) {
+        diagnostics.add(
+          CompatibilityDiagnostic(
+            'preset_setting_not_applied',
+            '预设中的 ${setting.key}（${setting.value}）已保留，但当前尚未应用到模型请求',
+            path: setting.key,
+          ),
+        );
+      }
+    }
     final prompts = <PromptDefinition>[];
     if ([PresetKind.chat, PresetKind.promptPack].contains(kind)) {
       final entries = body['prompts'];

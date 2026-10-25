@@ -284,6 +284,26 @@ void main() {
     expect(preset.selectOrder(characterId: 42).single.identifier, 'missing');
   });
 
+  for (final setting in {
+    'verbosity': ['high', 'auto'],
+    'show_thoughts': [true, false],
+    'enable_web_search': [true, false],
+  }.entries) {
+    test('unapplied ${setting.key} is retained with a field diagnostic', () {
+      for (final value in setting.value) {
+        final raw = {'main_prompt': 'write', setting.key: value};
+        final preset = PresetImporter().decode(raw);
+        expect(preset.exportJson(), raw);
+        expect(preset.parameters, isNot(contains(setting.key)));
+        final diagnostic = preset.diagnostics.single;
+        expect(diagnostic.code, 'preset_setting_not_applied');
+        expect(diagnostic.path, setting.key);
+        expect(diagnostic.severity, DiagnosticSeverity.warning);
+        expect(diagnostic.message, contains(setting.key));
+      }
+    });
+  }
+
   test('sensitive connection fields never enter default export or normalized parameters', () {
     final preset = PresetImporter().decode({
       'main_prompt': 'hello',

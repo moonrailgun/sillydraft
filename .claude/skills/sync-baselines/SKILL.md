@@ -147,7 +147,7 @@ gh api repos/<仓库>/compare/<记录的提交>...<分支> --jq '.files[].filena
 
 ## 已知缺口（待处理时从这里划掉）
 
-- 聊天补全预设里与请求有关的 `verbosity`、`show_thoughts`、`enable_web_search` 不在 `_parameterKeys` 中，导入时被丢弃，也没有提示。ST 会把 `verbosity` 发给 `OPENAI_VERBOSITY_MODELS` 匹配的模型（`chat-completions.js` 推理强度过滤之后的一段）。
+- 聊天补全预设里与请求有关的 `verbosity`、`show_thoughts`、`enable_web_search` 当前保留原值但不应用，导入时逐字段给出 `preset_setting_not_applied` warning。后续实现映射时需核对 ST 服务端适配；例如 ST 会把 `verbosity` 发给 `OPENAI_VERBOSITY_MODELS` 匹配的模型（`chat-completions.js` 推理强度过滤之后的一段）。
 - NovelAI：ST 在 ddim 采样器或 V4 Full、V4 Curated 模型下强制关闭 `sm`、`sm_dyn`，这里没有（文档已写明差异）。
 - `manifest.json` 和对照数据里的 SHA-256 没有测试校验。
 - `GENERATION_TYPE_TRIGGERS`、正则 placement 编号、PromptManager 内置条目、`credentialKeys`、OpenAI 兼容连接转发的参数集合，都没有标注来源，也没有测试列出完整集合。
