@@ -6,6 +6,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../lore/sidecar.dart';
+import '../editor/paragraph_comparison.dart';
 import 'agent_providers.dart';
 
 final _comparisonProvider =
@@ -126,7 +127,9 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                             padding: const EdgeInsets.only(bottom: 20),
                             child: FTile(
                               title: const Text('预览显示效果'),
-                              subtitle: const Text('显示正则仅影响预览；写入与导出保留原正文。'),
+                              subtitle: const Text(
+                                '片段复制使用当前显示的文字；复制原文请关闭预览。写入与导出始终保留原正文。',
+                              ),
                               suffix: FSwitch(
                                 value: _displayRules,
                                 onChange: (value) =>
@@ -142,46 +145,15 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
                             padding: const EdgeInsets.only(bottom: 20),
                             child: Text(proposal.summary),
                           ),
-                        LayoutBuilder(
-                          builder: (context, size) {
-                            final before = _panel(
-                              '依据版本',
-                              _displayRules
-                                  ? comparison.before
-                                  : comparison.base.content.text,
-                              _displayRules
-                                  ? comparison.after
-                                  : proposal.content.text,
-                              false,
-                            );
-                            final after = _panel(
-                              '新正文',
-                              _displayRules
-                                  ? comparison.before
-                                  : comparison.base.content.text,
-                              _displayRules
-                                  ? comparison.after
-                                  : proposal.content.text,
-                              true,
-                            );
-                            return size.maxWidth >= 800
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(child: before),
-                                      const SizedBox(width: 20),
-                                      Expanded(child: after),
-                                    ],
-                                  )
-                                : Column(
-                                    children: [
-                                      before,
-                                      const SizedBox(height: 20),
-                                      after,
-                                    ],
-                                  );
-                          },
+                        ParagraphComparison(
+                          beforeTitle: '依据版本',
+                          afterTitle: '新正文',
+                          before: _displayRules
+                              ? comparison.before
+                              : comparison.base.content.text,
+                          after: _displayRules
+                              ? comparison.after
+                              : proposal.content.text,
                         ),
                         if (stale && pending)
                           Padding(
@@ -228,65 +200,4 @@ class _ProposalState extends ConsumerState<ProposalScreen> {
       ),
     ),
   );
-  Widget _panel(String title, String old, String next, bool after) {
-    var prefix = 0, suffix = 0;
-    while (prefix < old.length &&
-        prefix < next.length &&
-        old.codeUnitAt(prefix) == next.codeUnitAt(prefix)) {
-      prefix++;
-    }
-    while (suffix < old.length - prefix &&
-        suffix < next.length - prefix &&
-        old.codeUnitAt(old.length - suffix - 1) ==
-            next.codeUnitAt(next.length - suffix - 1)) {
-      suffix++;
-    }
-    if (prefix > 0 &&
-        prefix < old.length &&
-        old.codeUnitAt(prefix) >= 0xdc00 &&
-        old.codeUnitAt(prefix) <= 0xdfff) {
-      prefix--;
-    }
-    if (suffix > 0 &&
-        suffix < old.length &&
-        old.codeUnitAt(old.length - suffix) >= 0xdc00 &&
-        old.codeUnitAt(old.length - suffix) <= 0xdfff) {
-      suffix--;
-    }
-    final text = after ? next : old;
-    return FCard(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: context.theme.typography.body.md.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SelectableText.rich(
-              TextSpan(
-                children: [
-                  TextSpan(text: text.substring(0, prefix)),
-                  TextSpan(
-                    text: text.substring(prefix, text.length - suffix),
-                    style: TextStyle(
-                      backgroundColor: after
-                          ? const Color(0x334a996d)
-                          : const Color(0x33cb655f),
-                    ),
-                  ),
-                  TextSpan(text: text.substring(text.length - suffix)),
-                ],
-              ),
-              style: const TextStyle(height: 1.7),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
