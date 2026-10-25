@@ -8,6 +8,36 @@ import 'package:test/test.dart';
 import 'asset_library_test.dart' show testPicture;
 
 void main() {
+  test('export refuses metadata too large for its restore reader', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'sillydraft-backup-limit-',
+    );
+    final repo = StoryRepository.memory();
+    addTearDown(() async {
+      await repo.close();
+      await dir.delete(recursive: true);
+    });
+    final novel = await repo.createNovel(title: '大作品');
+    await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('x' * (33 * 1024 * 1024)),
+    );
+    final backup = ProjectBackup(
+      repository: repo,
+      assets: AssetLibrary(repository: repo, directory: dir),
+      resources: ResourceLibrary(
+        repository: repo,
+        keyProvider: () async => List.filled(32, 1),
+      ),
+    );
+
+    await expectLater(
+      backup.create(novel.id, passphrase: 'valid test passphrase'),
+      throwsFormatException,
+    );
+    expect((await repo.listNovels()).single.id, novel.id);
+  });
+
   test('authenticated malformed nested data cannot replace a healthy project', () async {
     final dir = await Directory.systemTemp.createTemp(
       'sillydraft-invalid-backup-',

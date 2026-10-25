@@ -37,6 +37,7 @@ final class ProjectBackup {
   final ResourceLibrary resources;
   static const maxBytes = 128 * 1024 * 1024;
   static const maxExpandedBytes = 256 * 1024 * 1024;
+  static const _maxMetadataBytes = 32 * 1024 * 1024;
 
   Future<Uint8List> create(
     String novelId, {
@@ -57,6 +58,9 @@ final class ProjectBackup {
       ),
     };
     var size = files.values.single.length;
+    if (size > _maxMetadataBytes) {
+      throw const FormatException('项目元数据超过 32 MB，无法生成可恢复的备份');
+    }
     void add(String name, Uint8List bytes) {
       if (files.containsKey(name)) return;
       size += bytes.length;
@@ -142,7 +146,7 @@ final class ProjectBackup {
         }
       }
       final json = files['project.json'];
-      if (json == null || json.length > 32 * 1024 * 1024) {
+      if (json == null || json.length > _maxMetadataBytes) {
         throw const FormatException('项目元数据缺失或超过 32 MB');
       }
       final raw = jsonDecode(utf8.decode(json));
