@@ -116,6 +116,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('history compares with saved current text without restoring it', (
+    tester,
+  ) async {
+    final (repo, chapter) = await _openEditor(
+      tester,
+      content: ManuscriptContent.plainText('旧段\n共同结尾'),
+    );
+    _quill(tester).document = Document.fromJson(
+      ManuscriptContent.plainText('新段\n共同结尾').delta,
+    );
+    await tester.pump();
+    await tester.tap(findAction('正文版本'));
+    await tester.pumpAndSettle();
+    final current = await repo.getChapter(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+    );
+    final revisions = await repo.listRevisions(
+      branchId: chapter.branchId,
+      chapterId: chapter.id,
+    );
+    await tester.tap(find.text('比较').first);
+    await tester.pumpAndSettle();
+    expect(find.text('删除 · 历史版本'), findsOneWidget);
+    expect(find.text('新增 · 当前正文'), findsOneWidget);
+    expect(find.text('旧段'), findsOneWidget);
+    expect(find.text('新段'), findsOneWidget);
+    expect(find.text('共同结尾'), findsNothing);
+    expect(
+      (await repo.getChapter(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+      )).revisionId,
+      current.revisionId,
+    );
+    expect(
+      await repo.listRevisions(
+        branchId: chapter.branchId,
+        chapterId: chapter.id,
+      ),
+      hasLength(revisions.length),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the toolbar undoes and redoes typing', (tester) async {
     await _openEditor(tester);
     final controller = _quill(tester);

@@ -15,6 +15,7 @@ import '../../app/widgets.dart';
 import '../agent/agent_screen.dart';
 import '../agent/writing_request_screen.dart';
 import '../agent/task_screen.dart';
+import 'paragraph_comparison.dart';
 
 class EditorScreen extends ConsumerStatefulWidget {
   const EditorScreen({super.key, required this.chapter});
@@ -170,34 +171,62 @@ class _EditorState extends ConsumerState<EditorScreen> {
                         variant: FBadgeVariant.secondary,
                         child: const Text('当前'),
                       )
-                    : FButton(
-                        variant: FButtonVariant.outline,
-                        size: FButtonSizeVariant.sm,
+                    : Row(
                         mainAxisSize: MainAxisSize.min,
-                        onPress: () async {
-                          try {
-                            final restored = await _services.repository
-                                .restoreRevision(
-                                  branchId: _chapter.branchId,
-                                  chapterId: _chapter.id,
-                                  expectedRevisionId: _chapter.revisionId,
-                                  revisionId: version.id,
+                        children: [
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: () => Navigator.of(sheetContext).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => PageScaffold(
+                                  title: '正文比较',
+                                  body: SingleChildScrollView(
+                                    padding: const EdgeInsets.all(20),
+                                    child: ParagraphComparison(
+                                      beforeTitle: '历史版本',
+                                      afterTitle: '当前正文',
+                                      before: version.content.text,
+                                      after: _chapter.content.text,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            child: const Text('比较'),
+                          ),
+                          const SizedBox(width: 8),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: () async {
+                              try {
+                                final restored = await _services.repository
+                                    .restoreRevision(
+                                      branchId: _chapter.branchId,
+                                      chapterId: _chapter.id,
+                                      expectedRevisionId: _chapter.revisionId,
+                                      revisionId: version.id,
+                                    );
+                                if (!mounted) return;
+                                _chapter = restored;
+                                _controller.document = Document.fromJson(
+                                  restored.content.delta,
                                 );
-                            if (!mounted) return;
-                            _chapter = restored;
-                            _controller.document = Document.fromJson(
-                              restored.content.delta,
-                            );
-                            _saved = _content.encoded;
-                            setState(() {});
-                            if (sheetContext.mounted) {
-                              Navigator.pop(sheetContext);
-                            }
-                          } catch (error) {
-                            if (mounted) showError(context, error);
-                          }
-                        },
-                        child: const Text('恢复'),
+                                _saved = _content.encoded;
+                                setState(() {});
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              } catch (error) {
+                                if (mounted) showError(context, error);
+                              }
+                            },
+                            child: const Text('恢复'),
+                          ),
+                        ],
                       ),
               ),
           ],
