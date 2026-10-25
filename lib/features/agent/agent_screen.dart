@@ -294,8 +294,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
         replaceMessageId: request?.replace,
       );
       unawaited(_sidecarAfterRound(services, task).catchError((Object _) {}));
-      if (mounted && typed) {
-        _input.clear();
+      if (mounted && typed && _editing == editing) {
+        // Preparing a turn can take time; retain anything typed meanwhile.
+        if (_input.text == text) _input.clear();
         _editing = null;
       }
     } catch (e) {

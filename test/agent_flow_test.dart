@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' hide Column;
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +13,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/finders.dart';
 import 'support/host.dart';
+import 'support/query_gate.dart';
 
 class _StreamingProvider implements ModelProvider {
   _StreamingProvider(this.config);
@@ -74,16 +77,21 @@ class _ReplyProvider implements ModelProvider {
 /// An assistant panel answering with [replies], and its branch.
 Future<({StoryRepository repo, String branchId})> _replyingPanel(
   WidgetTester tester,
-  List<String> replies,
-) async {
-  final repo = StoryRepository.memory();
+  List<String> replies, {
+  StoryRepository? repository,
+}) async {
+  final repo = repository ?? StoryRepository.memory();
   final iterator = replies.iterator;
   final services = AppServices(
     repository: repo,
     secrets: MemorySecrets(),
     modelProviderFactory: (c) async => _ReplyProvider(c, iterator),
   );
-  addTearDown(services.close);
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await services.close();
+  });
   await services.saveConnection(
     ModelConnection(
       id: 'test',
@@ -111,6 +119,60 @@ Future<List<String>> _thread(StoryRepository repo, String branchId) async {
 }
 
 void main() {
+  for (final editing in [false, true]) {
+    testWidgets(
+      'sending ${editing ? "an edited message" : "a message"} preserves a newer draft',
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+      (tester) async {
+        final gate = QueryGate();
+        final repository = StoryRepository.connect(
+          NativeDatabase.memory().interceptWith(gate),
+        );
+        final (:repo, :branchId) = await _replyingPanel(tester, [
+          '回复一',
+          '回复二',
+          '回复三',
+        ], repository: repository);
+        addTearDown(gate.release);
+        final input = find.byKey(const Key('agent-input'));
+        if (editing) {
+          await tester.enterText(input, '原问题');
+          await tester.tap(findAction('发送给编辑助手'));
+          await tester.pumpAndSettle();
+          await tester.tap(findAction('修改'));
+          await tester.pumpAndSettle();
+        }
+        await tester.enterText(input, '第一条请求');
+        gate.arm((_) => true);
+        await tester.tap(findAction('发送给编辑助手'));
+        await gate.waitUntilBlocked(tester);
+        await tester.enterText(input, '第二条尚未发送的草稿');
+        gate.release();
+        await tester.pumpAndSettle();
+        final controller = tester
+            .widget<EditableText>(
+              find.descendant(of: input, matching: find.byType(EditableText)),
+            )
+            .controller;
+        expect(controller.text, '第二条尚未发送的草稿');
+        await tester.tap(findAction('发送给编辑助手'));
+        await tester.pumpAndSettle();
+        final id =
+            (await repo.listConversations(branchId)).single['id'] as String;
+        expect(
+          [
+            for (final message in await repo.getAgentMessages(id))
+              if (message.role == 'user') message.content,
+          ],
+          ['第一条请求', '第二条尚未发送的草稿'],
+        );
+        expect(controller.text, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
   testWidgets(
     'the conversation selector shows the title after the first reply',
     (tester) async {
