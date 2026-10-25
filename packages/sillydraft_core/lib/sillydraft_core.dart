@@ -7,6 +7,7 @@ export 'src/transfer/project_sync.dart';
 export 'src/transfer/manuscript_import.dart';
 
 export 'src/model/manuscript.dart';
+export 'src/model/manuscript_diff.dart';
 export 'src/model/manuscript_presentation.dart';
 export 'src/model/chapter_title.dart';
 export 'src/model/story.dart';
