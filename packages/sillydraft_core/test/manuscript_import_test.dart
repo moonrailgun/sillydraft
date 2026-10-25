@@ -169,6 +169,67 @@ void main() {
     expect(result.chapters.first.text, '雾从港口升起。\n她 来了…');
   });
 
+  test('EPUB resolves spine URLs relative to the package document', () {
+    final archive = Archive()
+      ..addFile(
+        ArchiveFile.string(
+          'META-INF/container.xml',
+          '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>',
+        ),
+      )
+      ..addFile(
+        ArchiveFile.string('OPS/book.opf', '''
+<package><manifest>
+<item id="first" href="./first.xhtml"/>
+<item id="second" href="../Text/second%20chapter.xhtml#start"/>
+<item id="third" href="text/../third.xhtml"/>
+</manifest><spine>
+<itemref idref="first"/><itemref idref="second"/><itemref idref="third"/>
+</spine></package>'''),
+      )
+      ..addFile(ArchiveFile.string('OPS/first.xhtml', '<p>第一章正文</p>'))
+      ..addFile(ArchiveFile.string('Text/second chapter.xhtml', '<p>第二章正文</p>'))
+      ..addFile(ArchiveFile.string('OPS/third.xhtml', '<p>第三章正文</p>'));
+    final result = ManuscriptImporter.parse(
+      Uint8List.fromList(ZipEncoder().encode(archive)),
+      filename: 'book.epub',
+    );
+    expect(result.chapters.map((chapter) => chapter.text), [
+      '第一章正文',
+      '第二章正文',
+      '第三章正文',
+    ]);
+    expect(result.warnings, isEmpty);
+  });
+
+  test('EPUB reports a missing spine document in a partial import', () {
+    final archive = Archive()
+      ..addFile(
+        ArchiveFile.string(
+          'META-INF/container.xml',
+          '<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>',
+        ),
+      )
+      ..addFile(
+        ArchiveFile.string(
+          'book.opf',
+          '''
+<package><manifest>
+<item id="first" href="first.xhtml"/>
+<item id="missing" href="missing.xhtml"/>
+</manifest><spine><itemref idref="first"/><itemref idref="missing"/></spine></package>''',
+        ),
+      )
+      ..addFile(ArchiveFile.string('first.xhtml', '<p>保留下来的正文</p>'));
+    final result = ManuscriptImporter.parse(
+      Uint8List.fromList(ZipEncoder().encode(archive)),
+      filename: 'book.epub',
+    );
+    expect(result.chapters.single.text, '保留下来的正文');
+    expect(result.warnings, hasLength(1));
+    expect(result.warnings.single, contains('missing.xhtml'));
+  });
+
   test('a whole book becomes one work in one change', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);

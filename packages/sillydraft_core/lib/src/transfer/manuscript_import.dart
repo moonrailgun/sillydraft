@@ -231,9 +231,7 @@ abstract final class ManuscriptImporter {
           .findAllElements('rootfile')
           .first
           .getAttribute('full-path')!;
-      final base = opfPath.contains('/')
-          ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
-          : '';
+      final packageUri = Uri(path: opfPath);
       final opf = XmlDocument.parse(read(opfPath));
       final title =
           opf
@@ -253,16 +251,23 @@ abstract final class ManuscriptImporter {
           item.getAttribute('id'): item,
       };
       final chapters = <ImportedChapter>[];
+      final warnings = <String>[];
       for (final ref in opf.findAllElements('itemref', namespaceUri: '*')) {
         final item = manifest[ref.getAttribute('idref')];
-        final href = item?.getAttribute('href');
-        if (item == null ||
-            href == null ||
-            item.getAttribute('properties')?.contains('nav') == true) {
+        if (item?.getAttribute('properties')?.contains('nav') == true) {
           continue;
         }
-        final path = Uri.decodeFull('$base$href');
-        if (!files.containsKey(path)) continue;
+        final href = item?.getAttribute('href');
+        if (href == null) {
+          warnings.add('EPUB 章节缺少文件地址：${ref.getAttribute('idref') ?? ''}');
+          continue;
+        }
+        final uri = packageUri.resolve(href);
+        final path = uri.pathSegments.join('/');
+        if (uri.hasScheme || uri.hasAuthority || !files.containsKey(path)) {
+          warnings.add('未能导入 EPUB 章节文件：$href');
+          continue;
+        }
         final (heading, text) = _xhtml(read(path));
         if (text.replaceAll(_space, '').isEmpty) continue;
         chapters.add(
@@ -278,6 +283,7 @@ abstract final class ManuscriptImporter {
         title: title.isEmpty ? fallbackTitle : title,
         synopsis: _clean(_stripTags(description)),
         chapters: chapters,
+        warnings: warnings,
       );
     } on FormatException {
       rethrow;
