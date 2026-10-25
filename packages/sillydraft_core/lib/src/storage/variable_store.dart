@@ -75,11 +75,10 @@ extension VariableOperations on StoryRepository {
       branchId,
       throughChapterId: chapterId,
     );
-    final head = await getBranchVariables(branchId);
     return setBranchVariables(
       branchId: branchId,
       chapterId: chapterId,
-      expectedVersion: head.version,
+      expectedVersion: current.version,
       local: local ?? current.local,
       global: global ?? current.global,
     );

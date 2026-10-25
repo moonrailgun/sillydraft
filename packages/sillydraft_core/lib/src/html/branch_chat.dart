@@ -312,6 +312,14 @@ final class BranchChatBackend implements TavernChatBackend {
           ...next,
         };
       }
+      await repository.setBranchVariables(
+        branchId: branchId,
+        chapterId: chapterId,
+        expectedVersion: current.version,
+        local: next,
+        global: global ?? current.global,
+      );
+      return;
     }
     await repository.patchBranchVariables(
       branchId: branchId,

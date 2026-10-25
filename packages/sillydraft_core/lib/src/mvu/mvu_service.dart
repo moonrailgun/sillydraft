@@ -386,10 +386,12 @@ final class MvuService {
       branchId,
       throughChapterId: chapter.id,
     );
-    await repository.patchBranchVariables(
+    await repository.setBranchVariables(
       branchId: branchId,
       chapterId: chapter.id,
+      expectedVersion: current.version,
       local: {...current.local, ...data.toStored()},
+      global: current.global,
     );
   }
 
