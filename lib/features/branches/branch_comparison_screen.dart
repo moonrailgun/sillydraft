@@ -4,6 +4,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
 import '../../app/widgets.dart';
+import '../editor/paragraph_comparison.dart';
 import '../lore/lore_providers.dart';
 
 class BranchComparisonScreen extends ConsumerWidget {
@@ -52,18 +53,6 @@ class BranchComparisonScreen extends ConsumerWidget {
               ),
             ),
           );
-          Widget pair(Widget a, Widget b) => LayoutBuilder(
-            builder: (_, bounds) => bounds.maxWidth >= 800
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: a),
-                      const SizedBox(width: 12),
-                      Expanded(child: b),
-                    ],
-                  )
-                : Column(children: [a, const SizedBox(height: 12), b]),
-          );
           final ll =
                   ref
                       .watch(loreProvider((branchId: leftId, chapterId: null)))
@@ -103,15 +92,17 @@ class BranchComparisonScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                pair(
-                  panel(
-                    left.branch.name,
-                    leftChapters[id]?.content.text ?? '此分支无此章节',
+                if (leftChapters[id] == null || rightChapters[id] == null) ...[
+                  Text(
+                    '${leftChapters[id] == null ? left.branch.name : right.branch.name}：无此章节',
                   ),
-                  panel(
-                    right.branch.name,
-                    rightChapters[id]?.content.text ?? '此分支无此章节',
-                  ),
+                  const SizedBox(height: 12),
+                ],
+                ParagraphComparison(
+                  beforeTitle: left.branch.name,
+                  afterTitle: right.branch.name,
+                  before: leftChapters[id]?.content.text ?? '',
+                  after: rightChapters[id]?.content.text ?? '',
                 ),
               ],
               const SizedBox(height: 28),
