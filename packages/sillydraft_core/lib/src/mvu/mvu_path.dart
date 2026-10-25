@@ -81,8 +81,8 @@ abstract final class MvuPath {
         if (!current.containsKey(segment)) return fallback;
         current = current[segment];
       } else if (current is List && _isIndex(segment)) {
-        final index = int.parse(segment);
-        if (index >= current.length) return fallback;
+        final index = int.tryParse(segment);
+        if (index == null || index >= current.length) return fallback;
         current = current[index];
       } else {
         return fallback;

@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
+import '../mvu/mvu_path.dart';
 import 'import_types.dart';
 import 'moment.dart';
 import 'preset_importer.dart';
@@ -1389,22 +1390,9 @@ final class MacroEngine {
 
   static Object? _lookup(Object? root, String path) {
     if (path.trim().isEmpty) return root;
-    Object? current = root;
-    for (final part
-        in path.split(RegExp(r'\.|\[|\]\.?')).where((p) => p.isNotEmpty)) {
-      final key = part.replaceAll(RegExp(r'''^["']|["']\$'''), '');
-      if (current is Map) {
-        current = current[key];
-      } else if (current is List) {
-        final index = int.tryParse(key);
-        current = index != null && index >= 0 && index < current.length
-            ? current[index]
-            : null;
-      } else {
-        return null;
-      }
-    }
-    return current;
+    // JS-Slash-Runner 0af421068e7c03b6b0a71b68feb79d201164edeb
+    // src/function/macro_like.ts uses _.get, including quoted bracket keys.
+    return MvuPath.get(root, path);
   }
 
   static Object? _withoutDollarKeys(Object? value) {

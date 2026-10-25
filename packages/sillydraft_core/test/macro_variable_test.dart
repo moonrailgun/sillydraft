@@ -68,6 +68,50 @@ void main() {
     expect(engine.diagnostics, isEmpty);
   });
 
+  test('helper variable macros resolve quoted bracket paths', () {
+    final engine = MacroEngine(
+      values: {},
+      clock: DateTime.utc(2026),
+      seed: 1,
+      local: encodeVariables({
+        'stat_data': {
+          'hp': 100,
+          'a.b': {'c[d]': 'literal key'},
+          'say"hi': 'double quote',
+          "it's": 'single quote',
+          r'a\b': 'backslash',
+          'items': [
+            {'name': 'first'},
+          ],
+        },
+      }),
+    );
+    const cases = {
+      'stat_data["hp"]': '100',
+      "stat_data['hp']": '100',
+      'stat_data["a.b"]["c[d]"]': 'literal key',
+      r'stat_data["say\"hi"]': 'double quote',
+      r"stat_data['it\'s']": 'single quote',
+      r'stat_data["a\\b"]': 'backslash',
+      'stat_data["items"][0]["name"]': 'first',
+      'stat_data["items"][999]': 'null',
+      'stat_data["items"][9223372036854775808]': 'null',
+      'stat_data["missing"]': 'null',
+    };
+    for (final entry in cases.entries) {
+      expect(
+        engine.render('{{get_message_variable::${entry.key}}}'),
+        entry.value,
+        reason: entry.key,
+      );
+    }
+    expect(
+      engine.render('{{format_message_variable::stat_data["a.b"]}}'),
+      'c[d]: literal key',
+    );
+    expect(engine.diagnostics, isEmpty);
+  });
+
   test('format_*_variable dumps YAML indented to the line prefix', () {
     final engine = _engine();
     final text = engine.render(
