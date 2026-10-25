@@ -41,6 +41,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
   late String _briefText = _brief.text;
   bool _append = true, _busy = false;
   PreparedWriting? _draft;
+  int _previewVersion = 0;
   Object? _error;
   List<ModelConnection> _connections = [];
   ModelConnection? _connection;
@@ -62,7 +63,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         setState(() {
           _connections = all;
           _connection = selected;
-          _draft = null;
+          _invalidateDraft();
         });
       }
     } catch (e) {
@@ -79,10 +80,17 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
   void _briefChanged(TextEditingValue value) {
     if (value.text == _briefText) return;
     _briefText = value.text;
-    setState(() => _draft = null);
+    setState(_invalidateDraft);
+  }
+
+  void _invalidateDraft() {
+    _previewVersion++;
+    _draft = null;
   }
 
   Future<void> _preview() async {
+    final version = ++_previewVersion;
+    final brief = _brief.text.trim(), append = _append;
     setState(() {
       _busy = true;
       _error = null;
@@ -100,11 +108,9 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         branchId: widget.chapter.branchId,
         chapterId: widget.chapter.id,
         connection: connection,
-        brief: _brief.text.trim().isEmpty
-            ? '继续推进当前故事，保持人物动机与叙事视角一致。'
-            : _brief.text.trim(),
-        append: _append,
-        rewrite: !_append,
+        brief: brief.isEmpty ? '继续推进当前故事，保持人物动机与叙事视角一致。' : brief,
+        append: append,
+        rewrite: !append,
         preset: profile.preset,
         card: profile.card,
         userName: profile.userName,
@@ -117,9 +123,13 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         expectedRevisionId: widget.chapter.revisionId,
         autoAccept: true,
       );
-      if (mounted) setState(() => _draft = draft);
+      if (mounted && version == _previewVersion) {
+        setState(() => _draft = draft);
+      }
     } catch (e) {
-      if (mounted) setState(() => _error = e);
+      if (mounted && version == _previewVersion) {
+        setState(() => _error = e);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -210,7 +220,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                       selected: _append == append,
                       onPress: () => setState(() {
                         _append = append;
-                        _draft = null;
+                        _invalidateDraft();
                       }),
                     ),
                 ],
@@ -238,7 +248,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                 enabled: !_busy,
                 onChange: (value) => setState(() {
                   _connection = value;
-                  _draft = null;
+                  _invalidateDraft();
                 }),
               ),
               const SizedBox(height: 20),
@@ -264,6 +274,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   size: FButtonSizeVariant.sm,
                   mainAxisSize: MainAxisSize.min,
                   onPress: () async {
+                    setState(_invalidateDraft);
                     await Navigator.push(
                       context,
                       MaterialPageRoute<void>(
@@ -271,7 +282,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                             PresetScreen(branchId: widget.chapter.branchId),
                       ),
                     );
-                    if (mounted) setState(() => _draft = null);
+                    if (mounted) setState(_invalidateDraft);
                   },
                   prefix: const Icon(FLucideIcons.slidersHorizontal),
                   child: const Text('预设'),
@@ -281,6 +292,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   size: FButtonSizeVariant.sm,
                   mainAxisSize: MainAxisSize.min,
                   onPress: () async {
+                    setState(_invalidateDraft);
                     await Navigator.push(
                       context,
                       MaterialPageRoute<void>(
@@ -289,7 +301,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                         ),
                       ),
                     );
-                    if (mounted) setState(() => _draft = null);
+                    if (mounted) setState(_invalidateDraft);
                   },
                   prefix: const Icon(FLucideIcons.user),
                   child: const Text('角色卡与世界书'),
@@ -299,6 +311,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   size: FButtonSizeVariant.sm,
                   mainAxisSize: MainAxisSize.min,
                   onPress: () async {
+                    setState(_invalidateDraft);
                     await Navigator.push(
                       context,
                       MaterialPageRoute<void>(
