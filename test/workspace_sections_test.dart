@@ -235,7 +235,7 @@ void main() {
     await tester.tap(find.byKey(const Key('workspace-branch')));
     await tester.pumpAndSettle();
     expect(find.text('故事分支'), findsOneWidget);
-    expect(find.text('创建独立分支'), findsOneWidget);
+    expect(find.text('新建分支'), findsOneWidget);
     await tester.tap(find.byType(AppBackButton));
     await tester.pumpAndSettle();
     expect(find.byKey(_sections), findsOneWidget);

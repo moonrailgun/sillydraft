@@ -96,6 +96,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The tree marks where the branch left the story.
+    expect(find.textContaining('第一章后'), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('branch-${branch.id}')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('compare-${branch.id}')));
     await tester.pumpAndSettle();
     expect(find.textContaining('原来的故事'), findsOneWidget);
@@ -105,6 +109,45 @@ void main() {
     await tester.tap(find.byKey(ValueKey('activate-${branch.id}')));
     await tester.pumpAndSettle();
     expect((await repo.getNovel(novel.id)).activeBranchId, branch.id);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('new branch forks after the chosen chapter and switches to it', (
+    tester,
+  ) async {
+    final repo = StoryRepository.memory();
+    final services = AppServices(repository: repo, secrets: MemorySecrets());
+    addTearDown(services.close);
+    final novel = await repo.createNovel(title: '新路线');
+    await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('第一天'),
+    );
+    await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('第二天'),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(BranchScreen(novelId: novel.id)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新建分支'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(EditableText).first, '岔路');
+    await tester.tap(find.text('当前故事末尾'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第一章').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('创建分支'));
+    await tester.pumpAndSettle();
+    final active = await repo.getNovel(novel.id);
+    expect(active.activeBranchId, isNot(novel.activeBranchId));
+    expect((await repo.getStory(active.activeBranchId)).chapters, hasLength(1));
+    expect(find.textContaining('岔路'), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

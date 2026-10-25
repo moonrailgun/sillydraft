@@ -70,7 +70,7 @@ void main() {
         tester.widget<BranchScreen>(find.byType(BranchScreen)).novelId,
         novel.id,
       );
-      expect(find.text('主线'), findsWidgets);
+      expect(find.textContaining('主线'), findsWidgets);
       await tester.tap(findAction('返回'));
       await tester.pumpAndSettle();
 
