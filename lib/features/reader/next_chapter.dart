@@ -47,6 +47,7 @@ Future<GenerationTask> writeChapter(
     brief: brief,
     append: !rewrite,
     rewrite: rewrite,
+    regenerate: rewrite,
     preset: profile.preset,
     card: profile.card,
     userName: profile.userName,

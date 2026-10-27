@@ -4,6 +4,7 @@ extension VariableOperations on StoryRepository {
   Future<BranchVariables> _variablesAt(
     String branchId, {
     String? throughChapterId,
+    bool includeCurrentChapter = true,
   }) async {
     final story = await getStory(branchId);
     final positions = {for (final (i, s) in story.chapters.indexed) s.id: i};
@@ -12,7 +13,7 @@ extension VariableOperations on StoryRepository {
     }
     final cutoff = throughChapterId == null
         ? story.chapters.length - 1
-        : positions[throughChapterId]!;
+        : positions[throughChapterId]! - (includeCurrentChapter ? 0 : 1);
     final heads = await _rows(
       'SELECT version FROM branch_variables WHERE branch_id = ?',
       [branchId],

@@ -339,6 +339,7 @@ void main() {
     expect(find.byKey(const Key('chapter-stop')), findsOneWidget);
     expect(jsonEncode(requests.single.messages), contains('她在船上遇见了旧识。'));
     expect(jsonEncode(requests.single.messages), contains('重新写当前章节的完整正文'));
+    expect(jsonEncode(requests.single.messages), isNot(contains(refusal)));
     expect(find.byKey(const Key('chapter-regenerate')), findsNothing);
     expect(
       (await repo.getStory(book.branchId)).chapters.single.revisionId,

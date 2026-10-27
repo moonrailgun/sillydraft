@@ -1,7 +1,8 @@
 part of 'story_repository.dart';
 
 extension LoreOperations on StoryRepository {
-  /// Each entity's latest version through [throughChapterId]. Versions the
+  /// Each entity's latest version through [throughChapterId], or before it
+  /// when [includeCurrentChapter] is false. Versions the
   /// sidecar wrote for [ignoreSidecarOf], and with [skipStaleVersions] those
   /// whose source chapter changed since, are passed over for the version
   /// before them, as writing that chapter or after it needs. [staleLatest]
@@ -10,6 +11,7 @@ extension LoreOperations on StoryRepository {
   Future<List<LoreEntry>> listLore(
     String branchId, {
     String? throughChapterId,
+    bool includeCurrentChapter = true,
     LoreKind? kind,
     bool includeDeleted = false,
     String query = '',
@@ -24,7 +26,7 @@ extension LoreOperations on StoryRepository {
     }
     final cutoff = throughChapterId == null
         ? story.chapters.length - 1
-        : positions[throughChapterId]!;
+        : positions[throughChapterId]! - (includeCurrentChapter ? 0 : 1);
     final heads = {
       for (final chapter in story.chapters) chapter.id: chapter.revisionId,
     };

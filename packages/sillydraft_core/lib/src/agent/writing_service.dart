@@ -55,6 +55,7 @@ final class WritingService {
     List<ScopedWorldBook> worldBooks = const [],
     List<Map<String, dynamic>> globalRegex = const [],
     bool rewrite = false,
+    bool regenerate = false,
     int? selectedOrderId,
     int? rangeStart,
     int? rangeEnd,
@@ -74,6 +75,7 @@ final class WritingService {
       worldBooks: worldBooks,
       globalRegex: globalRegex,
       rewrite: rewrite,
+      regenerate: regenerate,
       selectedOrderId: selectedOrderId,
       rangeStart: rangeStart,
       rangeEnd: rangeEnd,
@@ -132,7 +134,8 @@ final class WritingService {
   /// Builds a writing request for [chapterId]. With [autoAccept] the result
   /// is accepted into the chapter as soon as it is written, story state
   /// included, instead of waiting in review; if the chapter or the variables
-  /// changed meanwhile it stays a candidate.
+  /// changed meanwhile it stays a candidate. [regenerate] starts from the
+  /// previous chapter's ending, excluding the target's text and story state.
   Future<PreparedWriting> prepare({
     required String branchId,
     required String chapterId,
@@ -146,6 +149,7 @@ final class WritingService {
     List<ScopedWorldBook> worldBooks = const [],
     List<Map<String, dynamic>> globalRegex = const [],
     bool rewrite = false,
+    bool regenerate = false,
     int? selectedOrderId,
     int? rangeStart,
     int? rangeEnd,
@@ -167,6 +171,10 @@ final class WritingService {
     if ((rangeStart == null) != (rangeEnd == null)) {
       throw ArgumentError('请提供完整选区');
     }
+    if (regenerate && (append || rangeStart != null)) {
+      throw ArgumentError('重新生成整章不能同时追加正文或改写选区');
+    }
+    final throughPosition = position - (regenerate ? 1 : 0);
 
     if (rangeStart != null) {
       chapter.content.validateRange(rangeStart, rangeEnd!);
@@ -179,6 +187,7 @@ final class WritingService {
     final variables = await repository.getBranchVariables(
       branchId,
       throughChapterId: chapterId,
+      includeCurrentChapter: !regenerate,
     );
     // MVU: the chapter's record derives from the previous chapter's, so the
     // prompt sees that one and the reply's commands apply on top of it.
@@ -195,6 +204,7 @@ final class WritingService {
       entries: initEntries,
       schemaChecks: MvuService.schemaChecksFor(profile, card?.raw),
       errors: mvuErrors,
+      includeCurrentChapter: !regenerate,
     );
     // The prompt shows the latest stored record (the state after this
     // chapter's earlier replies); the base only seeds a chapter without one.
@@ -208,6 +218,7 @@ final class WritingService {
     final lore = await repository.listLore(
       branchId,
       throughChapterId: chapterId,
+      includeCurrentChapter: !regenerate,
       ignoreSidecarOf: rewrite && rangeStart == null ? chapterId : null,
       skipStaleVersions: true,
       staleLatest: staleLatest,
@@ -247,6 +258,7 @@ final class WritingService {
     final presetInput = PresetInput(
       preset: selectedPreset,
       branchId: branchId,
+      // Bound resources remain available at the target even with no history.
       throughPosition: position,
       brief: '$loreContext\n\n作者的本次写作要求：\n$brief',
       clock: clock,
@@ -264,7 +276,7 @@ final class WritingService {
       localVariables: localVariables,
       globalVariables: variables.global,
       history: [
-        for (final (i, s) in story.chapters.indexed)
+        for (final (i, s) in story.chapters.take(throughPosition + 1).indexed)
           ContextChapter(
             branchId: branchId,
             position: i,
@@ -315,7 +327,7 @@ final class WritingService {
 
     return PreparedWriting(
       branchId: branchId,
-      kind: rewrite ? TaskKind.rewrite : TaskKind.writing,
+      kind: rewrite || regenerate ? TaskKind.rewrite : TaskKind.writing,
       chapterId: chapterId,
       baseRevisionId: chapter.revisionId,
       input: {
@@ -327,6 +339,7 @@ final class WritingService {
             {'id': entry.id, 'revisionId': entry.revisionId},
         ],
         'append': append,
+        if (regenerate) 'regenerate': true,
         if (autoAccept) 'autoAccept': true,
         if (rangeStart != null)
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
@@ -343,7 +356,7 @@ final class WritingService {
         'preset': selectedPreset.exportJson(),
         'compiled': compiled.toJson(),
         'sourceRevisions': [
-          for (final s in story.chapters.take(position + 1))
+          for (final s in story.chapters.take(throughPosition + 1))
             {'chapterId': s.id, 'revisionId': s.revisionId},
         ],
         'variableBaseVersion': variables.version,

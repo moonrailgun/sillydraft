@@ -312,7 +312,12 @@ extension TaskOperations on StoryRepository {
   Future<BranchVariables> getBranchVariables(
     String branchId, {
     String? throughChapterId,
-  }) => _variablesAt(branchId, throughChapterId: throughChapterId);
+    bool includeCurrentChapter = true,
+  }) => _variablesAt(
+    branchId,
+    throughChapterId: throughChapterId,
+    includeCurrentChapter: includeCurrentChapter,
+  );
 
   Future<void> _commitProposalVariables(
     ManuscriptProposal proposal,

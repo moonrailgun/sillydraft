@@ -122,11 +122,21 @@ final class MvuService {
   /// MVU runs on a message of the chat ST has loaded: macros read that chat
   /// and the live settings, here the branch's chapters as they are and its
   /// writing profile.
-  Future<MacroEngine> _macros(String branchId) async {
+  Future<MacroEngine> _macros(String branchId, {int? throughPosition}) async {
     final context = await repository.displayContext(branchId);
+    final chapters = throughPosition == null
+        ? null
+        : (await repository.getStory(branchId)).chapters
+              .take(throughPosition + 1)
+              .toList();
     return MacroEngine(
       env: context.env,
-      values: await repository.chatMacros(branchId, context),
+      values: chapters == null
+          ? await repository.chatMacros(branchId, context)
+          : context.chatMacros(
+              chapters.length,
+              chapters.lastOrNull?.content.text ?? '',
+            ),
       clock: _clock(),
       seed: 0,
     );
@@ -153,12 +163,13 @@ final class MvuService {
     List<MvuInitEntry>? entries,
     bool? schemaChecks,
     List<String>? errors,
+    int? throughPosition,
   }) async {
     final all = entries ?? await initEntries(branchId);
     if (all.isEmpty && (opening == null || !opening.contains('<initvar'))) {
       return null;
     }
-    final macros = await _macros(branchId);
+    final macros = await _macros(branchId, throughPosition: throughPosition);
     final data = MvuData();
     MvuInit.load(data, all, substitute: macros.render, errors: errors);
     if (opening != null) {
@@ -189,6 +200,7 @@ final class MvuService {
     List<MvuInitEntry>? entries,
     bool? schemaChecks,
     List<String>? errors,
+    int? throughPosition,
   }) async {
     final data = await seed(
       branchId,
@@ -196,9 +208,10 @@ final class MvuService {
       entries: entries,
       schemaChecks: schemaChecks,
       errors: errors,
+      throughPosition: throughPosition,
     );
     if (data != null && opening != null) {
-      final macros = await _macros(branchId);
+      final macros = await _macros(branchId, throughPosition: throughPosition);
       final result = MvuUpdater.apply(opening, data, substitute: macros.render);
       errors?.addAll(result.errors);
     }
@@ -239,13 +252,16 @@ final class MvuService {
     List<MvuInitEntry>? entries,
     bool? schemaChecks,
     List<String>? errors,
+    bool includeCurrentChapter = true,
   }) async {
     final story = await repository.getStory(branchId);
     final index = story.chapters.indexWhere((s) => s.id == chapterId);
     if (index < 0) throw const StoryNotFound('章节');
     final checks = schemaChecks ?? await this.schemaChecks(branchId);
     final seeds = entries == null || entries.isEmpty ? null : entries;
-    final opening = story.chapters.first.content.text;
+    final opening = index == 0 && !includeCurrentChapter
+        ? null
+        : story.chapters.first.content.text;
     MvuData? base;
     if (index == 0) {
       base = await seed(
@@ -254,6 +270,7 @@ final class MvuService {
         entries: seeds,
         schemaChecks: checks,
         errors: errors,
+        throughPosition: includeCurrentChapter ? null : index - 1,
       );
     } else {
       base = await storedAt(branchId, chapterId: story.chapters[index - 1].id);
@@ -263,9 +280,12 @@ final class MvuService {
         entries: seeds,
         schemaChecks: checks,
         errors: errors,
+        throughPosition: includeCurrentChapter ? null : index - 1,
       );
     }
-    base ??= await storedAt(branchId, chapterId: chapterId);
+    if (includeCurrentChapter) {
+      base ??= await storedAt(branchId, chapterId: chapterId);
+    }
     if (base != null) applySchemaPolicy(base, checks);
     return base;
   }

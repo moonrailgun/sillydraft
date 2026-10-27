@@ -185,7 +185,9 @@ final class GenerationTask extends JsonSource {
     String? message,
   }) {
     final sources = input['sourceRevisions'];
-    final id = sources is List ? '${sources.length - 1}' : null;
+    final id = sources is List
+        ? '${sources.length - (input['regenerate'] == true ? 0 : 1)}'
+        : null;
     return MacroEngine(
       env: macroEnv,
       values: {
