@@ -147,6 +147,28 @@ class ChapterDraft extends ConsumerStatefulWidget {
   });
   final GenerationTask task;
 
+  /// Like the final output parser, keep a configured reasoning prefix out
+  /// of prose; an unfinished reasoning block has no body to show yet.
+  static String textOf(GenerationTask task) {
+    var text = task.partialText.trimLeft();
+    final format = task.input['reasoningFormat'] as Map?;
+    final prefix = format?['prefix'] as String? ?? '';
+    final suffix = format?['suffix'] as String? ?? '';
+    if (prefix.isNotEmpty && suffix.isNotEmpty) {
+      if (prefix.startsWith(text)) return '';
+      if (text.startsWith(prefix)) {
+        final end = text.indexOf(suffix, prefix.length);
+        if (end < 0) return '';
+        text = text.substring(end + suffix.length);
+        final separator = format?['separator'] as String? ?? '';
+        if (separator.isNotEmpty && text.startsWith(separator)) {
+          text = text.substring(separator.length);
+        }
+      }
+    }
+    return text.trim();
+  }
+
   /// Sets text the way the page sets the book, with a caret after it while
   /// more is coming.
   final Widget Function(String text, {bool caret}) prose;
@@ -204,7 +226,7 @@ class _ChapterDraftState extends ConsumerState<ChapterDraft> {
                   p.status == ProposalStatus.pending,
             )
             .firstOrNull;
-    final text = pending?.content.text.trim() ?? task.partialText.trim();
+    final text = pending?.content.text.trim() ?? ChapterDraft.textOf(task);
     // Progress and the stop button float over the page meanwhile, so the
     // page only shows where the text goes.
     if (task.isActive) {

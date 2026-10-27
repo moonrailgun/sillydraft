@@ -8,6 +8,7 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/features/editor/workspace_screen.dart';
 import 'package:sillydraft/features/html/html_block_view.dart';
 import 'package:sillydraft/features/reader/reader_screen.dart';
+import 'package:sillydraft/features/reader/next_chapter.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/host.dart';
@@ -156,6 +157,34 @@ Future<List<GenerationTask>> _directionRuns(_Open book) async => [
 ];
 
 void main() {
+  test('chapter draft waits for prose after configured inline reasoning', () {
+    String displayed(String partialText) => ChapterDraft.textOf(
+      GenerationTask(
+        id: 'test',
+        branchId: 'test',
+        kind: TaskKind.rewrite,
+        status: TaskStatus.running,
+        input: {
+          'reasoningFormat': {
+            'prefix': '<think>',
+            'suffix': '</think>',
+            'separator': '\n\n',
+          },
+        },
+        partialText: partialText,
+        reasoning: '',
+        error: '',
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+    );
+    for (final text in ['', '  ', '<th', '<think>构思', '<think>构思</think>\n']) {
+      expect(displayed(text), isEmpty);
+    }
+    expect(displayed('<think>构思</think>\n\n她推开门。'), '她推开门。');
+    expect(displayed('她推开门。'), '她推开门。');
+  });
+
   testWidgets('the model recommendation belongs to its chosen direction', (
     tester,
   ) async {
