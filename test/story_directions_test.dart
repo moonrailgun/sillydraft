@@ -23,6 +23,7 @@ class _Model implements ModelProvider {
     this.gate,
     this.failures,
     this.recommendation,
+    this.startGate,
   );
   @override
   final ModelConnection config;
@@ -30,6 +31,7 @@ class _Model implements ModelProvider {
   final Future<void>? gate;
   final List<int>? failures;
   final bool recommendation;
+  final Future<void>? startGate;
   @override
   Stream<ProviderEvent> generate(
     ProviderRequest request, {
@@ -55,6 +57,10 @@ class _Model implements ModelProvider {
         }),
       );
     } else {
+      if (startGate != null) {
+        yield const ReasoningDelta('构思新的情节。');
+        await startGate;
+      }
       if (failures case final f? when f.first > 0) {
         f.first--;
         throw const ProviderException('http_500', '模型服务暂时不可用');
@@ -82,6 +88,7 @@ Future<_Open> _open(
   WidgetTester tester, {
   List<ProviderRequest>? requests,
   Future<void>? gate,
+  Future<void>? startGate,
   List<int>? failures,
   bool model = true,
   bool workspace = false,
@@ -101,7 +108,7 @@ Future<_Open> _open(
     repository: repo,
     secrets: MemorySecrets(),
     modelProviderFactory: (c) async =>
-        _Model(c, requests ?? [], gate, failures, recommendation),
+        _Model(c, requests ?? [], gate, failures, recommendation, startGate),
   );
   addTearDown(services.close);
   if (model) {
@@ -333,9 +340,7 @@ void main() {
     tester,
   ) async {
     final gate = Completer<void>();
-    addTearDown(() {
-      if (!gate.isCompleted) gate.complete();
-    });
+    final startGate = Completer<void>();
     const refusal = 'I cannot fulfill this request.';
     final requests = <ProviderRequest>[];
     final book = await _open(
@@ -343,8 +348,13 @@ void main() {
       text: refusal,
       requests: requests,
       gate: gate.future,
+      startGate: startGate.future,
       reader: {'autoDirections': false},
     );
+    addTearDown(() {
+      if (!startGate.isCompleted) startGate.complete();
+      if (!gate.isCompleted) gate.complete();
+    });
     final repo = book.services.repository;
     final original = (await repo.getStory(book.branchId)).chapters.single;
     final previous = await repo.createTask(
@@ -386,6 +396,23 @@ void main() {
     expect(jsonEncode(requests.single.messages), contains('重新写当前章节的完整正文'));
     expect(jsonEncode(requests.single.messages), isNot(contains(refusal)));
     expect(jsonEncode(requests.single.messages), isNot(contains('只输出要追加的正文')));
+    expect(find.textContaining(refusal, findRichText: true), findsOneWidget);
+    // Progress writes use a real stopwatch, independent of the widget clock.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 270)),
+    );
+    startGate.complete();
+    for (var i = 0; i < 50; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      if (find
+          .textContaining('她推开门。', findRichText: true)
+          .evaluate()
+          .isNotEmpty) {
+        break;
+      }
+    }
+    expect(find.textContaining('她推开门。', findRichText: true), findsOneWidget);
+    expect(find.textContaining(refusal, findRichText: true), findsNothing);
     expect(find.byKey(const Key('chapter-regenerate')), findsNothing);
     expect(
       (await repo.getStory(book.branchId)).chapters.single.revisionId,
@@ -403,6 +430,57 @@ void main() {
     expect(find.byKey(const Key('chapter-regenerate')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final stop in ['cancel', 'fail']) {
+    testWidgets('$stop after regeneration starts restores the saved chapter', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final book = await _open(
+        tester,
+        gate: gate.future,
+        reader: {'autoDirections': false},
+      );
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      final repo = book.services.repository;
+      final original = (await repo.getStory(book.branchId)).chapters.single;
+      final again = find.byKey(const Key('chapter-regenerate'));
+      await tester.ensureVisible(again);
+      await tester.pumpAndSettle();
+      await tester.tap(again);
+      for (var i = 0; i < 50; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        if (find
+            .textContaining('她推开门。', findRichText: true)
+            .evaluate()
+            .isNotEmpty) {
+          break;
+        }
+      }
+      expect(find.textContaining('她推开门。', findRichText: true), findsOneWidget);
+      expect(find.textContaining('风暴要来了。', findRichText: true), findsNothing);
+      if (stop == 'cancel') {
+        await tester.tap(find.byKey(const Key('chapter-stop')));
+        await tester.pump();
+        gate.complete();
+      } else {
+        gate.completeError(const ProviderException('interrupted', '连接中断'));
+      }
+      await tester.pumpAndSettle();
+      expect(find.textContaining('风暴要来了。', findRichText: true), findsOneWidget);
+      expect(
+        (await repo.getStory(book.branchId)).chapters.single.revisionId,
+        original.revisionId,
+      );
+      expect(
+        find.textContaining(stop == 'cancel' ? '已停止。' : '连接中断'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final action in ['regenerate', 'continue']) {
     testWidgets('failed $action keeps the chapter and can be retried', (

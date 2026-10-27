@@ -1218,6 +1218,12 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final tasks = ref.watch(tasksProvider(_branchId)).value ?? const [];
     final (:draft, :pending, latest: _) = _chapterTask(chapter);
     final hasText = chapter.content.text.trim().isNotEmpty;
+    final replacing =
+        draft != null &&
+        draft.isActive &&
+        draft.input['regenerate'] == true &&
+        draft.baseRevisionId == chapter.revisionId &&
+        ChapterDraft.textOf(draft).isNotEmpty;
     final writing = draft != null && (draft.isActive || pending);
     final canWrite =
         !_startingChapter &&
@@ -1299,7 +1305,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                 ),
                               ),
                               SizedBox(height: _style.fontSize * 1.5),
-                              if (hasText || draft == null)
+                              if (!replacing && (hasText || draft == null))
                                 CustomPaint(
                                   painter: _LineSelectionPainter(
                                     () => _paragraph,
