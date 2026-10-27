@@ -323,9 +323,25 @@ void main() {
       chapterId: original.id,
       baseRevisionId: original.revisionId,
       kind: TaskKind.writing,
-      input: {'brief': '她在船上遇见了旧识。'},
+      input: {
+        'brief': '她在船上遇见了旧识。',
+        'append': true,
+        'originalContent': ManuscriptContent.plainText('').toJson(),
+      },
     );
     await repo.updateTask(previous.id, status: TaskStatus.completed);
+    final continuation = await repo.createTask(
+      branchId: book.branchId,
+      chapterId: original.id,
+      baseRevisionId: original.revisionId,
+      kind: TaskKind.writing,
+      input: {
+        'brief': '只输出要追加的正文。',
+        'append': true,
+        'originalContent': original.content.toJson(),
+      },
+    );
+    await repo.updateTask(continuation.id, status: TaskStatus.completed);
     await tester.pumpAndSettle();
     final again = find.byKey(const Key('chapter-regenerate'));
     expect(again, findsOneWidget);
@@ -340,6 +356,7 @@ void main() {
     expect(jsonEncode(requests.single.messages), contains('她在船上遇见了旧识。'));
     expect(jsonEncode(requests.single.messages), contains('重新写当前章节的完整正文'));
     expect(jsonEncode(requests.single.messages), isNot(contains(refusal)));
+    expect(jsonEncode(requests.single.messages), isNot(contains('只输出要追加的正文')));
     expect(find.byKey(const Key('chapter-regenerate')), findsNothing);
     expect(
       (await repo.getStory(book.branchId)).chapters.single.revisionId,

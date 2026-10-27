@@ -1120,14 +1120,32 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     if (_startingChapter) return;
     setState(() => _startingChapter = true);
     try {
-      final tasks = await ref
-          .read(repositoryProvider)
-          .listTasks(branchId: _branchId);
+      final repository = ref.read(repositoryProvider);
+      final tasks = await repository.listTasks(branchId: _branchId);
       if (tasks.any(
         (t) =>
             t.isActive && [TaskKind.writing, TaskKind.rewrite].contains(t.kind),
       )) {
         throw const FormatException('本书正在写作，请等待完成后再生成。');
+      }
+      if (rewrite) {
+        for (final task in tasks) {
+          if (task.chapterId != chapter.id ||
+              ![TaskKind.writing, TaskKind.rewrite].contains(task.kind) ||
+              task.input['replacementRange'] != null) {
+            continue;
+          }
+          if (task.input['append'] == true) {
+            final original = (await repository.getTask(task.id))
+                .input['originalContent'];
+            if (original is! Map<String, dynamic> ||
+                ManuscriptContent.fromJson(original).text.trim().isNotEmpty) {
+              continue;
+            }
+          }
+          brief = task.input['brief'] as String? ?? brief;
+          break;
+        }
       }
       if (!mounted) return;
       await writeChapter(
@@ -1198,7 +1216,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       ),
     );
     final tasks = ref.watch(tasksProvider(_branchId)).value ?? const [];
-    final (:latest, :draft, :pending) = _chapterTask(chapter);
+    final (:draft, :pending, latest: _) = _chapterTask(chapter);
     final hasText = chapter.content.text.trim().isNotEmpty;
     final writing = draft != null && (draft.isActive || pending);
     final canWrite =
@@ -1327,8 +1345,6 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                                                 ? () => _generateChapter(
                                                     chapter,
                                                     brief:
-                                                        latest?.input['brief']
-                                                            as String? ??
                                                         '重新写当前章节《${chapter.title}》的完整正文。',
                                                     rewrite: true,
                                                   )
