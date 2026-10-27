@@ -868,6 +868,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,
         italicColor: _style.dimItalics ? theme.italic : null,
+        boldColor: theme.bold,
+        codeColor: theme.code,
         html: htmlEnabled
             ? (block, index) => _htmlBlock(book, chapter, block, index)
             : null,
@@ -1493,6 +1495,8 @@ class _ReaderState extends ConsumerState<ReaderScreen>
         indent: _style.indent,
         quoteColor: _style.highlightQuotes ? theme.quote : null,
         italicColor: _style.dimItalics ? theme.italic : null,
+        boldColor: theme.bold,
+        codeColor: theme.code,
         image: (_) => Pulse(
           blink: true,
           child: Container(

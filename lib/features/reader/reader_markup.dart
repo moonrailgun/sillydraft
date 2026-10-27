@@ -37,14 +37,14 @@ final class ProseMarkup {
     // ST hides the double quotes inside tags before looking for dialogue.
     masked = masked.replaceAllMapped(_tag, (m) => m[0]!.replaceAll('"', '￾'));
     for (final m in _quoted.allMatches(masked)) {
-      flags.fillRange(m.start, m.end, m.group(1) != null ? _code : quote);
+      flags.fillRange(m.start, m.end, m.group(1) != null ? code : quote);
     }
     // ST leaves tags unencoded (`encode_tags` is off) and DOMPurify drops
     // the ones it does not know, keeping their text: `<game>` never shows.
     // ponytail: known inline tags are hidden too; `<b>`/`<i>` styling and
     // `<br>` breaks would need their own pass.
     for (final m in _htmlTag.allMatches(masked)) {
-      if (flags[m.start] == _code) continue;
+      if (flags[m.start] == code) continue;
       for (var i = m.start; i < m.end; i++) {
         flags[i] |= hidden;
       }
@@ -59,7 +59,7 @@ final class ProseMarkup {
         } else if (flags[i] & hidden != 0) {
           // A hidden tag: what follows it still starts the line.
         } else if (lineStart &&
-            flags[i] != _code &&
+            flags[i] != code &&
             _blank.hasMatch(masked[i])) {
           indents.add(i);
         } else {
@@ -70,11 +70,8 @@ final class ProseMarkup {
     // Code is left as written: emphasis stops at it like at a line break.
     final lines = String.fromCharCodes([
       for (var i = 0; i < masked.length; i++)
-        flags[i] == _code ? _newline : masked.codeUnitAt(i),
+        flags[i] == code ? _newline : masked.codeUnitAt(i),
     ]);
-    for (var i = 0; i < flags.length; i++) {
-      if (flags[i] == _code) flags[i] = 0;
-    }
     var start = 0;
     for (var i = 0; i <= lines.length; i++) {
       if (i < lines.length && lines.codeUnitAt(i) != _newline) continue;
@@ -94,8 +91,8 @@ final class ProseMarkup {
   static const quote = 2;
   static const italic = 4, bold = 8, underline = 16;
 
-  /// Marks code while parsing; never left in the result.
-  static const _code = 128;
+  /// Code spans and fences, including their literal markers.
+  static const code = 128;
   static const _newline = 0x0a;
 
   final Uint8List _flags;

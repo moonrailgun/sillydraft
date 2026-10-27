@@ -69,6 +69,16 @@ void main() {
     ]);
   });
 
+  test('code keeps its markers, tags and indentation without emphasis', () {
+    const inline = '`"代码" **原样** <i>`';
+    const fence = '```text\n  *原样*\n```';
+    const tilde = '~~~\n  __原样__\n~~~';
+    const text = '$inline 与 ``x`y``\n$fence\n$tilde';
+    expect(marked(text, ProseMarkup.code), [inline, '``x`y``', fence, tilde]);
+    expect(marked(text, ProseMarkup.hidden), isEmpty);
+    expect(marked(text, ProseMarkup.bold | ProseMarkup.italic), isEmpty);
+  });
+
   test('Markdown emphasis follows showdown with ST\'s options', () {
     const text =
         '*低头* **用力** ***都*** __划线__ _斜_ * 空格 * '
@@ -210,6 +220,7 @@ void main() {
     expect(blocks, hasLength(1));
     expect(marked(text, ProseMarkup.quote, skip: blocks), ['"前"', '"后"']);
     expect(marked(text, ProseMarkup.hidden, skip: blocks), isEmpty);
+    expect(marked(text, ProseMarkup.code, skip: blocks), isEmpty);
   });
 
   test('the page colours dialogue and fades italics, and offsets hold', () {
@@ -256,6 +267,73 @@ void main() {
     expect(spans(plain.span).map((s) => s.$2.color).toSet(), {null});
   });
 
+  test(
+    'bold and code colours preserve emphasis priority and source offsets',
+    () {
+      final content = ManuscriptContent.fromDelta([
+        {'insert': '**用力** ***低语*** “**真的**” `"**原样**"`\n'},
+        {'insert': '```text\n  <i>代码</i>\n```\n'},
+        {
+          'insert': '编辑器加粗',
+          'attributes': {'bold': true},
+        },
+        {'insert': '\n'},
+      ]);
+      final theme = ReaderTheme.paper;
+      ReaderDocument page({bool coloured = true}) => ReaderDocument.build(
+        ManuscriptPresentation.identity(content),
+        fontSize: 20,
+        image: (_) => const SizedBox(),
+        quoteColor: coloured ? quote : null,
+        italicColor: coloured ? italic : null,
+        boldColor: coloured ? theme.bold : null,
+        codeColor: coloured ? theme.code : null,
+      );
+      final doc = page();
+      final all = spans(doc.span);
+      final shown = doc.span.toPlainText();
+      expect(
+        shown,
+        '用力 低语 “真的” `"**原样**"`\n```text\n  <i>代码</i>\n```\n编辑器加粗\n',
+      );
+      for (final word in ['用力', '编辑器加粗']) {
+        expect(styleOf(all, word).color, theme.bold);
+        expect(styleOf(all, word).fontWeight, FontWeight.bold);
+      }
+      expect(styleOf(all, '低语').color, italic);
+      expect(styleOf(all, '低语').fontWeight, FontWeight.bold);
+      expect(styleOf(all, '低语').fontStyle, FontStyle.italic);
+      expect(styleOf(all, '真的').color, quote);
+      expect(styleOf(all, '真的').fontWeight, FontWeight.bold);
+      for (final word in ['原样', '代码', '```']) {
+        expect(styleOf(all, word).color, theme.code);
+        expect(styleOf(all, word).fontWeight, isNull);
+      }
+      for (final word in ['用力', '低语', '真的', '原样', '代码', '编辑器加粗']) {
+        expect(
+          doc.sourceOffset(shown.indexOf(word)),
+          content.text.indexOf(word),
+        );
+      }
+      final plain = page(coloured: false);
+      expect(plain.span.toPlainText(), shown);
+      expect(spans(plain.span).map((s) => s.$2.color).toSet(), {null});
+    },
+  );
+
+  test('format colours remain legible on every reading theme', () {
+    for (final theme in ReaderTheme.values) {
+      final background = theme.background.computeLuminance();
+      for (final color in [theme.bold, theme.code]) {
+        final foreground = color.computeLuminance();
+        final ratio = background > foreground
+            ? (background + .05) / (foreground + .05)
+            : (foreground + .05) / (background + .05);
+        expect(ratio, greaterThanOrEqualTo(5), reason: theme.name);
+      }
+    }
+  });
+
   test('highlight settings default on and are kept', () {
     expect(ReaderStyle.fromJson({}).highlightQuotes, isTrue);
     expect(ReaderStyle.fromJson({}).dimItalics, isTrue);
@@ -286,7 +364,7 @@ void main() {
     await repo.createChapter(
       branchId: novel.activeBranchId,
       title: '第一章',
-      content: ManuscriptContent.plainText('她*回头*说：“走吧。”'),
+      content: ManuscriptContent.plainText('她*回头*说：“走吧。” **立刻** `code`'),
     );
     await tester.pumpWidget(
       ProviderScope(
@@ -308,6 +386,8 @@ void main() {
 
     expect(styleOf(page(), '走吧').color, ReaderTheme.paper.quote);
     expect(styleOf(page(), '回头').color, ReaderTheme.paper.italic);
+    expect(styleOf(page(), '立刻').color, ReaderTheme.paper.bold);
+    expect(styleOf(page(), 'code').color, ReaderTheme.paper.code);
     expect(page().map((s) => s.$1).join(), isNot(contains('*')));
 
     await tester.tap(findAction('排版与主题').first);
@@ -329,6 +409,8 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 1));
     expect(styleOf(page(), '走吧').color, isNull);
     expect(styleOf(page(), '回头').color, ReaderTheme.paper.italic);
+    expect(styleOf(page(), '立刻').color, ReaderTheme.paper.bold);
+    expect(styleOf(page(), 'code').color, ReaderTheme.paper.code);
     final saved = await repo.getSetting('reader');
     expect(saved?['highlightQuotes'], isFalse);
     expect(saved?['dimItalics'], isTrue);

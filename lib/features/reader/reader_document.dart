@@ -22,7 +22,8 @@ import 'reader_markup.dart';
 /// Text is marked up the way SillyTavern shows a chat message (see
 /// [ProseMarkup]): Markdown emphasis shows as emphasis with its markers left
 /// out, dialogue in quotes takes [quoteColor] and italics outside dialogue
-/// take [italicColor]. Null colours keep the text colour.
+/// take [italicColor]. Other bold text takes [boldColor], and literal code
+/// takes [codeColor]. Null colours keep the text colour.
 final class ReaderDocument {
   ReaderDocument._(this.span, this._offsets, this.blocks);
   factory ReaderDocument.build(
@@ -36,6 +37,8 @@ final class ReaderDocument {
     bool indent = false,
     Color? quoteColor,
     Color? italicColor,
+    Color? boldColor,
+    Color? codeColor,
   }) {
     final blocks = !hideHtml && html == null
         ? const <HtmlBlock>[]
@@ -54,16 +57,19 @@ final class ReaderDocument {
     TextStyle inline(Map attributes, int flags) {
       bool marked(int flag) => flags & flag != 0;
       final italic = attributes['italic'] == true || marked(ProseMarkup.italic);
+      final bold = attributes['bold'] == true || marked(ProseMarkup.bold);
       return TextStyle(
-        fontWeight: attributes['bold'] == true || marked(ProseMarkup.bold)
-            ? FontWeight.bold
-            : null,
+        fontWeight: bold ? FontWeight.bold : null,
         fontStyle: italic ? FontStyle.italic : null,
         // As in ST, italics inside dialogue keep the dialogue colour.
-        color: marked(ProseMarkup.quote)
+        color: marked(ProseMarkup.code)
+            ? codeColor
+            : marked(ProseMarkup.quote)
             ? quoteColor
             : italic
             ? italicColor
+            : bold
+            ? boldColor
             : null,
         decoration: TextDecoration.combine([
           if (attributes['underline'] == true || marked(ProseMarkup.underline))

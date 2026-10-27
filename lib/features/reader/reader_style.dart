@@ -21,6 +21,10 @@ enum ReaderTheme {
   /// third of the way to the page.
   Color get italic => Color.lerp(foreground, background, .35)!;
 
+  /// Muted accents, each at least 5:1 against every matching page background.
+  Color get bold => dark ? const Color(0xffbfa0b8) : const Color(0xff704665);
+  Color get code => dark ? const Color(0xff8bbdb5) : const Color(0xff32665f);
+
   /// Selected text, tinted with the page's own text colour: the app
   /// theme's colour was near white on a light page in dark mode.
   Color get selection => foreground.withValues(alpha: .25);
