@@ -1900,14 +1900,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: GestureDetector(
+                  child: FTappable.static(
                     key: Key('agent-image-$id'),
-                    onTap: () => showIllustrationDetail(
+                    onPress: () => showIllustrationDetail(
                       context,
                       assetId: id,
                       branchId: widget.branchId,
                     ),
-                    child: ClipRRect(
+                    builder: (context, states, _) => ClipRRect(
                       borderRadius: context.theme.style.borderRadius.lg,
                       child: Stack(
                         children: [
@@ -1915,36 +1915,39 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             constraints: const BoxConstraints(maxHeight: 280),
                             child: AssetImageView(assetId: id),
                           ),
-                          Positioned(
-                            left: 8,
-                            bottom: 8,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: context.theme.colors.background
-                                    .withValues(alpha: .9),
-                                borderRadius:
-                                    context.theme.style.borderRadius.md,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconAction(
-                                    icon: FLucideIcons.filePlus,
-                                    tooltip: '插入正文',
-                                    onPress: _insertingImages.contains(id)
-                                        ? null
-                                        : () => _insertImages([id], message),
-                                  ),
-                                  IconAction(
-                                    icon: FLucideIcons.download,
-                                    tooltip: '下载到本地',
-                                    onPress: () =>
-                                        exportIllustration(context, ref, id),
-                                  ),
-                                ],
+                          if (touchPlatform ||
+                              states.contains(FTappableVariant.hovered) ||
+                              states.contains(FTappableVariant.focused))
+                            Positioned(
+                              left: 8,
+                              bottom: 8,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: context.theme.colors.background
+                                      .withValues(alpha: .9),
+                                  borderRadius:
+                                      context.theme.style.borderRadius.md,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconAction(
+                                      icon: FLucideIcons.filePlus,
+                                      tooltip: '插入正文',
+                                      onPress: _insertingImages.contains(id)
+                                          ? null
+                                          : () => _insertImages([id], message),
+                                    ),
+                                    IconAction(
+                                      icon: FLucideIcons.download,
+                                      tooltip: '下载到本地',
+                                      onPress: () =>
+                                          exportIllustration(context, ref, id),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
