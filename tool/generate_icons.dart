@@ -1,5 +1,5 @@
 // Regenerate the platform icons: flutter test tool/generate_icons.dart
-// The mark is drawn as vectors, without fonts or external image dependencies.
+// Uses the PNG export of assets/branding/logo.svg; no fonts are required.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,71 +8,26 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as raster;
 
-Future<Uint8List> icon(int size, {bool rounded = false}) async {
+Future<Uint8List> icon(
+  ui.Image source,
+  int size, {
+  bool rounded = false,
+}) async {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder)..scale(size / 256);
-  final purple = ui.Paint()..color = const ui.Color(0xff7060ad);
-  final paper = ui.Paint()..color = const ui.Color(0xfffffcf4);
-  if (rounded) {
-    canvas.drawRRect(
-      ui.RRect.fromRectAndRadius(
-        const ui.Rect.fromLTWH(12, 12, 232, 232),
-        const ui.Radius.circular(52),
-      ),
-      purple,
-    );
-  } else {
-    canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 256, 256), purple);
-  }
-  canvas.drawPath(
-    ui.Path()
-      ..moveTo(48, 91)
-      ..quadraticBezierTo(88, 78, 121, 101)
-      ..lineTo(121, 196)
-      ..quadraticBezierTo(89, 174, 48, 185)
-      ..close(),
-    paper,
-  );
-  canvas.drawPath(
-    ui.Path()
-      ..moveTo(135, 101)
-      ..quadraticBezierTo(164, 86, 208, 91)
-      ..lineTo(208, 185)
-      ..quadraticBezierTo(169, 178, 135, 196)
-      ..close(),
-    paper,
-  );
-  final line = ui.Paint()
-    ..color = const ui.Color(0xffb6acd5)
-    ..style = ui.PaintingStyle.stroke
-    ..strokeWidth = 5
-    ..strokeCap = ui.StrokeCap.round;
-  for (final y in [118.0, 140.0, 162.0]) {
-    canvas.drawPath(
-      ui.Path()
-        ..moveTo(66, y)
-        ..quadraticBezierTo(83, y - 2, 103, y + 7),
-      line,
-    );
-    canvas.drawPath(
-      ui.Path()
-        ..moveTo(153, y + 7)
-        ..quadraticBezierTo(170, y, 189, y),
-      line,
+  if (!rounded) {
+    canvas.drawRect(
+      const ui.Rect.fromLTWH(0, 0, 256, 256),
+      ui.Paint()..color = const ui.Color(0xffffffff),
     );
   }
-  canvas.drawPath(
-    ui.Path()
-      ..moveTo(187, 37)
-      ..lineTo(195, 56)
-      ..lineTo(214, 64)
-      ..lineTo(195, 72)
-      ..lineTo(187, 91)
-      ..lineTo(179, 72)
-      ..lineTo(160, 64)
-      ..lineTo(179, 56)
-      ..close(),
-    ui.Paint()..color = const ui.Color(0xfff0cc87),
+  canvas.drawImageRect(
+    source,
+    ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
+    rounded
+        ? const ui.Rect.fromLTWH(12, 12, 232, 232)
+        : const ui.Rect.fromLTWH(0, 0, 256, 256),
+    ui.Paint()..filterQuality = ui.FilterQuality.high,
   );
   final picture = recorder.endRecording();
   final image = await picture.toImage(size, size);
@@ -87,10 +42,29 @@ Future<Uint8List> icon(int size, {bool rounded = false}) async {
 }
 
 void main() {
-  testWidgets('regenerate native application icons from the vector mark', (
+  testWidgets('regenerate native application icons from the approved logo', (
     tester,
   ) async {
     await tester.runAsync(() async {
+      final codec = await ui.instantiateImageCodec(
+        await File('assets/branding/logo.png').readAsBytes(),
+      );
+      final source = (await codec.getNextFrame()).image;
+      codec.dispose();
+      addTearDown(source.dispose);
+      expect(source.width, greaterThanOrEqualTo(1024));
+      expect(source.height, source.width);
+
+      // Check both platform treatments before replacing the icon files.
+      final rounded = raster.decodePng(await icon(source, 64, rounded: true))!;
+      expect(rounded.getPixel(0, 0).a, 0);
+      expect(rounded.getPixel(32, 6).a, 255);
+      final opaque = raster.decodePng(await icon(source, 64))!;
+      expect(opaque.numChannels, 3);
+      expect(opaque.getPixel(0, 0).r, 255);
+      expect(opaque.getPixel(0, 0).g, 255);
+      expect(opaque.getPixel(0, 0).b, 255);
+
       for (final platform in ['ios', 'macos']) {
         final directory = '$platform/Runner/Assets.xcassets/AppIcon.appiconset';
         final manifest = jsonDecode(
@@ -105,7 +79,11 @@ void main() {
             (entry['scale'] as String).replaceAll('x', ''),
           );
           await File('$directory/${entry['filename']}').writeAsBytes(
-            await icon((points * scale).round(), rounded: platform == 'macos'),
+            await icon(
+              source,
+              (points * scale).round(),
+              rounded: platform == 'macos',
+            ),
           );
         }
       }
@@ -118,11 +96,11 @@ void main() {
       }.entries) {
         await File(
           'android/app/src/main/res/mipmap-${entry.key}/ic_launcher.png',
-        ).writeAsBytes(await icon(entry.value));
+        ).writeAsBytes(await icon(source, entry.value, rounded: true));
       }
       final sizes = [16, 32, 48, 256];
       final images = [
-        for (final size in sizes) await icon(size, rounded: true),
+        for (final size in sizes) await icon(source, size, rounded: true),
       ];
       final header = ByteData(6 + 16 * sizes.length)
         ..setUint16(2, 1, Endian.little)
@@ -145,7 +123,7 @@ void main() {
             .takeBytes(),
       );
       await File('linux/runner/sillydraft.png')
-          .writeAsBytes(await icon(256, rounded: true));
+          .writeAsBytes(await icon(source, 256, rounded: true));
     });
   });
 }

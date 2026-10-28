@@ -9,7 +9,7 @@
 - 应用暂停时尝试保存，保存错误显示在界面。收到可取消的系统退出请求后等待保存；失败时取消退出。系统强制结束进程不能被这一机制拦截，后台长任务仍需可选远程执行器。
 - 字体跟随系统缩放。书架卡片随字体增高，分类和外观选项可换行；360×800、200% 字体的书架及设置通过界面测试。
 - 阅读器配色与应用外观独立；深色应用中的纸色页面使用浅色按钮配色，已用回归测试验证主要操作文字与背景对比度不低于 4.5:1。
-- 平台图标使用同一矢量书页图案生成；运行 `flutter test tool/generate_icons.dart` 可以重新输出 Android、iOS、macOS、Windows 和 Linux 的图标资源。
+- 平台图标使用橙色「Silly」与酒红色「Draft」双层字标、白色圆角底；[SVG 与 PNG 源文件](../../assets/branding/README.md)位于 `assets/branding/`。运行 `flutter test tool/generate_icons.dart` 可以重新输出 Android、iOS、macOS、Windows 和 Linux 图标；iOS 输出无透明通道的白底，由系统应用圆角。
 
 ## 平台权限与存储
 
