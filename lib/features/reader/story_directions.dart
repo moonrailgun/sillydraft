@@ -381,6 +381,8 @@ class _DirectionsState extends ConsumerState<StoryDirections> {
                         Text(
                           '推荐理由：${recommendation!['reason']}',
                           style: muted.copyWith(height: 1.6),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                       const SizedBox(height: 10),
