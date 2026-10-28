@@ -192,6 +192,25 @@ void main() {
     },
   );
 
+  test('project fingerprint tracks streamed text and reasoning', () async {
+    final task = await queued();
+    await store.updateTask(task.id, status: TaskStatus.running);
+    final before = await store.exportProject(novel.id);
+    await store.saveTaskProgress(task.id, partialText: '部分正文', reasoning: '');
+    final withText = await store.exportProject(novel.id);
+    expect(withText.fingerprint, isNot(before.fingerprint));
+    await store.saveTaskProgress(task.id, partialText: '部分正文', reasoning: '推理');
+    final withReasoning = await store.exportProject(novel.id);
+    expect(withReasoning.fingerprint, isNot(withText.fingerprint));
+    expect(
+      (await store.exportProject(novel.id)).fingerprint,
+      withReasoning.fingerprint,
+    );
+    final current = await store.getTask(task.id);
+    expect(current.status, TaskStatus.running);
+    expect(current.input, task.input);
+  });
+
   test('a remote run cancelled mid-stream keeps its progress', () async {
     final task = await store.createTask(
       branchId: novel.activeBranchId,

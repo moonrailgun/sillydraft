@@ -51,8 +51,11 @@ extension ProjectOperations on StoryRepository {
       } else {
         filter = 'branch_id IN ($branches)';
       }
+      final columns = table == 'generation_tasks'
+          ? '$_taskColumns, input_json'
+          : '*';
       final rows = await _rows(
-        'SELECT * FROM $table WHERE $filter${table == 'lore_versions' ? ' ORDER BY sequence' : ''}',
+        'SELECT $columns FROM $table WHERE $filter${table == 'lore_versions' ? ' ORDER BY sequence' : ''}',
         [novelId],
       );
       for (final row in rows) {

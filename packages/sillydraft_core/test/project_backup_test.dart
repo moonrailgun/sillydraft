@@ -275,10 +275,11 @@ void main() {
         'sourceRevisions': {chapter.id: chapter.revisionId},
       },
     );
-    await a.updateTask(
+    await a.updateTask(task.id, status: TaskStatus.running);
+    await a.saveTaskProgress(
       task.id,
-      status: TaskStatus.running,
       partialText: '未完成的整理',
+      reasoning: '已收到的推理',
     );
     final before = await a.exportProject(novel.id);
     final backup = ProjectBackup(repository: a, assets: aa, resources: ar);
@@ -330,10 +331,10 @@ void main() {
       await br.original(profile!['cardId'] as String),
       orderedEquals(source),
     );
-    expect(
-      (await b.listTasks(branchId: story.branch.id)).single.status,
-      TaskStatus.interrupted,
-    );
+    final restoredTask = (await b.listTasks(branchId: story.branch.id)).single;
+    expect(restoredTask.status, TaskStatus.interrupted);
+    expect(restoredTask.partialText, '未完成的整理');
+    expect(restoredTask.reasoning, '已收到的推理');
     expect((await a.getRevision(firstRevision)).content.text.trim(), '雾来了。');
     expect((await a.exportProject(novel.id)).fingerprint, before.fingerprint);
     await expectLater(
