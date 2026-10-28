@@ -341,6 +341,7 @@ final class WritingService {
         'append': append,
         if (regenerate) 'regenerate': true,
         if (autoAccept) 'autoAccept': true,
+        if (autoAccept) 'qualityReview': true,
         if (rangeStart != null)
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
         'selectedOrderId': ?selectedOrderId,

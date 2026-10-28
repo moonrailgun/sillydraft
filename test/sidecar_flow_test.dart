@@ -25,7 +25,15 @@ class _Model implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
-    if ('${request.messages.first['content']}'.startsWith(
+    if (request.executionId?.startsWith('writing-quality-') == true) {
+      yield TextDelta(
+        request.executionId!.endsWith('-reviewing')
+            ? '{"issues":[{"quote":"她推开门。","reason":"缺少要求中的犹豫动作"}]}'
+            : request.executionId!.endsWith('-revising')
+            ? '{"edits":[{"before":"她推开门。","after":"她迟疑片刻，才推开门。"}]}'
+            : '{"issues":[]}',
+      );
+    } else if ('${request.messages.first['content']}'.startsWith(
       sidecarInstructions,
     )) {
       log.add('sidecar');
@@ -149,6 +157,16 @@ void main() {
     expect(runs.single.chapterId, d.first.id);
     expect(runs.single.status, TaskStatus.completed, reason: runs.single.error);
     expect(log, ['writing', 'sidecar']);
+    final saved = await d.services.repository.getChapter(
+      branchId: d.branchId,
+      chapterId: d.first.id,
+    );
+    expect(saved.content.text.trim(), '她迟疑片刻，才推开门。');
+    final sidecar = await d.services.repository.getTask(runs.single.id);
+    expect(
+      '${(sidecar.input['request'] as Map)['messages'][1]['content']}',
+      contains('她迟疑片刻，才推开门。'),
+    );
   });
 
   testWidgets('switched off, writing starts no sidecar', (tester) async {

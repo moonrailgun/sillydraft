@@ -29,6 +29,11 @@ void main() {
     final runner = TaskRunner(
       repository: repo,
       providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+        if (request.executionId?.startsWith('writing-quality-') == true) {
+          yield const TextDelta('{"issues":[]}');
+          yield const GenerationFinished('stop');
+          return;
+        }
         if (request.tools.isEmpty) {
           writes++;
           yield const TextDelta('新正文');

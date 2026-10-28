@@ -31,6 +31,7 @@ part 'agent_runner.dart';
 part 'agent_compaction.dart';
 part 'illustration_runner.dart';
 part 'sidecar_runner.dart';
+part 'writing_quality.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
   ModelConnection connection,
@@ -430,9 +431,14 @@ final class TaskRunner implements TaskControl {
             : ManuscriptContent.fromJson(
                 jsonObject(input['originalContent'], 'originalContent'),
               );
-        final outputText = mvuEnabled
+        var outputText = mvuEnabled
             ? stripMvuMarkup(processed.text).trimRight()
             : processed.text;
+        if (input['qualityReview'] == true) {
+          await progress.flush();
+          outputText = await _reviewWriting(task, provider, cancel, outputText);
+          cancel.check();
+        }
         final range = input['replacementRange'] as Map<String, dynamic>?;
         var content = range != null
             ? original.replaceRange(

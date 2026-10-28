@@ -92,6 +92,27 @@ class TaskScreen extends ConsumerWidget {
             Text(
               task.result['stage'] == 'saving' ? '正在保存图片到本地…' : '正在等待生图服务返回图片…',
             ),
+          if (task.result['quality'] case final Map quality)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(switch (quality['status']) {
+                'reviewing' ||
+                'revising' ||
+                'checking' when !task.isActive => switch (task.status) {
+                  TaskStatus.cancelled => '自动审读已取消。',
+                  TaskStatus.interrupted => '自动审读已中断。',
+                  TaskStatus.failed => '自动审读未完成，任务已失败。',
+                  _ => '自动审读已结束。',
+                },
+                'reviewing' => '正在自动审读正文…',
+                'revising' => '正在修订发现的问题…',
+                'checking' => '正在复查修订结果…',
+                'passed' => '自动审读未发现需要修订的问题。',
+                'revised' => '已自动修订并通过复查。',
+                'kept_original' => '修订稿未通过复查，已保留原稿。',
+                _ => quality['message'] as String? ?? '自动审读已结束。',
+              }),
+            ),
           if (task.result['transcript'] case final List transcript)
             for (final message in transcript.cast<Map>())
               Padding(
