@@ -147,6 +147,7 @@ void main() {
               'append': true,
             });
             yield ToolCallReady('list', 'list_chapters', {});
+            yield ToolCallReady('metadata', 'update_novel', {'title': '不应保存'});
             yield const GenerationFinished('tool_calls');
           } else {
             yield const TextDelta('正文已变化，请重新发起请求。');
@@ -173,6 +174,8 @@ void main() {
       expect(results[0]['code'], 'source_changed');
       expect(results[0]['retryable'], false);
       expect(results[1]['chapters'][0]['canEdit'], false);
+      expect(results[2]['code'], 'writing_stopped');
+      expect((await repo.getNovel(novel.id)).title, '冲突');
       expect(writes, 0);
       expect(await repo.listProposals(novel.activeBranchId), isEmpty);
       expect(

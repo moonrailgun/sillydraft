@@ -54,6 +54,8 @@ disable-model-invocation: true # 可选：只允许手动 /villain-voice 启用
 
 内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`create_chapter`、`rename_chapter`、`delete_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。配置了生图模型时助手另有 `generate_image`，内置技能不依赖它。
 
+助手还提供 `read_novel` 和 `update_novel`：前者读取当前作品的标题、简介、封面及当前分支参考范围内未归档的候选图片；后者按作者明确要求直接保存 `title`、`synopsis`、`coverAssetId` 中传入的字段，至少传一项。标题不能为空，空简介清除简介，`coverAssetId: null` 清除封面；封面图片必须属于当前作品。信息由作品所有分支共用，未传字段保留最新值，无效封面不会造成其他字段被部分保存。插图专用任务及本轮因写作失败或冲突停止修改后，不能调用更新工具。
+
 ## 注意
 
 技能内容会随对话发给模型，只导入你信任来源的技能。本地订阅连接（Claude Code / Codex）同样支持技能：工具调用通过提示词模拟。

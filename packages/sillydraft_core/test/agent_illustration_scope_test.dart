@@ -47,6 +47,14 @@ void main() {
       providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
         final names = [for (final t in request.tools) t['function']['name']];
         expect(names, isNot(contains('propose_chapter')));
+        for (final name in [
+          'create_chapter',
+          'rename_chapter',
+          'delete_chapter',
+          'update_novel',
+        ]) {
+          expect(names, isNot(contains(name)));
+        }
         expect(names, isNot(contains('propose_lore')));
         if (!request.messages.any((m) => m['role'] == 'tool')) {
           expect(
@@ -66,6 +74,15 @@ void main() {
             'certainty': 'fact',
             'sourceChapterId': chapter.id,
           });
+          yield ToolCallReady('create', 'create_chapter', {'name': '不应创建'});
+          yield ToolCallReady('rename', 'rename_chapter', {
+            'chapterId': chapter.id,
+            'name': '不应改名',
+          });
+          yield ToolCallReady('delete', 'delete_chapter', {
+            'chapterId': chapter.id,
+          });
+          yield ToolCallReady('novel', 'update_novel', {'title': '不应改名'});
           yield ToolCallReady('list', 'list_chapters', {});
           yield const GenerationFinished('tool_calls');
         } else {
@@ -121,11 +138,13 @@ void main() {
         if (m.role == 'tool') jsonDecode(m.content) as Map,
     ];
     expect(
-      results.take(2).map((r) => r['code']),
+      results.take(6).map((r) => r['code']),
       everyElement('tool_not_allowed'),
     );
-    expect(results.take(2).map((r) => r['retryable']), everyElement(false));
-    expect(results[2]['chapters'][0]['canEdit'], false);
+    expect(results.take(6).map((r) => r['retryable']), everyElement(false));
+    expect(results[6]['chapters'][0]['canEdit'], false);
+    expect((await repo.getNovel(novel.id)).title, novel.title);
+    expect((await repo.getStory(novel.activeBranchId)).chapters, hasLength(1));
     expect(await repo.listProposals(novel.activeBranchId), isEmpty);
     expect(await repo.listLore(novel.activeBranchId), isEmpty);
     expect(

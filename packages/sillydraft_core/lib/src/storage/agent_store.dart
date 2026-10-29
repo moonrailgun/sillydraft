@@ -1,6 +1,30 @@
 part of 'story_repository.dart';
 
 extension AgentOperations on StoryRepository {
+  /// Read and patch in one transaction to preserve unrelated metadata edits.
+  Future<Novel> updateAgentNovel({
+    required String branchId,
+    String? title,
+    String? synopsis,
+    String? coverAssetId,
+    bool clearCover = false,
+  }) => _write(() async {
+    final branch = await getBranch(branchId);
+    final novel = await getNovel(branch.novelId);
+    if (coverAssetId != null &&
+        (await getAsset(coverAssetId)).novelId != novel.id) {
+      throw const FormatException('封面图片必须属于当前作品');
+    }
+    return updateNovel(
+      novel.copyWith(
+        title: title,
+        synopsis: synopsis,
+        coverAssetId: coverAssetId,
+        clearCover: clearCover,
+      ),
+    );
+  });
+
   Future<String> createConversation({
     required String branchId,
     String title = '创作会话',

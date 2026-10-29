@@ -54,6 +54,38 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
+      'name': 'read_novel',
+      'description': '读取当前作品的标题、简介和封面，并列出当前分支参考范围内未归档的封面候选图片 ID、名称和尺寸。',
+      'parameters': {
+        'type': 'object',
+        'properties': <String, dynamic>{},
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'update_novel',
+      'description': '按作者要求直接保存当前作品的标题、简介或封面，对作品所有分支生效。只修改传入字段，至少传一项；封面须用本作品已有图片 ID，传 null 清除封面。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'title': {'type': 'string', 'description': '非空作品标题。'},
+          'synopsis': {'type': 'string', 'description': '作品简介，空字符串清空简介。'},
+          'coverAssetId': {
+            'type': ['string', 'null'],
+            'description': 'read_novel 或生图工具返回的图片 assetId；null 清除封面，不传则保留。',
+          },
+        },
+        'minProperties': 1,
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'list_lore',
       'description': '列出当前分支在编辑位置已可见的旁路资料，包括确定程度与是否待复核。',
       'parameters': {
@@ -356,6 +388,7 @@ extension _AgentExecution on TaskRunner {
         Map<String, dynamic>.from(chapter as Map),
     ];
     const writingTools = {
+      'update_novel',
       'propose_chapter',
       'propose_lore',
       'insert_images',
@@ -404,7 +437,7 @@ extension _AgentExecution on TaskRunner {
         if (writingTools.contains(call.name)) {
           if (illustrationOnly) {
             return {
-              'error': '本轮仅生成插图，不能修改正文或提出资料建议。请使用生图工具；不可用时说明原因。',
+              'error': '本轮仅生成插图，不能修改作品信息、正文或提出资料建议。请使用生图工具；不可用时说明原因。',
               'code': 'tool_not_allowed',
               'retryable': false,
             };
@@ -740,6 +773,61 @@ extension _AgentExecution on TaskRunner {
     final args = call.arguments;
     if (call.name == 'activate_skill' || call.name == 'read_skill_file') {
       return _skillTool(task, call);
+    }
+    if (call.name == 'read_novel') {
+      if (args.isNotEmpty) throw const FormatException('参数无效');
+      final branch = await repository.getBranch(task.branchId);
+      final novel = await repository.getNovel(branch.novelId);
+      final assets = await repository.listAssets(novel.id);
+      return {
+        'title': novel.title,
+        'synopsis': novel.synopsis,
+        'coverAssetId': novel.coverAssetId,
+        'coverCandidates': [
+          for (final asset in assets)
+            if (asset.branchId == task.branchId &&
+                (asset.sourceChapterId == null ||
+                    chapters.any((c) => c['id'] == asset.sourceChapterId)))
+              {
+                'assetId': asset.id,
+                'name': asset.name,
+                'width': asset.width,
+                'height': asset.height,
+              },
+        ],
+      };
+    }
+    if (call.name == 'update_novel') {
+      if (args.isEmpty ||
+          args.keys.any(
+            (key) => !['title', 'synopsis', 'coverAssetId'].contains(key),
+          ) ||
+          (args.containsKey('title') &&
+              (args['title'] is! String ||
+                  (args['title'] as String).trim().isEmpty)) ||
+          (args.containsKey('synopsis') && args['synopsis'] is! String) ||
+          (args['coverAssetId'] != null &&
+              (args['coverAssetId'] is! String ||
+                  (args['coverAssetId'] as String).trim().isEmpty))) {
+        throw const FormatException(
+          '请提供非空标题、文字简介或本作品的封面图片 ID；仅 coverAssetId 可用 null 清除。',
+        );
+      }
+      cancel.check();
+      final novel = await repository.updateAgentNovel(
+        branchId: task.branchId,
+        title: args['title'] as String?,
+        synopsis: args['synopsis'] as String?,
+        coverAssetId: args['coverAssetId'] as String?,
+        clearCover:
+            args.containsKey('coverAssetId') && args['coverAssetId'] == null,
+      );
+      return {
+        'updated': true,
+        'title': novel.title,
+        'synopsis': novel.synopsis,
+        'coverAssetId': novel.coverAssetId,
+      };
     }
     final lore = (task.input['loreSnapshot'] as List? ?? [])
         .cast<Map<String, dynamic>>();
