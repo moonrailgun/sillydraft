@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
+import 'package:sillydraft/features/agent/task_screen.dart';
 import 'package:sillydraft/features/lore/lore_screen.dart';
 import 'package:sillydraft/features/lore/sidecar.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -175,7 +176,11 @@ void main() {
         if (t.kind == TaskKind.sidecar) t,
     ];
     expect(runs.single.chapterId, chapter.id);
-    expect(find.textContaining('旁路整理 · '), findsOneWidget);
+    expect(find.text('任务详情'), findsOneWidget);
+    expect(
+      tester.widget<TaskScreen>(find.byType(TaskScreen)).taskId,
+      runs.single.id,
+    );
     expect(find.text('已整理'), findsWidgets);
   });
 

@@ -462,67 +462,76 @@ extension _AgentExecution on TaskRunner {
     ];
     var canWrite = !illustrationOnly;
     final writtenChapters = <String, String>{};
-    await _toolLoop(
-      task,
-      provider,
-      cancel,
-      output,
-      reasoning,
-      tools: tools,
-      imageRequired: illustrationOnly,
-      execute: (call) async {
-        if ((illustrationBatch && call.name == 'generate_image') ||
-            (!canBatchImages && call.name == 'generate_images')) {
-          return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
-        }
-        if (writingTools.contains(call.name)) {
-          if (illustrationOnly) {
-            return {
-              'error': '本轮仅生成插图，不能修改作品信息、正文或提出资料建议。请使用生图工具；不可用时说明原因。',
-              'code': 'tool_not_allowed',
-              'retryable': false,
-            };
+    final transcript = <Map<String, dynamic>>[];
+    try {
+      await _toolLoop(
+        task,
+        provider,
+        cancel,
+        output,
+        reasoning,
+        tools: tools,
+        imageRequired: illustrationOnly,
+        execute: (call) async {
+          if ((illustrationBatch && call.name == 'generate_image') ||
+              (!canBatchImages && call.name == 'generate_images')) {
+            return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
           }
-          if (!canWrite) {
-            return {
-              'error': '本轮写作已停止，请作者处理未写入的正文或版本变化后重新发起请求。',
-              'code': 'writing_stopped',
-              'retryable': false,
-            };
+          if (writingTools.contains(call.name)) {
+            if (illustrationOnly) {
+              return {
+                'error': '本轮仅生成插图，不能修改作品信息、正文或提出资料建议。请使用生图工具；不可用时说明原因。',
+                'code': 'tool_not_allowed',
+                'retryable': false,
+              };
+            }
+            if (!canWrite) {
+              return {
+                'error': '本轮写作已停止，请作者处理未写入的正文或版本变化后重新发起请求。',
+                'code': 'writing_stopped',
+                'retryable': false,
+              };
+            }
           }
-        }
-        final result = await _executeTool(
-          task,
-          call,
-          cancel,
-          chapters,
-          canWrite,
-        );
-        if (call.name == 'propose_chapter' && result['accepted'] == true) {
-          writtenChapters[result['chapterId'] as String] =
-              result['revisionId'] as String;
-          await repository.updateTask(
-            task.id,
-            status: TaskStatus.running,
-            result: {'writtenChapters': writtenChapters},
+          final result = await _executeTool(
+            task,
+            call,
+            cancel,
+            chapters,
+            canWrite,
           );
-        }
-        if (result['code'] == 'source_changed' ||
-            (call.name == 'propose_chapter' && result['accepted'] == false)) {
-          canWrite = false;
-          tools.removeWhere(
-            (tool) => writingTools.contains(tool['function']['name']),
+          if (call.name == 'propose_chapter' && result['accepted'] == true) {
+            writtenChapters[result['chapterId'] as String] =
+                result['revisionId'] as String;
+            await repository.updateTask(
+              task.id,
+              status: TaskStatus.running,
+              result: {'writtenChapters': writtenChapters},
+            );
+          }
+          if (result['code'] == 'source_changed' ||
+              (call.name == 'propose_chapter' && result['accepted'] == false)) {
+            canWrite = false;
+            tools.removeWhere(
+              (tool) => writingTools.contains(tool['function']['name']),
+            );
+          }
+          return result;
+        },
+        record: (role, content, metadata) async {
+          final message = await repository.appendAgentMessage(
+            conversation,
+            role: role,
+            content: content,
+            metadata: {...metadata, 'taskId': task.id},
           );
-        }
-        return result;
-      },
-      record: (role, content, metadata) => repository.appendAgentMessage(
-        conversation,
-        role: role,
-        content: content,
-        metadata: metadata,
-      ),
-    );
+          transcript.add(message.toWire());
+        },
+      );
+    } finally {
+      // Keep each attempt even when its conversation is edited or regenerated.
+      await repository.saveTaskTranscript(task.id, transcript);
+    }
     await _nameConversation(task, provider, cancel);
   }
 

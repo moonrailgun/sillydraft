@@ -124,8 +124,12 @@ class AgentPanel extends ConsumerStatefulWidget {
     this.chapterId,
     this.focusChapterId,
     this.request,
+    this.conversationId,
   });
   final String branchId;
+
+  /// An existing conversation to open when arriving from a task.
+  final String? conversationId;
 
   /// Sent as soon as it arrives; see [AgentRequest].
   final AgentRequest? request;
@@ -161,14 +165,18 @@ class _AgentState extends ConsumerState<AgentPanel> {
   @override
   void initState() {
     super.initState();
-    _selecting = _selectConversation();
+    _selecting = _selectConversation(id: widget.conversationId);
     if (widget.request case final request?) _send(request);
   }
 
   @override
   void didUpdateWidget(AgentPanel old) {
     super.didUpdateWidget(old);
-    if (old.chapterId != widget.chapterId) _moveTo(widget.chapterId);
+    if (old.conversationId != widget.conversationId) {
+      _selecting = _selectConversation(id: widget.conversationId);
+    } else if (old.chapterId != widget.chapterId) {
+      _moveTo(widget.chapterId);
+    }
     if (widget.request case final request? when request != old.request) {
       _send(request);
     }
@@ -190,13 +198,30 @@ class _AgentState extends ConsumerState<AgentPanel> {
     _selecting = _selectConversation();
   }
 
-  /// Opens the latest conversation at this story position. Nothing is created
-  /// until the author sends a message, so browsing never leaves empty chats.
-  Future<void> _selectConversation() async {
+  /// Opens the requested conversation or the latest at this story position.
+  /// Nothing is created until the author sends a message.
+  Future<void> _selectConversation({String? id}) async {
+    if (id != null) {
+      setState(() {
+        _conversation = null;
+        _error = null;
+      });
+    }
     try {
       final all = (await ref
           .read(repositoryProvider)
           .listConversations(widget.branchId));
+      if (id != null) {
+        final selected = all.where((c) => c['id'] == id).firstOrNull;
+        if (selected == null) throw const StoryNotFound('原会话');
+        if (mounted) {
+          setState(() {
+            _conversation = id;
+            _chapter = selected['through_chapter_id'] as String?;
+          });
+        }
+        return;
+      }
       final here = all.where((c) => c['through_chapter_id'] == _chapter);
       if (mounted) {
         setState(() => _conversation = here.firstOrNull?['id'] as String?);

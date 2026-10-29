@@ -391,7 +391,7 @@ void main() {
         expect(find.textContaining('请勿离开或关闭应用'), findsWidgets);
         await tester.tap(find.text('插画生成'));
         await pumpActivity(tester);
-        expect(find.text('生成任务'), findsOneWidget);
+        expect(find.text('任务详情'), findsOneWidget);
         expect(
           find.byWidgetPredicate(
             (widget) =>
@@ -421,7 +421,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(indicator, findsNothing);
         expect(wakeCalls, [true, false]);
-        expect(find.text('生成任务'), findsOneWidget);
+        expect(find.text('任务详情'), findsOneWidget);
         final navigator = tester.state<NavigatorState>(
           find.byType(Navigator).first,
         );

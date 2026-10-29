@@ -187,7 +187,7 @@ extension TaskOperations on StoryRepository {
     tasksOnly: true,
   );
 
-  /// Sets a sidecar run's [transcript] whatever state the task is in:
+  /// Sets a tool run's [transcript] whatever state the task is in:
   /// cancelling marks the task before its run stops.
   Future<void> saveTaskTranscript(
     String id,
