@@ -293,11 +293,14 @@ void main() {
       );
       expect(task.input['illustrationBatch'], true);
       expect(task.input['illustrationOnly'], true);
+      expect(task.input['illustrationCount'], isNull);
+      expect(task.input['request'].toString(), contains('由 AI 根据章节内容决定'));
       expect((task.input['chapterSnapshot'] as List).single['id'], chapter.id);
       final conversation = task.input['conversationId'] as String;
       final user = (await repo.getAgentMessages(conversation))
           .firstWhere((m) => m.role == 'user');
       expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
+      expect(user.content, isNot(contains('3 个')));
       await tester.ensureVisible(find.text('提示词与参考图'));
       await tester.tap(find.text('提示词与参考图'));
       await tester.pump();

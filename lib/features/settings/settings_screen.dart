@@ -47,6 +47,9 @@ class SettingsScreen extends ConsumerWidget {
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
+    final highlightCount = ref
+        .watch(settingProvider('chapterHighlights'))
+        .value?['count'];
     final usage = switch (ref.watch(usageProvider).value) {
       final u? => usageSummary(u.months),
       null => null,
@@ -138,6 +141,37 @@ class SettingsScreen extends ConsumerWidget {
                     suffix: FSwitch(value: renderHtml, onChange: setHtml),
                     onPress: () => setHtml(!renderHtml),
                   ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text('本章亮点生图', style: heading),
+              const SizedBox(height: 8),
+              Text(
+                '每次生成的亮点图数量，默认由 AI 根据章节内容决定。',
+                style: theme.typography.body.sm.copyWith(
+                  color: theme.colors.mutedForeground,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final count in <int?>[null, 1, 2, 3, 4, 5, 6])
+                    ChoicePill(
+                      label: count == null ? '由 AI 决定' : '$count 张',
+                      selected: highlightCount == count,
+                      onPress: () async {
+                        try {
+                          await ref.read(repositoryProvider).setSetting(
+                            'chapterHighlights',
+                            {'count': count},
+                          );
+                        } catch (e) {
+                          if (context.mounted) showError(context, e);
+                        }
+                      },
+                    ),
                 ],
               ),
               const SizedBox(height: 24),

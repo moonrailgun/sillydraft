@@ -300,6 +300,7 @@ bool _takesNegative(Map<String, dynamic> image) =>
 Map<String, dynamic> _imageTool(
   Map<String, dynamic> image, {
   bool batch = false,
+  int? count,
 }) {
   final visualContext = image['visualContextVersion'] == 1;
   final parameters = {
@@ -383,8 +384,8 @@ Map<String, dynamic> _imageTool(
               'properties': {
                 'images': {
                   'type': 'array',
-                  'minItems': 1,
-                  'maxItems': 6,
+                  'minItems': count ?? 1,
+                  'maxItems': count ?? 6,
                   'items': parameters,
                 },
               },
@@ -444,7 +445,11 @@ extension _AgentExecution on TaskRunner {
             !writingTools.contains(tool['function']['name']))
           tool,
       if (input['image'] case final Map<String, dynamic> image) ...[
-        _imageTool(image, batch: illustrationBatch),
+        _imageTool(
+          image,
+          batch: illustrationBatch,
+          count: illustrationBatch ? input['illustrationCount'] as int? : null,
+        ),
         if (!illustrationBatch && canBatchImages)
           _imageTool(image, batch: true),
       ],
@@ -1062,6 +1067,15 @@ extension _AgentExecution on TaskRunner {
           items.length > 6 ||
           (batch && (args.length != 1 || !args.containsKey('images')))) {
         throw const FormatException('请一次提交 1–6 张插图');
+      }
+      final count = task.input['illustrationBatch'] == true
+          ? task.input['illustrationCount'] as int?
+          : null;
+      if (batch && count != null && items.length != count) {
+        return {
+          'error': '请一次提交 $count 张本章亮点插图',
+          'code': 'image_count_mismatch',
+        };
       }
       final service = IllustrationService(repository: repository, runner: this);
       final connection = ModelConnection.fromJson(

@@ -81,6 +81,7 @@ final class EditorAgent {
       );
     }
     final branchId = await repository.conversationBranch(conversationId);
+    int? illustrationCount;
     if (replaceMessageId != null) {
       if ((await repository.listTasks(
         branchId: branchId,
@@ -98,6 +99,7 @@ final class EditorAgent {
           illustrationOnly || replaced.raw['illustrationOnly'] == true;
       illustrationBatch =
           illustrationBatch || replaced.raw['illustrationBatch'] == true;
+      illustrationCount = replaced.raw['illustrationCount'] as int?;
       manualImage ??= replaced.raw['manualImage'] as Map<String, dynamic>?;
       if (manualImage?['connection'] is Map<String, dynamic>) {
         imageConnection = ModelConnection.fromJson(
@@ -106,6 +108,15 @@ final class EditorAgent {
       }
       illustrationAnchor ??=
           replaced.raw['illustrationAnchor'] as Map<String, dynamic>?;
+    }
+    if (illustrationBatch && replaceMessageId == null) {
+      final count = (await repository.getSetting(
+        'chapterHighlights',
+      ))?['count'];
+      if (count != null && (count is! int || count < 1 || count > 6)) {
+        throw const FormatException('亮点图数量须为 1–6 张，或由 AI 决定');
+      }
+      illustrationCount = count as int?;
     }
     illustrationOnly = illustrationOnly || illustrationBatch;
     return runner.start(
@@ -138,6 +149,7 @@ final class EditorAgent {
           'attachChapterId': attachChapterId,
           if (illustrationOnly) 'illustrationOnly': true,
           if (illustrationBatch) 'illustrationBatch': true,
+          if (illustrationBatch) 'illustrationCount': illustrationCount,
           'illustrationAnchor': ?illustrationAnchor,
           'manualImage': ?manualImage,
           'replaceMessageId': replaceMessageId,
@@ -187,6 +199,7 @@ final class EditorAgent {
     final focusChapterId = pending['focusChapterId'] as String?;
     final attachChapterId = pending['attachChapterId'] as String?;
     final illustrationBatch = pending['illustrationBatch'] == true;
+    final illustrationCount = pending['illustrationCount'] as int?;
     final illustrationOnly =
         pending['illustrationOnly'] == true || illustrationBatch;
     final replaceMessageId = pending['replaceMessageId'] as String?;
@@ -250,6 +263,7 @@ final class EditorAgent {
       metadata: {
         if (illustrationOnly) 'illustrationOnly': true,
         if (illustrationBatch) 'illustrationBatch': true,
+        if (illustrationBatch) 'illustrationCount': illustrationCount,
         'illustrationAnchor': ?pending['illustrationAnchor'],
         'manualImage': ?pending['manualImage'],
         if (attached != null)
@@ -301,7 +315,9 @@ final class EditorAgent {
             canBatch: !illustrationOnly && focus != null,
           );
     final purpose = illustrationBatch
-        ? '\n本轮任务是从附带的当前章节提取 3 个不同的视觉亮点，每个亮点写成一段完整生图提示词；内容不足时可减少，不得编造章节里没有的情节。'
+        ? '\n本轮任务是从附带的当前章节提取不同的视觉亮点。'
+              '${illustrationCount == null ? '数量由 AI 根据章节内容决定，一次生成 1–6 张。' : '提取恰好 $illustrationCount 个亮点，一次生成 $illustrationCount 张。'}'
+              '每个亮点写成一段完整生图提示词，不得编造章节里没有的情节。'
               '每张图的 quote 须照抄画面对应段落中的原文片段，不跨段落且在本章唯一，供作者将插图放到该段下方。'
               '写好后必须立即调用 generate_images 提交全部提示词，由工具展示整组确认卡片，不能只回复提示词或等待作者文字确认。只能读取资料和生成图片，禁止修改作品信息、改写、续写正文或提出资料建议。'
         : illustrationOnly
@@ -535,6 +551,7 @@ final class EditorAgent {
       'sourceMessageId': source.id,
       if (illustrationOnly) 'illustrationOnly': true,
       if (illustrationBatch) 'illustrationBatch': true,
+      if (illustrationBatch) 'illustrationCount': illustrationCount,
       'throughChapterId': throughChapterId,
       'agentPreset': ?presetRecord,
       'illustrationContext': ?illustrationContext,

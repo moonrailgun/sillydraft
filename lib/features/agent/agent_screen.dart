@@ -874,7 +874,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
             }
             _send(
               AgentRequest(
-                '提取$name的 3 个不同视觉亮点，每个亮点写成一段生图提示词；内容不足时可减少。'
+                '按设置的数量提取$name的不同视觉亮点，每个亮点写成一段生图提示词。'
                 '一次提交全部提示词，等我统一确认后逐张生成插图。',
                 chapterId: target.id,
                 illustrationBatch: true,
