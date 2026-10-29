@@ -804,10 +804,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
   }
 
   @override
-  Widget build(BuildContext context) =>
-      TaskActivityVisibility(visible: _chrome, child: _buildPage(context));
-
-  Widget _buildPage(BuildContext context) => AsyncView(
+  Widget build(BuildContext context) => AsyncView(
     value: ref.watch(_readerStoryProvider(_branchId)),
     builder: (book) {
       final story = book.story;
@@ -829,6 +826,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       if (story.chapters.isEmpty) {
         return PageScaffold(
           title: story.novel.title,
+          embedded: widget.embedded,
           body: const Center(child: Text('这部作品还没有正文。')),
         );
       }
@@ -1599,6 +1597,7 @@ class _ReaderState extends ConsumerState<ReaderScreen>
               ),
               prefixes: [if (canPop) const AppBackButton()],
               suffixes: [
+                if (!widget.embedded) const TaskActivityAction(),
                 if (widget.onEdit case final edit?)
                   HeaderIconAction(
                     key: const Key('reader-edit-chapter'),

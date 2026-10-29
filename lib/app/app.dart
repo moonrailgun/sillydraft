@@ -198,10 +198,7 @@ class _AppState extends ConsumerState<_App> with WidgetsBindingObserver {
               child: Overlay.wrap(
                 child: RemoteFrame(
                   navigator: _navigator,
-                  child: TaskActivityFrame(
-                    navigator: _navigator,
-                    child: DesktopCommands(invoke: _command, child: child!),
-                  ),
+                  child: DesktopCommands(invoke: _command, child: child!),
                 ),
               ),
             ),

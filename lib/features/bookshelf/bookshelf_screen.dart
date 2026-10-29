@@ -6,6 +6,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/library_host.dart';
 import '../../app/services.dart';
+import '../../app/task_activity.dart';
 import '../remote/library_switcher.dart';
 import '../remote/share_screen.dart';
 import '../../app/sample.dart';
@@ -271,6 +272,7 @@ class _BookshelfState extends ConsumerState<BookshelfScreen> {
                 ),
         ),
         suffixes: [
+          const TaskActivityAction(),
           HeaderIconAction(
             icon: FLucideIcons.search,
             tooltip: '搜索正文',

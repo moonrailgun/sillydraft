@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import '../../app/services.dart';
+import '../../app/task_activity.dart';
 import '../../app/widgets.dart';
 import '../bookshelf/novel_dialog.dart';
 import '../reader/reader_screen.dart';
@@ -322,6 +323,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               ),
           ],
           suffixes: [
+            const TaskActivityAction(),
             HeaderIconAction(
               key: const Key('open-reader'),
               icon: FLucideIcons.bookOpen,

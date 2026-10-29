@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 
+import 'task_activity.dart';
 import 'theme.dart';
 
 export 'package:forui/forui.dart';
@@ -288,7 +289,7 @@ class PageScaffold extends StatelessWidget {
           child: titleWidget ?? Text(title),
         ),
         prefixes: [?leading ?? (canPop ? const AppBackButton() : null)],
-        suffixes: actions,
+        suffixes: [...actions, const TaskActivityAction()],
       ),
       floatingActionButton: floatingActionButton,
       child: content,

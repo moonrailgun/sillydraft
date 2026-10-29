@@ -11,6 +11,7 @@ import '../illustrations/illustration_gallery.dart';
 import '../illustrations/asset_image.dart';
 
 import '../../app/services.dart';
+import '../../app/task_activity.dart';
 import '../../app/widgets.dart';
 import '../agent/agent_screen.dart';
 import '../agent/writing_request_screen.dart';
@@ -420,6 +421,7 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ),
           ],
           suffixes: [
+            const TaskActivityAction(),
             if (!compact)
               HeaderIconAction(
                 icon: FLucideIcons.imagePlus,
