@@ -85,85 +85,83 @@ class _RestoreState extends ConsumerState<RestoreBackupScreen> {
       title: '恢复项目备份',
       body: SafeArea(
         top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                const Text('恢复后会新增一部独立作品，包含备份中的分支和历史。当前书架中的作品会保留。'),
-                const SizedBox(height: 24),
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: _busy ? null : _choose,
-                  prefix: const Icon(FLucideIcons.folderOpen),
-                  child: const Text('选择备份文件'),
+        child: ContentLayout(
+          maxWidth: 680,
+          builder: (_, inset) => ListView(
+            padding: inset + const EdgeInsets.all(24),
+            children: [
+              const Text('恢复后会新增一部独立作品，包含备份中的分支和历史。当前书架中的作品会保留。'),
+              const SizedBox(height: 24),
+              FButton(
+                variant: FButtonVariant.outline,
+                onPress: _busy ? null : _choose,
+                prefix: const Icon(FLucideIcons.folderOpen),
+                child: const Text('选择备份文件'),
+              ),
+              if (_bytes != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '已选择备份 · ${(_bytes!.length / 1024).toStringAsFixed(1)} KB',
                 ),
-                if (_bytes != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '已选择备份 · ${(_bytes!.length / 1024).toStringAsFixed(1)} KB',
-                  ),
-                  const SizedBox(height: 16),
-                  FTextField(
-                    key: const Key('restore-passphrase'),
-                    control: FTextFieldControl.managed(controller: _passphrase),
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    enabled: !_busy,
-                    label: const Text('备份口令'),
-                  ),
-                  const SizedBox(height: 16),
-                  FButton(
-                    onPress: _busy ? null : _read,
-                    child: const Text('解锁并预览'),
-                  ),
-                ],
-                if (_busy)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: FProgress(),
-                  ),
-                if (_preview case final preview?) ...[
-                  const SizedBox(height: 24),
-                  FCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            preview.snapshot.title,
-                            style: context.theme.typography.body.lg.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: context.theme.colors.foreground,
-                            ),
+                const SizedBox(height: 16),
+                FTextField(
+                  key: const Key('restore-passphrase'),
+                  control: FTextFieldControl.managed(controller: _passphrase),
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enabled: !_busy,
+                  label: const Text('备份口令'),
+                ),
+                const SizedBox(height: 16),
+                FButton(
+                  onPress: _busy ? null : _read,
+                  child: const Text('解锁并预览'),
+                ),
+              ],
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: FProgress(),
+                ),
+              if (_preview case final preview?) ...[
+                const SizedBox(height: 24),
+                FCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          preview.snapshot.title,
+                          style: context.theme.typography.body.lg.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: context.theme.colors.foreground,
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '${preview.branchCount} 个分支 · ${preview.assetCount} 张图片',
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${preview.branchCount} 个分支 · ${preview.assetCount} 张图片',
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'ST 原文件会使用本机的资源密钥重新加密。未完成的生成任务会标为中断，模型密钥需重新配置。',
+                          style: context.theme.typography.body.sm.copyWith(
+                            color: context.theme.colors.mutedForeground,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'ST 原文件会使用本机的资源密钥重新加密。未完成的生成任务会标为中断，模型密钥需重新配置。',
-                            style: context.theme.typography.body.sm.copyWith(
-                              color: context.theme.colors.mutedForeground,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  FButton(
-                    onPress: _busy ? null : _restore,
-                    prefix: const Icon(FLucideIcons.archiveRestore),
-                    child: const Text('恢复为独立作品'),
-                  ),
-                ],
+                ),
+                const SizedBox(height: 20),
+                FButton(
+                  onPress: _busy ? null : _restore,
+                  prefix: const Icon(FLucideIcons.archiveRestore),
+                  child: const Text('恢复为独立作品'),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

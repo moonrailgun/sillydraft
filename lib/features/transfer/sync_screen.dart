@@ -246,176 +246,171 @@ class _SyncState extends ConsumerState<ProjectSyncScreen> {
           top: false,
           child: !_loaded
               ? const Center(child: FCircularProgress())
-              : Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 720),
-                    child: Form(
-                      key: _form,
-                      child: ListView(
-                        padding: const EdgeInsets.all(24),
-                        children: [
-                          const Text(
-                            '使用自己的 HTTP / WebDAV 文件空间。服务需支持强 ETag 与条件 PUT；所有设备填写同一个文件地址和同步口令。',
-                          ),
-                          const SizedBox(height: 20),
-                          FTextFormField(
-                            control: FTextFieldControl.managed(
-                              controller: _url,
-                            ),
-                            enabled: !_busy,
-                            autocorrect: false,
-                            keyboardType: TextInputType.url,
-                            label: const Text('完整备份文件地址'),
-                            hint: 'https://你的服务/novel.sillydraft',
-                            validator: (v) =>
-                                Uri.tryParse(v?.trim() ?? '')?.hasAuthority ==
-                                    true
-                                ? null
-                                : '请填写完整文件地址',
-                          ),
-                          const SizedBox(height: 16),
-                          FSelect<String>(
-                            label: const Text('同步服务认证'),
-                            enabled: !_busy,
-                            items: const {
-                              '无认证': 'none',
-                              '用户名与密码（Basic）': 'basic',
-                              '访问令牌（Bearer）': 'bearer',
+              : ContentLayout(
+                  maxWidth: 720,
+                  builder: (_, inset) => Form(
+                    key: _form,
+                    child: ListView(
+                      padding: inset + const EdgeInsets.all(24),
+                      children: [
+                        const Text(
+                          '使用自己的 HTTP / WebDAV 文件空间。服务需支持强 ETag 与条件 PUT；所有设备填写同一个文件地址和同步口令。',
+                        ),
+                        const SizedBox(height: 20),
+                        FTextFormField(
+                          control: FTextFieldControl.managed(controller: _url),
+                          enabled: !_busy,
+                          autocorrect: false,
+                          keyboardType: TextInputType.url,
+                          label: const Text('完整备份文件地址'),
+                          hint: 'https://你的服务/novel.sillydraft',
+                          validator: (v) =>
+                              Uri.tryParse(v?.trim() ?? '')?.hasAuthority ==
+                                  true
+                              ? null
+                              : '请填写完整文件地址',
+                        ),
+                        const SizedBox(height: 16),
+                        FSelect<String>(
+                          label: const Text('同步服务认证'),
+                          enabled: !_busy,
+                          items: const {
+                            '无认证': 'none',
+                            '用户名与密码（Basic）': 'basic',
+                            '访问令牌（Bearer）': 'bearer',
+                          },
+                          control: FSelectControl.lifted(
+                            value: _auth,
+                            onChange: (v) {
+                              if (v != null) setState(() => _auth = v);
                             },
-                            control: FSelectControl.lifted(
-                              value: _auth,
-                              onChange: (v) {
-                                if (v != null) setState(() => _auth = v);
-                              },
-                            ),
                           ),
-                          if (_auth == 'basic') ...[
-                            const SizedBox(height: 16),
-                            FTextField(
-                              control: FTextFieldControl.managed(
-                                controller: _user,
-                              ),
-                              enabled: !_busy,
-                              label: const Text('用户名'),
-                            ),
-                          ],
-                          if (_auth != 'none') ...[
-                            const SizedBox(height: 16),
-                            FTextField(
-                              control: FTextFieldControl.managed(
-                                controller: _password,
-                              ),
-                              obscureText: true,
-                              autocorrect: false,
-                              enableSuggestions: false,
-                              enabled: !_busy,
-                              label: Text(_auth == 'basic' ? '密码' : '访问令牌'),
-                              description: widget.novelId == null
-                                  ? null
-                                  : const Text('留空保留当前地址的认证；更换地址需重新填写'),
-                            ),
-                          ],
+                        ),
+                        if (_auth == 'basic') ...[
                           const SizedBox(height: 16),
                           FTextField(
                             control: FTextFieldControl.managed(
-                              controller: _phrase,
+                              controller: _user,
+                            ),
+                            enabled: !_busy,
+                            label: const Text('用户名'),
+                          ),
+                        ],
+                        if (_auth != 'none') ...[
+                          const SizedBox(height: 16),
+                          FTextField(
+                            control: FTextFieldControl.managed(
+                              controller: _password,
                             ),
                             obscureText: true,
                             autocorrect: false,
                             enableSuggestions: false,
                             enabled: !_busy,
-                            label: const Text('项目同步口令（至少 12 个字符）'),
-                            description: Text(
-                              widget.novelId == null
-                                  ? '由另一设备创建同步时设置'
-                                  : '留空保留本机已保存的口令',
-                            ),
+                            label: Text(_auth == 'basic' ? '密码' : '访问令牌'),
+                            description: widget.novelId == null
+                                ? null
+                                : const Text('留空保留当前地址的认证；更换地址需重新填写'),
                           ),
-                          const SizedBox(height: 12),
-                          const Text('项目在上传前加密。请保留口令，口令无法重置；模型密钥不会上传。'),
-                          const SizedBox(height: 12),
-                          FCheckbox(
-                            label: const Text('允许 HTTP（仅可信网络）'),
-                            value: _insecure,
-                            enabled: !_busy,
-                            onChange: (v) => setState(() => _insecure = v),
+                        ],
+                        const SizedBox(height: 16),
+                        FTextField(
+                          control: FTextFieldControl.managed(
+                            controller: _phrase,
                           ),
+                          obscureText: true,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          enabled: !_busy,
+                          label: const Text('项目同步口令（至少 12 个字符）'),
+                          description: Text(
+                            widget.novelId == null
+                                ? '由另一设备创建同步时设置'
+                                : '留空保留本机已保存的口令',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text('项目在上传前加密。请保留口令，口令无法重置；模型密钥不会上传。'),
+                        const SizedBox(height: 12),
+                        FCheckbox(
+                          label: const Text('允许 HTTP（仅可信网络）'),
+                          value: _insecure,
+                          enabled: !_busy,
+                          onChange: (v) => setState(() => _insecure = v),
+                        ),
+                        const SizedBox(height: 20),
+                        FButton(
+                          onPress: _busy ? null : () => _synchronize(),
+                          prefix: const Icon(FLucideIcons.refreshCw),
+                          child: Text(
+                            widget.novelId == null ? '连接并下载作品' : '保存配置并同步',
+                          ),
+                        ),
+                        if (_busy) ...[
                           const SizedBox(height: 20),
-                          FButton(
-                            onPress: _busy ? null : () => _synchronize(),
-                            prefix: const Icon(FLucideIcons.refreshCw),
-                            child: Text(
-                              widget.novelId == null ? '连接并下载作品' : '保存配置并同步',
+                          const FProgress(),
+                          const SizedBox(height: 8),
+                          const Text('正在加密或同步，请稍候…'),
+                        ],
+                        if (_message != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(_message!),
+                          ),
+                        if (widget.novelId != null &&
+                            _state['conflictNovelId'] is String) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            '处理并发修改',
+                            style: theme.typography.body.lg.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colors.foreground,
                             ),
                           ),
-                          if (_busy) ...[
-                            const SizedBox(height: 20),
-                            const FProgress(),
-                            const SizedBox(height: 8),
-                            const Text('正在加密或同步，请稍候…'),
-                          ],
-                          if (_message != null)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Text(_message!),
-                            ),
-                          if (widget.novelId != null &&
-                              _state['conflictNovelId'] is String) ...[
-                            const SizedBox(height: 24),
-                            Text(
-                              '处理并发修改',
-                              style: theme.typography.body.lg.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: theme.colors.foreground,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text('比较后可以手动整合内容，再选择要同步的版本。未选择前，双方版本均保留。'),
-                            const SizedBox(height: 12),
-                            FButton(
-                              variant: FButtonVariant.outline,
-                              onPress: _busy
-                                  ? null
-                                  : () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => SyncConflictComparison(
-                                          localId: widget.novelId!,
-                                          copyId:
-                                              _state['conflictNovelId']
-                                                  as String,
-                                        ),
+                          const SizedBox(height: 12),
+                          const Text('比较后可以手动整合内容，再选择要同步的版本。未选择前，双方版本均保留。'),
+                          const SizedBox(height: 12),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            onPress: _busy
+                                ? null
+                                : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => SyncConflictComparison(
+                                        localId: widget.novelId!,
+                                        copyId:
+                                            _state['conflictNovelId'] as String,
                                       ),
                                     ),
-                              child: const Text('比较本机与远端副本'),
-                            ),
-                            const SizedBox(height: 12),
-                            FButton(
-                              variant: FButtonVariant.outline,
-                              onPress: _busy
-                                  ? null
-                                  : () => _synchronize(resolution: 'local'),
-                              child: const Text('保留本机并上传'),
-                            ),
-                            const SizedBox(height: 12),
-                            FButton(
-                              variant: FButtonVariant.outline,
-                              onPress: _busy
-                                  ? null
-                                  : () => _synchronize(resolution: 'remote'),
-                              child: const Text('采用远端并保留本机副本'),
-                            ),
-                          ],
-                          if (widget.novelId != null) ...[
-                            const SizedBox(height: 24),
-                            FButton(
-                              variant: FButtonVariant.ghost,
-                              onPress: _busy ? null : _disconnect,
-                              child: const Text('断开此作品的同步'),
-                            ),
-                          ],
+                                  ),
+                            child: const Text('比较本机与远端副本'),
+                          ),
+                          const SizedBox(height: 12),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            onPress: _busy
+                                ? null
+                                : () => _synchronize(resolution: 'local'),
+                            child: const Text('保留本机并上传'),
+                          ),
+                          const SizedBox(height: 12),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            onPress: _busy
+                                ? null
+                                : () => _synchronize(resolution: 'remote'),
+                            child: const Text('采用远端并保留本机副本'),
+                          ),
                         ],
-                      ),
+                        if (widget.novelId != null) ...[
+                          const SizedBox(height: 24),
+                          FButton(
+                            variant: FButtonVariant.ghost,
+                            onPress: _busy ? null : _disconnect,
+                            child: const Text('断开此作品的同步'),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
