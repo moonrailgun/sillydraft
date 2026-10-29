@@ -65,6 +65,7 @@ final class EditorAgent {
     /// Chapter highlights share one approval and generate images serially.
     bool illustrationBatch = false,
     Map<String, dynamic>? illustrationAnchor,
+    Map<String, dynamic>? manualImage,
 
     /// An earlier message of the author's that [message] replaces: it and
     /// every later turn are removed first. Editing a message, or resending
@@ -97,6 +98,12 @@ final class EditorAgent {
           illustrationOnly || replaced.raw['illustrationOnly'] == true;
       illustrationBatch =
           illustrationBatch || replaced.raw['illustrationBatch'] == true;
+      manualImage ??= replaced.raw['manualImage'] as Map<String, dynamic>?;
+      if (manualImage?['connection'] is Map<String, dynamic>) {
+        imageConnection = ModelConnection.fromJson(
+          manualImage!['connection'] as Map<String, dynamic>,
+        );
+      }
       illustrationAnchor ??=
           replaced.raw['illustrationAnchor'] as Map<String, dynamic>?;
     }
@@ -132,6 +139,7 @@ final class EditorAgent {
           if (illustrationOnly) 'illustrationOnly': true,
           if (illustrationBatch) 'illustrationBatch': true,
           'illustrationAnchor': ?illustrationAnchor,
+          'manualImage': ?manualImage,
           'replaceMessageId': replaceMessageId,
         },
       },
@@ -243,6 +251,7 @@ final class EditorAgent {
         if (illustrationOnly) 'illustrationOnly': true,
         if (illustrationBatch) 'illustrationBatch': true,
         'illustrationAnchor': ?pending['illustrationAnchor'],
+        'manualImage': ?pending['manualImage'],
         if (attached != null)
           'attachment': {
             'chapterId': attached.id,
@@ -267,12 +276,22 @@ final class EditorAgent {
         ? ''
         : '\n作者正在看章节「${focus.title.isEmpty ? '未命名章节' : focus.title}」'
               '（chapterId: ${focus.id}）。作者说“这一章”“当前章节”时指它。';
-    final imageDefaults = imageConnection == null
-        ? null
+    final manualImage = (pending['manualImage'] as Map?)
+        ?.cast<String, dynamic>();
+    final savedScenes = imageConnection == null
+        ? <Map<String, dynamic>>[]
         : await IllustrationService(
             repository: repository,
             runner: runner,
-          ).savedDefaults(imageConnection);
+          ).savedScenes(branchId, focus?.id);
+    final imageDefaults =
+        manualImage?['defaults'] as Map<String, dynamic>? ??
+        (imageConnection == null
+            ? null
+            : await IllustrationService(
+                repository: repository,
+                runner: runner,
+              ).savedDefaults(imageConnection));
     final imageNote = imageConnection == null
         ? ''
         : imageInstructions(
@@ -286,9 +305,22 @@ final class EditorAgent {
               '每张图的 quote 须照抄画面对应段落中的原文片段，不跨段落且在本章唯一，供作者将插图放到该段下方。'
               '写好后必须立即调用 generate_images 提交全部提示词，由工具展示整组确认卡片，不能只回复提示词或等待作者文字确认。只能读取资料和生成图片，禁止修改作品信息、改写、续写正文或提出资料建议。'
         : illustrationOnly
-        ? '\n本轮任务是为作者选中的正文生成插图。只能读取资料和生成图片，禁止修改作品信息、改写或续写正文、提出资料建议；没有生图工具时请说明，不能改做写作任务。'
+        ? '\n本轮任务是根据作者的画面要求和附带正文生成插图。只能读取资料和生成图片，禁止修改作品信息、改写或续写正文、提出资料建议；没有生图工具时请说明，不能改做写作任务。'
         : '';
-    final rules = '$editorInstructions$focusNote$imageNote$purpose';
+    final manualReferences = <VisualReference>[];
+    await IllustrationService(
+      repository: repository,
+      runner: runner,
+    ).addAssetReferences(
+      branchId,
+      chapters.lastOrNull?.id,
+      manualReferences,
+      (manualImage?['references'] as List? ?? []).cast<String>(),
+    );
+    final visualNote = imageConnection == null
+        ? ''
+        : '\n已确认的连续场景（同 id 的环境字段必须逐字复用）：${jsonEncode(savedScenes)}\n作者选定的参考图片：${jsonEncode([for (final ref in manualReferences) ref.preview])}；复用这些外观描述，不要为同一人物或地点重复建立资料。';
+    final rules = '$editorInstructions$focusNote$imageNote$purpose$visualNote';
     final instructions = '$rules${skillCatalog(skills)}';
     final skillMessages = [
       for (final s in activeSkills)
@@ -366,8 +398,23 @@ final class EditorAgent {
               'name': entry.name,
               'certainty': entry.certainty.name,
               'sourceStale': entry.sourceStale,
-              for (final key in ['appearance', 'outfit', 'state', 'images'])
+              for (final key in [
+                'appearance',
+                'outfit',
+                'state',
+                'images',
+                'referencePrompt',
+              ])
                 if (entry.data.containsKey(key)) key: entry.data[key],
+            },
+        ],
+        'locations': [
+          for (final entry in lore.where((e) => e.kind == LoreKind.location))
+            {
+              'id': entry.id,
+              'name': entry.name,
+              'content': entry.content,
+              ...entry.data,
             },
         ],
         'worldInfo': [for (final entry in world.entries) entry.content],
@@ -498,6 +545,9 @@ final class EditorAgent {
         'image': {
           'connection': imageConnection.raw,
           'defaults': imageDefaults,
+          'visualContextVersion': 1,
+          'scenes': savedScenes,
+          'manual': ?manualImage,
           'chapterId': ?focus?.id,
         },
       'sourceRevisions': [
@@ -584,7 +634,7 @@ String imageInstructions(
     '确认交互由工具和应用处理，调用前不要要求作者回复“确认生成”，也不能用提示词文本、计划、口头承诺或模拟工具调用代替真实调用。'
     '作者仅要求编写或修改提示词、讨论画面，且未要求实际生图时，不调用生图工具。'
     '${canBatch ? '本轮还提供 generate_images，可一次提交当前章节 1–6 张插图的 name、prompt 和唯一原文 quote，避免逐张确认。' : ''}'
-    '作者取消或生图失败后不要自动重试。'
+    '生图工具返回 invalid_arguments 时尚未调用生图引擎，可按错误修正参数后重新提交确认；作者取消或生图失败后不要自动重试。'
     '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
     '作者保存的默认设置：${jsonEncode(defaults)}。'
     '$scenePromptInstructions${imagePromptFormat(connection)}';

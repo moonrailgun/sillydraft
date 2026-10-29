@@ -1,3 +1,5 @@
+import '../packages/sillydraft_core/test/support/image_scene.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
@@ -213,11 +215,13 @@ void main() {
               'images': [
                 {
                   'name': '红伞',
+                  ...emptyImageContext,
                   'prompt': 'red umbrella on the bridge',
                   'quote': '红伞过桥。',
                 },
                 {
                   'name': '渡口',
+                  ...emptyImageContext,
                   'prompt': 'boat at the rainy harbor',
                   'quote': '白船靠岸。',
                 },
@@ -267,8 +271,20 @@ void main() {
       }
       expect(find.byKey(const Key('agent-image-confirmation')), findsOneWidget);
       expect(find.text('生成 2 张本章亮点插图？'), findsOneWidget);
+      expect(
+        find.text('red umbrella on the bridge').hitTestable(),
+        findsNothing,
+      );
+      expect(find.text('确认生成').hitTestable(), findsOneWidget);
+      await tester.tap(find.text('提示词与参考图'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('red umbrella on the bridge'), findsOneWidget);
-      expect(find.text('boat at the rainy harbor'), findsOneWidget);
+      expect(find.textContaining('boat at the rainy harbor'), findsOneWidget);
+      expect(
+        find.textContaining('previous view of this scene'),
+        findsOneWidget,
+      );
       expect(find.text('红伞过桥。'), findsOneWidget);
       expect(find.text('白船靠岸。'), findsOneWidget);
       expect(find.text('确认生成'), findsOneWidget);
@@ -282,11 +298,15 @@ void main() {
       final user = (await repo.getAgentMessages(conversation))
           .firstWhere((m) => m.role == 'user');
       expect(user.raw['attachment'], containsPair('chapterId', chapter.id));
+      await tester.ensureVisible(find.text('提示词与参考图'));
+      await tester.tap(find.text('提示词与参考图'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       final cancel = find.descendant(
         of: find.byKey(const Key('agent-image-confirmation')),
         matching: find.text('取消'),
       );
-      await tester.ensureVisible(cancel);
+      expect(cancel.hitTestable(), findsOneWidget);
       await tester.tap(cancel);
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
@@ -461,7 +481,9 @@ void main() {
     await _select(tester);
     expect(bubble(), greaterThan(.5));
 
-    await tester.tap(findAction('夜间'));
+    await tester.tap(findAction('跟随系统'));
+    await tester.pumpAndSettle();
+    await tester.tap(findAction('亮色'));
     await tester.pumpAndSettle();
     await _select(tester);
     expect(bubble(), lessThan(.1));
@@ -580,7 +602,11 @@ void main() {
     tester,
   ) async {
     List<ProviderEvent> draw(String prompt) => [
-      ToolCallReady(prompt, 'generate_image', {'prompt': prompt, 'name': '渡口'}),
+      ToolCallReady(prompt, 'generate_image', {
+        ...emptyImageContext,
+        'prompt': prompt,
+        'name': '渡口',
+      }),
       const GenerationFinished('tool_calls'),
     ];
     final (services, chapter) = await _book(
@@ -611,8 +637,10 @@ void main() {
       ),
     );
     await settle();
-    expect(inCard(find.textContaining('雨夜渡口')), findsOneWidget);
+    expect(inCard(find.textContaining('雨夜渡口')).hitTestable(), findsNothing);
     expect(inCard(find.text('文本与生图 · m')), findsOneWidget);
+    expect(inCard(find.text('取消')).hitTestable(), findsOneWidget);
+    expect(inCard(find.text('确认生成')).hitTestable(), findsOneWidget);
     expect(await drawings(), 0);
 
     await tester.tap(inCard(find.text('取消')));
@@ -624,7 +652,8 @@ void main() {
     await tester.enterText(find.byKey(const Key('agent-input')), '再画一张');
     await tester.tap(findAction('发送给编辑助手'));
     await settle();
-    expect(inCard(find.textContaining('红伞少女')), findsOneWidget);
+    expect(inCard(find.textContaining('红伞少女')).hitTestable(), findsNothing);
+    expect(inCard(find.text('确认生成')).hitTestable(), findsOneWidget);
 
     await tester.tap(inCard(find.text('确认生成')));
     await settle();
@@ -687,8 +716,14 @@ void main() {
       ),
       purpose: AssetPurpose.reference,
     );
+    await services.repository.setAssetReference(
+      portrait.id,
+      kind: LoreKind.character,
+      prompt: 'short black hair',
+    );
     script.add([
       ToolCallReady('r', 'generate_image', {
+        ...emptyImageContext,
         'prompt': '林岚',
         'name': '林岚',
         'references': [portrait.id],
@@ -708,10 +743,19 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(
-      find.byKey(Key('agent-image-reference-${portrait.id}')),
-      findsOneWidget,
-    );
+    final reference = find.byKey(Key('agent-image-reference-${portrait.id}'));
+    expect(reference.hitTestable(), findsNothing);
+    await tester.tap(find.text('提示词与参考图'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(reference);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(reference.hitTestable(), findsOneWidget);
+    await tester.ensureVisible(find.text('提示词与参考图'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('提示词与参考图'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('取消'));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));

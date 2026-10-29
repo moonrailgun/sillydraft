@@ -301,9 +301,7 @@ Map<String, dynamic> _imageTool(
   Map<String, dynamic> image, {
   bool batch = false,
 }) {
-  final limit = referenceLimit(
-    ModelConnection.fromJson(image['connection'] as Map<String, dynamic>),
-  );
+  final visualContext = image['visualContextVersion'] == 1;
   final parameters = {
     'type': 'object',
     'properties': {
@@ -319,17 +317,54 @@ Map<String, dynamic> _imageTool(
           'type': 'string',
           'description': '照抄当前章节中与画面对应的原文片段，不跨段落，且在本章只出现一次。图片将插入该片段所在段落下方。',
         },
-      if (limit > 0)
-        'references': {
-          'type': 'array',
-          'items': {'type': 'string'},
-          'maxItems': limit,
-          'description':
-              '参考图的图片 id，最多 $limit 张。画人物时先用 read_lore 读出场人物，'
-              '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
+      if (visualContext) ...{
+        'scene': {
+          'type': 'object',
+          'properties': {
+            for (final key in sceneFields) key: {'type': 'string'},
+          },
+          'required': sceneFields,
+          'additionalProperties': false,
         },
+        'subjects': {
+          'type': 'array',
+          'maxItems': 16,
+          'items': {
+            'type': 'object',
+            'properties': {
+              'kind': {
+                'type': 'string',
+                'enum': ['character', 'location'],
+              },
+              'name': {'type': 'string'},
+              'prompt': {'type': 'string'},
+              'loreId': {
+                'type': 'string',
+                'description':
+                    '当前参考范围可见且 kind 与本 subject.kind 相同的资料 id，用 list_lore 核对。'
+                    'world 条目可供阅读，但不能作为人物或地点的 loreId。',
+              },
+            },
+            'required': ['kind', 'name', 'prompt'],
+            'additionalProperties': false,
+          },
+        },
+      },
+      'references': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'maxItems': 16,
+        'description':
+            '参考图的图片 id，最多 16 张。工具按引擎容量优先选择人物图片，纯文生图复用外观描述。画人物时先用 read_lore 读出场人物，'
+            '把外貌、服饰、状态写进提示词，把其 data.images 中的形象图 id 放在这里，让人物保持一致。',
+      },
     },
-    'required': ['prompt', 'name', if (batch) 'quote'],
+    'required': [
+      'prompt',
+      'name',
+      if (batch) 'quote',
+      if (visualContext) ...['scene', 'subjects'],
+    ],
     'additionalProperties': false,
   };
   return {
@@ -340,7 +375,8 @@ Map<String, dynamic> _imageTool(
           '作者要求生图时，准备好提示词后立即调用本工具${batch ? '，一次提交本章全部亮点插图' : ''}。'
           '画人物时先核对提供的视觉资料；缺少出场人物时用 list_lore、read_lore 读取外貌、服饰和状态，再写入画面可见的特征。'
           '本工具会展示确认卡片；作者在卡片上确认后，应用才会${batch ? '逐张' : ''}调用生图引擎并把图片存入作品资产库。'
-          '调用前不要在聊天中要求作者确认；取消或失败后不要自动重试。',
+          '调用前不要在聊天中要求作者确认。若返回 invalid_arguments，说明尚未调用生图引擎，可按错误修正参数后重新提交确认；'
+          '作者取消或生图失败后不要自动重试。',
       'parameters': batch
           ? {
               'type': 'object',
@@ -1019,6 +1055,28 @@ extension _AgentExecution on TaskRunner {
           (batch && (args.length != 1 || !args.containsKey('images')))) {
         throw const FormatException('请一次提交 1–6 张插图');
       }
+      final service = IllustrationService(repository: repository, runner: this);
+      final connection = ModelConnection.fromJson(
+        jsonObject(image['connection'], 'image.connection'),
+      );
+      final chapterId = image['chapterId'] as String?;
+      // References follow the frozen conversation scope, not the image's source chapter.
+      final referenceChapterId =
+          task.input['throughChapterId'] as String? ??
+          (task.input['chapterSnapshot'] as List?)?.lastOrNull?['id']
+              as String?;
+      final plans = <List<VisualReference>>[];
+      final shared = <String, VisualReference>{};
+      final scenes = <String, Map<String, dynamic>>{
+        for (final scene in image['scenes'] as List? ?? [])
+          scene['id'] as String: Map<String, dynamic>.from(scene as Map),
+      };
+      final previousImages = <String, String>{
+        for (final scene in scenes.values)
+          if (scene['assetId'] is String)
+            scene['id'] as String: scene['assetId'] as String,
+      };
+      final manual = (image['manual'] as Map?)?.cast<String, dynamic>();
       final requests = <ImageRequest>[];
       final previews = <Map<String, dynamic>>[];
       for (final item in items) {
@@ -1032,6 +1090,8 @@ extension _AgentExecution on TaskRunner {
                 'name',
                 'negative_prompt',
                 'references',
+                'subjects',
+                'scene',
                 if (batch) 'quote',
               ].contains(k),
             ) ||
@@ -1044,12 +1104,7 @@ extension _AgentExecution on TaskRunner {
             (references != null &&
                 (references is! List ||
                     references.any((id) => id is! String) ||
-                    references.length >
-                        referenceLimit(
-                          ModelConnection.fromJson(
-                            image['connection'] as Map<String, dynamic>,
-                          ),
-                        )))) {
+                    references.length > 16))) {
           throw const FormatException('参数无效');
         }
         Map<String, dynamic>? anchor;
@@ -1075,18 +1130,38 @@ extension _AgentExecution on TaskRunner {
             'quote': quote,
           };
         }
-        final referenceIds = [...?(references as List?)?.cast<String>()];
-        // Checked before the author is asked: a picture from another book
-        // never reaches the confirmation card.
-        final novel = (await repository.getBranch(task.branchId)).novelId;
-        for (final id in referenceIds) {
-          if ((await repository.getAsset(id)).novelId != novel) {
-            throw const FormatException('参考图不属于当前作品');
-          }
+        final referenceIds = {
+          ...?(references as List?)?.cast<String>(),
+          ...?(manual?['references'] as List?)?.cast<String>(),
+        }.toList();
+        final scene =
+            image['visualContextVersion'] == 1 || item['scene'] != null
+            ? validateImageScene(item['scene'])
+            : null;
+        final previousScene = scene == null ? null : scenes[scene['id']];
+        if (scene != null) {
+          checkSceneContinuity(scene, previousScene);
+          scenes[scene['id'] as String] = scene;
         }
-        final connection = ModelConnection.fromJson(
-          jsonObject(image['connection'], 'image.connection'),
+        if (image['visualContextVersion'] == 1 && item['subjects'] is! List) {
+          throw const FormatException('请列出画面人物和地点 subjects');
+        }
+        final planned = await service.planReferences(
+          branchId: task.branchId,
+          chapterId: referenceChapterId,
+          subjects: (item['subjects'] as List?) ?? [],
         );
+        await service.addAssetReferences(
+          task.branchId,
+          referenceChapterId,
+          planned,
+          referenceIds,
+        );
+        final refs = [
+          for (final ref in planned) shared.putIfAbsent(ref.key, () => ref),
+        ];
+        if (scene != null) validateSceneReferences(scene, refs);
+        plans.add(refs);
         final saved = (image['defaults'] as Map? ?? {}).cast<String, dynamic>();
         final request = IllustrationService.requestFrom(connection, prompt, {
           ...saved,
@@ -1098,12 +1173,48 @@ extension _AgentExecution on TaskRunner {
         });
 
         requests.add(request);
+        final labels = <String, String>{};
+        final previousReference = refs
+            .where(
+              (r) =>
+                  r.assetId != null && r.assetId == previousScene?['assetId'],
+            )
+            .firstOrNull;
+        for (final (id, label) in [
+          for (final ref in refs.where((r) => r.kind == LoreKind.character))
+            (ref.assetId ?? ref.key, '${ref.kind.name} ${ref.name}'),
+          if (previousScene != null)
+            (
+              previousScene['assetId'] as String? ?? 'pending-scene',
+              previousReference == null
+                  ? 'previous view of this scene'
+                  : '${previousReference.kind.name} ${previousReference.name}',
+            ),
+          for (final ref in refs.where((r) => r.kind != LoreKind.character))
+            (ref.assetId ?? ref.key, '${ref.kind.name} ${ref.name}'),
+        ]) {
+          labels.putIfAbsent(id, () => label);
+        }
+        final previewPrompt = visualPrompt(
+          request.prompt,
+          refs,
+          scene,
+          tags: connection.protocol == ModelProtocol.novelAI,
+          imageLabels: labels.values.take(referenceLimit(connection)).toList(),
+        );
+        // Validate the expanded request before any reference generation is approved.
+        ImageRequest.fromJson({...request.raw, 'prompt': previewPrompt});
         previews.add({
-          'name': name,
-          'prompt': request.prompt,
+          'name': manual?['name'] ?? name,
+          'prompt': previewPrompt,
+          'scene': ?scene,
+          'visualReferences': [for (final ref in refs) ref.preview],
           'negativePrompt': ?request.parameters['negative_prompt'],
           'illustrationAnchor': ?anchor,
-          if (referenceIds.isNotEmpty) 'references': referenceIds,
+          'references': {
+            for (final ref in refs) ?ref.assetId,
+            ...referenceIds,
+          }.toList(),
         });
       }
       final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
@@ -1120,6 +1231,10 @@ extension _AgentExecution on TaskRunner {
           result: {
             'imageConfirmation': {
               'id': confirmationId,
+              'newReferences': [
+                for (final ref in shared.values)
+                  if (ref.assetId == null) ref.preview,
+              ],
               if (batch) 'images': previews else ...previews.single,
             },
           },
@@ -1138,35 +1253,71 @@ extension _AgentExecution on TaskRunner {
       if (!approved) {
         return {'cancelled': true, 'message': '作者已取消本次生图，未调用生图引擎。请勿自动重试。'};
       }
-      final connection = ModelConnection.fromJson(
-        jsonObject(image['connection'], 'image.connection'),
-      );
+      Future<void> checkChapter() async {
+        if (chapterId == null) return;
+        final expected = chapters
+            .where((c) => c['id'] == chapterId)
+            .firstOrNull;
+        final current = await repository.getChapter(
+          branchId: task.branchId,
+          chapterId: chapterId,
+        );
+        if (expected != null && current.revisionId != expected['revisionId']) {
+          throw RevisionConflict(
+            expected: expected['revisionId'] as String,
+            actual: current.revisionId,
+          );
+        }
+      }
+
       final results = <Map<String, dynamic>>[];
       for (var i = 0; i < requests.length; i++) {
         cancel.check();
         Map<String, dynamic> result;
         try {
-          final child =
-              await IllustrationService(
-                repository: repository,
-                runner: this,
-              ).generate(
-                branchId: task.branchId,
-                connection: connection,
-                name: previews[i]['name'] as String,
-                request: requests[i],
-                chapterId: image['chapterId'] as String?,
-                illustrationAnchor:
-                    previews[i]['illustrationAnchor'] as Map<String, dynamic>?,
-                referenceAssetIds:
-                    (previews[i]['references'] as List?)?.cast<String>() ??
-                    const [],
-              );
+          await checkChapter();
+          for (final ref in plans[i]) {
+            await service.ensureReference(
+              branchId: task.branchId,
+              chapterId: referenceChapterId,
+              connection: connection,
+              reference: ref,
+              defaults: (image['defaults'] as Map? ?? {})
+                  .cast<String, dynamic>(),
+              cancellation: cancel,
+            );
+          }
+          await checkChapter();
+          final scene = previews[i]['scene'] as Map<String, dynamic>?;
+          final child = await service.generate(
+            branchId: task.branchId,
+            connection: connection,
+            name: previews[i]['name'] as String,
+            request: requests[i],
+            chapterId: chapterId,
+            visualReferences: plans[i],
+            scene: scene,
+            previousSceneAssetId: scene == null
+                ? null
+                : previousImages[scene['id']],
+            purpose: manual?['purpose'] == null
+                ? AssetPurpose.illustration
+                : AssetPurpose.values.byName(manual!['purpose'] as String),
+            illustrationAnchor:
+                previews[i]['illustrationAnchor'] as Map<String, dynamic>?,
+            referenceAssetIds:
+                (previews[i]['references'] as List?)?.cast<String>() ??
+                const [],
+          );
           final remove = cancel.onCancel(
             () => unawaited(this.cancel(child.id)),
           );
           try {
             final done = await wait(child.id);
+            if (scene != null && done.result['assetId'] is String) {
+              previousImages[scene['id'] as String] =
+                  done.result['assetId'] as String;
+            }
             result = {
               'taskId': child.id,
               'status': done.status.name,
@@ -1181,9 +1332,13 @@ extension _AgentExecution on TaskRunner {
         } catch (error) {
           result = {
             'status': 'failed',
-            'error': error is ProviderException
-                ? error.message
-                : '生图任务未完成，请检查生图配置后重试。',
+            'error': switch (error) {
+              ProviderException() => error.message,
+              FormatException() => error.message,
+              RevisionConflict() => '正文已变化，已停止后续生图；已完成的参考图仍保留。',
+              LoreConflict() => '人物或地点资料已变化，请重新确认参考图。',
+              _ => '生图任务未完成，请检查生图配置后重试。',
+            },
           };
         }
         if (!batch) {

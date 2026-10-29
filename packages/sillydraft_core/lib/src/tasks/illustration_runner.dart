@@ -75,6 +75,10 @@ extension _IllustrationExecution on TaskRunner {
           'connectionId': connection.id,
           'parameters': request.parameters,
           'references': input['references'],
+          'visualReferences': ?input['visualReferences'],
+          'scene': ?input['scene'],
+          if (input['purpose'] == AssetPurpose.reference.name)
+            'referencePrompt': request.prompt,
           'illustrationAnchor': ?input['illustrationAnchor'],
           'usage': output.usage,
         },

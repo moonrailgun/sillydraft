@@ -5,6 +5,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
 import 'asset_library_test.dart' show testPicture;
+import 'support/image_scene.dart';
 import 'task_runner_test.dart' show ScriptProvider;
 
 class _Images implements ImageProvider {
@@ -206,6 +207,7 @@ void main() {
           providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
             if (round++ == 0) {
               yield ToolCallReady('generate', 'generate_image', {
+                ...emptyImageContext,
                 'name': '封面',
                 'prompt': 'red umbrella',
               });

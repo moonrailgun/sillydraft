@@ -33,6 +33,28 @@ extension AssetOperations on StoryRepository {
         ]);
         await _touchNovel(asset.novelId);
       });
+  Future<void> setAssetReference(
+    String id, {
+    required LoreKind kind,
+    required String prompt,
+  }) => _write(() async {
+    if (![LoreKind.character, LoreKind.location].contains(kind) ||
+        prompt.trim().isEmpty ||
+        prompt.length > 4000) {
+      throw const FormatException('参考图需要人物或地点类型，以及不超过 4000 字的固定外观描述');
+    }
+    final asset = await getAsset(id);
+    await _execute('UPDATE story_assets SET metadata_json = ? WHERE id = ?', [
+      jsonEncode({
+        ...asset.metadata,
+        'referenceKind': kind.name,
+        'referencePrompt': prompt.trim(),
+      }),
+      id,
+    ]);
+    await _touchNovel(asset.novelId);
+  });
+
   Future<StoryAsset> storeAsset({
     required String branchId,
     required String name,

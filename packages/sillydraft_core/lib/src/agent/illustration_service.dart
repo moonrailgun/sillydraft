@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import '../model/asset.dart';
+import '../model/lore.dart';
+import 'visual_reference.dart';
+export 'visual_reference.dart';
 import '../model/task.dart';
 import '../providers/image_provider.dart';
 import '../providers/comfy_workflow.dart';
@@ -92,6 +97,272 @@ final class IllustrationService {
     }
   }
 
+  Future<List<VisualReference>> planReferences({
+    required String branchId,
+    required List<dynamic> subjects,
+    String? chapterId,
+  }) async {
+    if (subjects.length > 16) throw const FormatException('最多指定 16 个人物或地点');
+    final lore = await repository.listLore(
+      branchId,
+      throughChapterId: chapterId,
+    );
+    final result = <VisualReference>[];
+    for (final subject in subjects) {
+      if (subject is! Map ||
+          subject.keys.any(
+            (k) => !['kind', 'name', 'prompt', 'loreId'].contains(k),
+          ) ||
+          !['character', 'location'].contains(subject['kind']) ||
+          subject['name'] is! String ||
+          (subject['name'] as String).trim().isEmpty ||
+          (subject['name'] as String).length > 100 ||
+          subject['prompt'] is! String ||
+          (subject['prompt'] as String).trim().isEmpty ||
+          (subject['prompt'] as String).length > 4000 ||
+          (subject['loreId'] != null && subject['loreId'] is! String)) {
+        throw const FormatException('人物和地点须提供类型、名称及固定外观描述');
+      }
+      final kind = LoreKind.values.byName(subject['kind'] as String);
+      final name = (subject['name'] as String).trim();
+      final matches = lore
+          .where(
+            (e) => (subject['loreId'] != null
+                ? e.id == subject['loreId']
+                : e.kind == kind && e.name == name),
+          )
+          .toList();
+      if (matches.length > 1 ||
+          (subject['loreId'] != null && matches.isEmpty)) {
+        throw const FormatException('人物或地点资料不明确，请使用当前参考范围可见的资料 id');
+      }
+      final entry = matches.firstOrNull;
+      if (entry != null && entry.kind != kind) {
+        throw FormatException(
+          'subjects.loreId=${entry.id} 的资料类型是 ${entry.kind.name}，'
+          '与 subjects.kind=${kind.name} 不匹配。'
+          '请用 list_lore 选择当前参考范围可见且 kind=${kind.name} 的资料 id。',
+        );
+      }
+      final saved = entry?.data['referencePrompt'] as String? ?? '';
+      final ref = VisualReference(
+        kind: kind,
+        name: entry?.name ?? name,
+        prompt: saved.trim().isEmpty
+            ? (subject['prompt'] as String).trim()
+            : saved,
+        entry: entry,
+        assetId: (entry?.data['images'] as List?)?.firstOrNull as String?,
+      );
+      if (result.any((r) => r.key == ref.key)) {
+        throw const FormatException('同一画面的人物或地点重复');
+      }
+      if (ref.assetId != null) {
+        final asset = await repository.getAsset(ref.assetId!);
+        if (asset.novelId != (await repository.getBranch(branchId)).novelId) {
+          throw const FormatException('参考图不属于当前作品');
+        }
+      }
+      result.add(ref);
+    }
+    return result;
+  }
+
+  Future<void> ensureReference({
+    required String branchId,
+    required ModelConnection connection,
+    required VisualReference reference,
+    String? chapterId,
+    Map<String, dynamic> defaults = const {},
+    GenerationCancellation? cancellation,
+  }) async {
+    cancellation?.check();
+    final old = reference.entry;
+    if (old != null) {
+      final current = await repository.getLoreEntry(
+        branchId: branchId,
+        id: old.id,
+        throughChapterId: chapterId,
+      );
+      if (current.revisionId != old.revisionId) throw const LoreConflict();
+    } else {
+      final current = await repository.listLore(
+        branchId,
+        throughChapterId: chapterId,
+        kind: reference.kind,
+      );
+      if (current.any((e) => e.name == reference.name)) {
+        throw const LoreConflict();
+      }
+    }
+    if (reference.assetId == null) {
+      final framing = reference.kind == LoreKind.character
+          ? 'Single character reference, full body, neutral pose, plain background, no text. '
+          : 'Empty location reference, clear architecture and spatial layout, no people, no text. ';
+      final child = await generate(
+        branchId: branchId,
+        connection: connection,
+        name: '${reference.name} · 参考图',
+        chapterId: chapterId,
+        request: requestFrom(
+          connection,
+          '$framing${reference.prompt}',
+          defaults,
+        ),
+        purpose: AssetPurpose.reference,
+      );
+      final remove = cancellation?.onCancel(
+        () => unawaited(runner.cancel(child.id)),
+      );
+      try {
+        cancellation?.check();
+        final done = await runner.wait(child.id);
+        cancellation?.check();
+        if (done.status != TaskStatus.completed ||
+            done.result['assetId'] is! String) {
+          throw ProviderException(
+            'reference_failed',
+            '${reference.name}参考图未完成：${done.error}',
+          );
+        }
+        reference.assetId = done.result['assetId'] as String;
+      } finally {
+        remove?.call();
+      }
+    }
+    if (old?.data['referencePrompt'] == reference.prompt &&
+        (old?.data['images'] as List? ?? []).contains(reference.assetId)) {
+      return;
+    }
+    cancellation?.check();
+    reference.entry = await repository.saveLoreEntry(
+      branchId: branchId,
+      id: old?.id,
+      expectedRevisionId: old?.revisionId,
+      kind: reference.kind,
+      name: reference.name,
+      content: old?.content ?? reference.prompt,
+      certainty: old?.certainty ?? LoreCertainty.inference,
+      atChapterId: chapterId,
+      data: {
+        ...?old?.data,
+        'referencePrompt': reference.prompt,
+        'images': [
+          reference.assetId!,
+          ...?(old?.data['images'] as List?)?.where(
+            (id) => id != reference.assetId,
+          ),
+        ],
+      },
+      // Approved visual baselines must survive automatic sidecar refreshes.
+      provenance: {'type': 'visualReference', 'source': ?old?.provenance},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> savedScenes(
+    String branchId,
+    String? chapterId,
+  ) async {
+    if (chapterId == null) return [];
+    final branch = await repository.getBranch(branchId);
+    final chapter = await repository.getChapter(
+      branchId: branchId,
+      chapterId: chapterId,
+    );
+    final scenes = <String, Map<String, dynamic>>{};
+    // Inserting an illustration changes the revision, but not the scene's prose.
+    String prose(String text) => text
+        .replaceAll('\uFFFC', '')
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .join('\n');
+    final sourceText = <String, String>{
+      chapter.revisionId: prose(chapter.content.text),
+    };
+    for (final asset in await repository.listAssets(branch.novelId)) {
+      if (asset.branchId != branchId ||
+          asset.sourceChapterId != chapterId ||
+          asset.sourceRevisionId == null ||
+          asset.metadata['scene'] is! Map) {
+        continue;
+      }
+      final revision = asset.sourceRevisionId!;
+      sourceText[revision] ??= prose(
+        (await repository.getRevision(revision)).content.text,
+      );
+      if (sourceText[revision] != sourceText[chapter.revisionId]) continue;
+      final scene = validateImageScene(asset.metadata['scene']);
+      scenes.putIfAbsent(
+        scene['id'] as String,
+        () => {...scene, 'assetId': asset.id},
+      );
+    }
+    return scenes.values.toList();
+  }
+
+  Future<void> addAssetReferences(
+    String branchId,
+    String? chapterId,
+    List<VisualReference> visual,
+    List<String> assetIds,
+  ) async {
+    final novelId = (await repository.getBranch(branchId)).novelId;
+    final lore = assetIds.isEmpty
+        ? <LoreEntry>[]
+        : await repository.listLore(branchId, throughChapterId: chapterId);
+    for (final id in assetIds) {
+      if (visual.any((r) => r.assetId == id)) continue;
+      final asset = await repository.getAsset(id);
+      if (asset.novelId != novelId) throw const FormatException('参考图不属于当前作品');
+      final entry = lore
+          .where(
+            (e) =>
+                [LoreKind.character, LoreKind.location].contains(e.kind) &&
+                (e.data['images'] as List? ?? []).contains(id),
+          )
+          .firstOrNull;
+      final kind =
+          entry?.kind ??
+          switch (asset.metadata['referenceKind']) {
+            'character' => LoreKind.character,
+            'location' => LoreKind.location,
+            _ => null,
+          };
+      if (kind == null) throw const FormatException('请先为参考图设置人物或地点类型');
+      final saved = entry?.data['referencePrompt'];
+      final description = saved is String && saved.trim().isNotEmpty
+          ? saved
+          : asset.metadata['referencePrompt'] ?? asset.metadata['prompt'];
+      if (description is String && description.trim().isNotEmpty) {
+        final name = entry?.name ?? asset.name;
+        final index = visual.indexWhere(
+          (r) =>
+              (entry != null && r.entry?.id == entry.id) ||
+              (r.kind == kind && r.name == name),
+        );
+        final reference = VisualReference(
+          kind: kind,
+          name: name,
+          prompt: description,
+          entry: entry ?? (index < 0 ? null : visual[index].entry),
+          assetId: id,
+        );
+        final images = reference.entry?.data['images'] as List? ?? [];
+        if (images.length >= 8 && !images.contains(id)) {
+          throw FormatException('${reference.name}已有 8 张参考图，请先在资料中移除不再使用的图片');
+        }
+        // An explicitly selected image replaces the planned default for that subject.
+        if (index < 0) {
+          visual.add(reference);
+        } else {
+          visual[index] = reference;
+        }
+      } else {
+        throw const FormatException('参考图缺少固定外观描述，请先在生图页面或人物／地点资料中补充');
+      }
+    }
+  }
+
   Future<GenerationTask> generate({
     required String branchId,
     required ModelConnection connection,
@@ -101,6 +372,9 @@ final class IllustrationService {
     Map<String, dynamic>? illustrationAnchor,
     List<String> referenceAssetIds = const [],
     AssetPurpose purpose = AssetPurpose.illustration,
+    List<VisualReference> visualReferences = const [],
+    Map<String, dynamic>? scene,
+    String? previousSceneAssetId,
   }) async {
     if (name.trim().isEmpty) throw const FormatException('请为图片命名');
     if (referenceAssetIds.length > 16) {
@@ -110,19 +384,55 @@ final class IllustrationService {
     final chapter = chapterId == null
         ? null
         : await repository.getChapter(branchId: branchId, chapterId: chapterId);
+    final visual = [...visualReferences];
+    await addAssetReferences(branchId, chapterId, visual, referenceAssetIds);
+    if (scene != null) {
+      scene = validateImageScene(scene);
+      validateSceneReferences(scene, visual);
+    }
+    connection = await withLatestWorkflow(
+      connection,
+      references:
+          referenceLimit(connection) > 0 &&
+          (visual.any((r) => r.assetId != null) ||
+              referenceAssetIds.isNotEmpty ||
+              previousSceneAssetId != null),
+    );
+    final ids = <String>{
+      for (final r in visual.where((r) => r.kind == LoreKind.character))
+        ?r.assetId,
+      ?previousSceneAssetId,
+      for (final r in visual.where((r) => r.kind != LoreKind.character))
+        ?r.assetId,
+      ...referenceAssetIds,
+    };
     final references = <Map<String, dynamic>>[];
-    for (final id in referenceAssetIds) {
+    final imageLabels = <String>[];
+    for (final id in ids) {
       final asset = await repository.getAsset(id);
       if (asset.novelId != branch.novelId) {
         throw const FormatException('参考图不属于当前作品');
       }
-      references.add({'id': id, 'hash': asset.hash});
+      if (references.length < referenceLimit(connection)) {
+        references.add({'id': id, 'hash': asset.hash});
+        final ref = visual.where((r) => r.assetId == id).firstOrNull;
+        imageLabels.add(
+          ref == null
+              ? 'previous view of this scene'
+              : '${ref.kind.name} ${ref.name}',
+        );
+      }
     }
-    // Freeze before creating the task; resume keeps this exact snapshot.
-    connection = await withLatestWorkflow(
-      connection,
-      references: references.isNotEmpty,
-    );
+    request = ImageRequest.fromJson({
+      ...request.raw,
+      'prompt': visualPrompt(
+        request.prompt,
+        visual,
+        scene,
+        tags: connection.protocol == ModelProtocol.novelAI,
+        imageLabels: imageLabels,
+      ),
+    });
     return runner.start(
       branchId: branchId,
       kind: TaskKind.illustration,
@@ -134,6 +444,9 @@ final class IllustrationService {
         'name': name.trim(),
         'purpose': purpose.name,
         'references': references,
+        if (visual.isNotEmpty)
+          'visualReferences': [for (final ref in visual) ref.preview],
+        'scene': ?scene,
         'illustrationAnchor': ?illustrationAnchor,
       },
     );

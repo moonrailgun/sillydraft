@@ -211,17 +211,24 @@ extension LoreOperations on StoryRepository {
     Map<String, dynamic> data,
     String? throughChapterId,
   ) async {
+    if (data['referencePrompt'] case final Object prompt) {
+      if (!{LoreKind.character, LoreKind.location}.contains(kind) ||
+          prompt is! String ||
+          prompt.length > 4000) {
+        throw const FormatException('人物和地点的固定外观描述须为不超过 4000 字的文本');
+      }
+    }
     if (data['images'] case final Object images) {
-      if (kind != LoreKind.character ||
+      if (!{LoreKind.character, LoreKind.location}.contains(kind) ||
           images is! List ||
           images.length > maxCharacterImages ||
           images.any((id) => id is! String)) {
-        throw const FormatException('只有人物可以有形象图，最多 8 张');
+        throw const FormatException('只有人物和地点可以有参考图，最多 8 张');
       }
       final novel = (await getBranch(branchId)).novelId;
       for (final id in images.cast<String>()) {
         if ((await getAsset(id)).novelId != novel) {
-          throw const StoryNotFound('本作品的人物形象图');
+          throw const StoryNotFound('本作品的参考图');
         }
       }
     }

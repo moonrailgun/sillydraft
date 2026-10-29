@@ -113,6 +113,67 @@ Finder get _portraitThumbs => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('a location requires and saves its reference description', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(services.close);
+    final repo = services.repository;
+    final branch = (await repo.createNovel(title: '雨夜')).activeBranchId;
+    final asset = await repo.storeAsset(
+      branchId: branch,
+      name: '木屋',
+      prepared: PreparedAsset(
+        hash: 'a' * 64,
+        thumbnailHash: 'b' * 64,
+        width: 1,
+        height: 1,
+        byteLength: 1,
+      ),
+    );
+    final entry = await repo.saveLoreEntry(
+      branchId: branch,
+      kind: LoreKind.location,
+      name: '木屋',
+      content: '林中的木屋',
+      data: {
+        'images': [asset.id],
+      },
+    );
+    await _openEditor(tester, services, branch, entry);
+    expect(find.text('场景参考图 · 1/8'), findsOneWidget);
+    final prompt = find.byKey(const Key('lore-reference-prompt'));
+    await tester.ensureVisible(prompt);
+    await tester.enterText(prompt, '');
+    await tester.ensureVisible(find.text('保存资料'));
+    await tester.tap(find.text('保存资料'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('请填写与参考图对应的固定外观描述'), findsOneWidget);
+    await tester.ensureVisible(prompt);
+    await tester.enterText(
+      prompt,
+      'wooden cabin, window on the left, table with an oil lamp',
+    );
+    await tester.ensureVisible(find.text('保存资料'));
+    await tester.tap(find.text('保存资料'));
+    await tester.pumpAndSettle();
+    final saved = await repo.getLoreEntry(branchId: branch, id: entry.id);
+    expect(saved.data['images'], [asset.id]);
+    expect(
+      saved.data['referencePrompt'],
+      'wooden cabin, window on the left, table with an oil lamp',
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'phone dossiers save a plan separately from prose and archive it',
     (tester) async {
@@ -237,7 +298,7 @@ void main() {
     );
     await tester.tap(find.text('打开'));
     await tester.pumpAndSettle();
-    expect(find.text('蓑衣'), findsOneWidget);
+    expect(find.text('蓑衣'), findsNWidgets(2));
     expect(find.byKey(Key('character-image-${first.id}')), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('移除形象图').first);
     await tester.pumpAndSettle();
@@ -397,8 +458,8 @@ void main() {
     await tester.ensureVisible(find.text('生成形象图'));
     await tester.tap(find.text('生成形象图'));
     await _settle(tester, 10);
-    expect(find.text('形象图提示词'), findsOneWidget);
-    expect(find.text('短发少女，蓑衣'), findsOneWidget);
+    expect(find.text('参考图外观描述'), findsOneWidget);
+    expect(find.text('短发少女, 蓑衣'), findsNWidgets(2));
     await tester.tap(find.text('保存').last);
     await _settle(tester);
     expect(_portraitThumbs, findsOneWidget);

@@ -52,6 +52,7 @@ final class ModelConnection extends JsonSource {
     List<String> disabledSamplingParameters = const [],
     int contextWindow = 200000,
     int maxOutputTokens = 2048,
+    int maxReferenceImages = 16,
     bool allowInsecureHttp = false,
     String command = '',
   }) : super({
@@ -70,9 +71,13 @@ final class ModelConnection extends JsonSource {
          'disabledSamplingParameters': disabledSamplingParameters,
          'contextWindow': contextWindow,
          'maxOutputTokens': maxOutputTokens,
+         'maxReferenceImages': maxReferenceImages,
          'allowInsecureHttp': allowInsecureHttp,
          if (command.isNotEmpty) 'command': command,
        }) {
+    if (maxReferenceImages < 0 || maxReferenceImages > 16) {
+      throw const FormatException('参考图数量须在 0–16 之间');
+    }
     if (id.isEmpty || model.trim().isEmpty) {
       throw const FormatException('模型配置缺少标识或模型名称');
     }
@@ -148,6 +153,7 @@ final class ModelConnection extends JsonSource {
     ),
     contextWindow: map['contextWindow'] as int? ?? 200000,
     maxOutputTokens: map['maxOutputTokens'] as int? ?? 2048,
+    maxReferenceImages: map['maxReferenceImages'] as int? ?? 16,
     allowInsecureHttp: map['allowInsecureHttp'] as bool? ?? false,
     command: map['command'] as String? ?? '',
   );
@@ -191,6 +197,7 @@ final class ModelConnection extends JsonSource {
       (raw['disabledSamplingParameters'] as List).cast<String>();
   int get contextWindow => raw['contextWindow'] as int;
   int get maxOutputTokens => raw['maxOutputTokens'] as int;
+  int get maxReferenceImages => raw['maxReferenceImages'] as int;
   bool get allowInsecureHttp => raw['allowInsecureHttp'] as bool;
 
   /// Explicit executable for a local CLI connection; empty means look it up.
@@ -345,8 +352,8 @@ abstract interface class ModelProvider {
   void close();
 }
 
-/// How many reference images an image request on [connection] may carry. A
-/// remote runner's own engine decides there, so it is not limited here.
+/// How many reference images an image request on [connection] may carry.
+/// Text-only engines retain the canonical descriptions without image inputs.
 /// References on ComfyUI run the edit workflow when there is one.
 int referenceLimit(ModelConnection connection) {
   switch (connection.protocol) {
@@ -355,9 +362,10 @@ int referenceLimit(ModelConnection connection) {
     case ModelProtocol.comfyUI:
       return (connection.comfyEditWorkflow ?? connection.comfyWorkflow)
               ?.imageInputs
-              .length ??
+              .length
+              .clamp(0, connection.maxReferenceImages) ??
           0;
     default:
-      return 16;
+      return connection.maxReferenceImages;
   }
 }

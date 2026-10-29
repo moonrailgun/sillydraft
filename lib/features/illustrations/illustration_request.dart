@@ -8,6 +8,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../agent/task_screen.dart';
+import '../agent/agent_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/model_select.dart';
 import 'asset_image.dart';
@@ -48,9 +49,6 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   bool get _comfy => _connection?.protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _connection?.protocol == ModelProtocol.novelAI;
   bool get _codex => _connection?.protocol == ModelProtocol.codexCli;
-  int get _referenceLimit =>
-      _connection == null ? 0 : referenceLimit(_connection!);
-  bool get _canReference => _referenceLimit > 0;
   @override
   void initState() {
     super.initState();
@@ -127,7 +125,13 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
       ),
     );
     if (asset != null && mounted && !_references.contains(asset.id)) {
-      setState(() => _references.add(asset.id));
+      try {
+        if (await _prepareReference(asset.id) && mounted) {
+          setState(() => _references.add(asset.id));
+        }
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
     }
   }
 
@@ -138,21 +142,19 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
         for (final entry
             in await ref
                 .read(repositoryProvider)
-                .listLore(
-                  widget.branchId,
-                  throughChapterId: _chapterId,
-                  kind: LoreKind.character,
-                ))
-          if ((entry.data['images'] as List? ?? const []).isNotEmpty) entry,
+                .listLore(widget.branchId, throughChapterId: _chapterId))
+          if ([LoreKind.character, LoreKind.location].contains(entry.kind) &&
+              (entry.data['images'] as List? ?? const []).isNotEmpty)
+            entry,
       ];
       if (!mounted) return;
       if (characters.isEmpty) {
-        toast(context, '还没有带形象图的人物，可在资料页的人物条目里添加。');
+        toast(context, '还没有参考图，可在人物或地点资料里添加。');
         return;
       }
       final picked = await showAppSheet<LoreEntry>(
         context: context,
-        title: '选择人物形象图',
+        title: '选择人物／地点参考图',
         builder: (context) => ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -181,13 +183,83 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
           .where((id) => !_references.contains(id))
           .firstOrNull;
       if (next == null) {
-        toast(context, '这个人物的形象图都已添加');
+        toast(context, '这份资料的参考图都已添加');
       } else {
-        setState(() => _references.add(next));
+        if (await _prepareReference(next) && mounted) {
+          setState(() => _references.add(next));
+        }
       }
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  Future<bool> _prepareReference(String id) async {
+    final repo = ref.read(repositoryProvider);
+    final asset = await repo.getAsset(id);
+    final lore = await repo.listLore(
+      widget.branchId,
+      throughChapterId: _chapterId,
+    );
+    final entry = lore
+        .where(
+          (e) =>
+              [LoreKind.character, LoreKind.location].contains(e.kind) &&
+              (e.data['images'] as List? ?? []).contains(id),
+        )
+        .firstOrNull;
+    final saved = entry?.data['referencePrompt'];
+    var prompt = saved is String && saved.trim().isNotEmpty
+        ? saved
+        : asset.metadata['referencePrompt'] as String? ?? '';
+    var kind =
+        entry?.kind ??
+        switch (asset.metadata['referenceKind']) {
+          'character' => LoreKind.character,
+          'location' => LoreKind.location,
+          _ => null,
+        };
+    if (kind == null) {
+      if (!mounted) return false;
+      kind = await showAppSheet<LoreKind>(
+        context: context,
+        title: '参考图类型',
+        builder: (context) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FButton(
+                onPress: () => Navigator.pop(context, LoreKind.character),
+                child: const Text('人物参考图'),
+              ),
+              const SizedBox(height: 8),
+              FButton(
+                onPress: () => Navigator.pop(context, LoreKind.location),
+                child: const Text('地点参考图'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (kind == null) return false;
+    }
+    if (prompt.trim().isEmpty) {
+      if (!mounted) return false;
+      final description = await askText(
+        context,
+        title: '${asset.name} · 固定外观描述',
+        label: '与参考图一致的外观、建筑或布局',
+        initial: asset.metadata['prompt'] as String? ?? '',
+        maxLines: 6,
+      );
+      if (description == null) return false;
+      prompt = description;
+    }
+    if (entry == null || saved != prompt) {
+      await repo.setAssetReference(id, kind: kind, prompt: prompt);
+    }
+    return true;
   }
 
   Future<void> _generate() async {
@@ -197,16 +269,6 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
       _error = null;
     });
     try {
-      if (_references.length > _referenceLimit ||
-          (_references.isNotEmpty && !_canReference)) {
-        throw FormatException(
-          _novelAI
-              ? 'NovelAI 连接目前仅支持文生图，请移除参考图'
-              : _canReference
-              ? '当前模型最多使用 $_referenceLimit 张参考图'
-              : '请先在 ComfyUI 模型设置中添加图生图工作流',
-        );
-      }
       final extras = jsonDecode(_parameters.text);
       if (extras is! Map<String, dynamic>) {
         throw const FormatException('额外参数须为 JSON 对象');
@@ -239,6 +301,46 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
           'allowedDownloadHosts': hosts,
         },
       );
+      for (final id in _references) {
+        if (!await _prepareReference(id)) return;
+      }
+      if (_purpose != AssetPurpose.reference) {
+        if (await services.connectionFor('editor') == null) {
+          throw const FormatException('请先配置编辑助手，用于整理场景与参考图。');
+        }
+        if (_name.text.trim().isEmpty) throw const FormatException('请为图片命名');
+        final planned = AgentRequest(
+          '请根据画面要求和关联章节生成图片，先整理完整场景与人物／地点参考资料。画面要求：\n${request.prompt}',
+          chapterId: _chapterId,
+          illustrationOnly: true,
+          manualImage: {
+            'connection': _connection!.raw,
+            'name': _name.text.trim(),
+            'purpose': _purpose.name,
+            'references': List<String>.of(_references),
+            'defaults': {
+              'parameters': request.parameters,
+              'allowedDownloadHosts': hosts,
+            },
+          },
+        );
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => PageScaffold(
+                title: '确认插画',
+                body: AgentPanel(
+                  branchId: widget.branchId,
+                  chapterId: _chapterId,
+                  request: planned,
+                ),
+              ),
+            ),
+          );
+        }
+        return;
+      }
       final task = await services.illustrations.generate(
         branchId: widget.branchId,
         connection: _connection!,
@@ -315,7 +417,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
           : ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                const Text('插画独立保存。生成完成后，可以插入正文、设为封面或用于地图。'),
+                const Text('先整理场景与人物／地点参考资料，确认后生成。缺少参考图会先补齐，消耗额外生图额度。插画独立保存。'),
                 const SizedBox(height: 20),
                 if (_connections.isEmpty) const Text('请先在模型设置中添加支持生图的连接。'),
                 if (_connections.isNotEmpty)
@@ -439,7 +541,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                   const SizedBox(height: 16),
                 ],
                 Text(
-                  '参考图片 · ${_references.length}/$_referenceLimit',
+                  '参考图片 · ${_references.length}/16',
                   style: theme.typography.body.md.copyWith(
                     color: theme.colors.foreground,
                     fontWeight: FontWeight.w600,
@@ -497,11 +599,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                     FButton(
                       variant: FButtonVariant.outline,
                       mainAxisSize: MainAxisSize.min,
-                      onPress:
-                          !_canReference ||
-                              _references.length >= _referenceLimit
-                          ? null
-                          : _reference,
+                      onPress: _references.length >= 16 ? null : _reference,
                       prefix: const Icon(FLucideIcons.imagePlus),
                       child: const Text('选择或导入参考图'),
                     ),
@@ -509,23 +607,21 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
                       key: const Key('pick-character-reference'),
                       variant: FButtonVariant.outline,
                       mainAxisSize: MainAxisSize.min,
-                      onPress:
-                          !_canReference ||
-                              _references.length >= _referenceLimit
+                      onPress: _references.length >= 16
                           ? null
                           : _characterReference,
                       prefix: const Icon(FLucideIcons.user),
-                      child: const Text('选择人物形象图'),
+                      child: const Text('选择人物／地点参考图'),
                     ),
                   ],
                 ),
-                if (!_canReference && !_novelAI)
-                  const Text('此连接未配置图生图工作流，可在模型设置中添加。'),
+                if (_connection != null && referenceLimit(_connection!) == 0)
+                  const Text('此模型仅使用参考图的固定外观描述，不发送图片。'),
                 if (_references.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      '参考图会发送给选定的生图服务，作为图片编辑请求。',
+                      '支持图生图时会发送参考图；数量受模型上限限制，优先人物。固定外观描述始终保留。',
                       style: theme.typography.body.xs.copyWith(
                         color: theme.colors.mutedForeground,
                       ),

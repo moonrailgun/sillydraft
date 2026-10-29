@@ -100,12 +100,14 @@ final class AgentRequest {
     this.illustrationOnly = false,
     this.illustrationBatch = false,
     this.illustrationAnchor,
+    this.manualImage,
   });
   final String message;
   final String? chapterId;
   final bool illustrationOnly;
   final bool illustrationBatch;
   final Map<String, dynamic>? illustrationAnchor;
+  final Map<String, dynamic>? manualImage;
 
   /// The author's earlier message this one takes the place of, along with
   /// every turn after it.
@@ -288,7 +290,12 @@ class _AgentState extends ConsumerState<AgentPanel> {
         chatPreset: profile.assistantPreset,
         skills: await services.skills.enabled(),
         focusChapterId: widget.focusChapterId ?? _chapter,
-        imageConnection: await services.connectionFor('image'),
+        imageConnection: request?.manualImage?['connection'] == null
+            ? await services.connectionFor('image')
+            : ModelConnection.fromJson(
+                request!.manualImage!['connection'] as Map<String, dynamic>,
+              ),
+        manualImage: request?.manualImage,
         attachChapterId: request?.chapterId,
         illustrationOnly: request?.illustrationOnly ?? false,
         illustrationBatch: request?.illustrationBatch ?? false,
@@ -622,6 +629,11 @@ class _AgentState extends ConsumerState<AgentPanel> {
             const SizedBox(height: 4),
             Text(imageEngineLabel(engine)),
             if (batch) const Text('确认后按顺序逐张生成；取消或失败会停止后续图片。'),
+            if (pending['newReferences'] case final List refs
+                when refs.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('先生成 ${refs.length} 张参考图，再生成插图；参考图会额外消耗生图额度，并保存到人物／地点资料。'),
+            ],
             const SizedBox(height: 8),
             FAccordion(
               key: ValueKey('image-confirmation-${pending['id']}'),
@@ -631,6 +643,22 @@ class _AgentState extends ConsumerState<AgentPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (pending['newReferences'] case final List refs)
+                        for (final ref in refs) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '${ref['name']} · ${ref['kind'] == 'character' ? '人物' : '地点'}参考图',
+                            style: label,
+                          ),
+                          const SizedBox(height: 4),
+                          SelectableText('${ref['prompt']}'),
+                        ],
+                      const SizedBox(height: 8),
+                      Text(
+                        referenceLimit(engine) == 0
+                            ? '此引擎使用参考图的固定外观描述。'
+                            : '按引擎容量优先使用人物参考图，再使用上一张同场景图片和地点参考图；其余参考保留文字描述。',
+                      ),
                       for (final (index, preview) in previews.indexed) ...[
                         if (batch)
                           Padding(

@@ -157,9 +157,10 @@ void main() {
               (limited ? 'generate_images' : 'generate_image'),
         );
         expect(imageTool['function']['description'], contains('read_lore'));
+        final properties = imageTool['function']['parameters']['properties'];
         expect(
-          imageTool['function']['parameters']['properties'],
-          isNot(contains('references')),
+          limited ? properties['images']['items']['properties'] : properties,
+          contains('references'),
         );
         final diagnostics =
             done.input['illustrationContext']['diagnostics'] as List;

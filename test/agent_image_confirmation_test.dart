@@ -66,6 +66,14 @@ void main() {
           };
           final pending = {
             'id': 'confirmation-1',
+            'newReferences': [
+              for (final kind in ['character', 'location'])
+                {
+                  'name': kind == 'character' ? '神谷透' : '古贺书房',
+                  'kind': kind,
+                  'prompt': 'A detailed reference of the $kind. ' * 20,
+                },
+            ],
             if (batch) 'images': [preview, preview] else ...preview,
           };
           await repo.updateTask(
@@ -86,12 +94,19 @@ void main() {
 
           expect(find.text(prompt).hitTestable(), findsNothing);
           expect(find.text('测试引擎 · fixture').hitTestable(), findsOneWidget);
+          expect(
+            find.textContaining('先生成 2 张参考图').hitTestable(),
+            findsOneWidget,
+          );
           expect(find.text('取消').hitTestable(), findsOneWidget);
           expect(find.text('确认生成').hitTestable(), findsOneWidget);
 
           final details = find.text('提示词与参考图');
           await tester.tap(details);
           await tester.pumpAndSettle();
+          await tester.ensureVisible(find.text('神谷透 · 人物参考图'));
+          await tester.pumpAndSettle();
+          expect(find.text('神谷透 · 人物参考图').hitTestable(), findsOneWidget);
           await tester.ensureVisible(find.text('blurred text').last);
           await tester.pumpAndSettle();
           expect(find.text('blurred text').last.hitTestable(), findsOneWidget);

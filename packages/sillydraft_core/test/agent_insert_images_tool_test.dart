@@ -5,6 +5,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:test/test.dart';
 
 import 'asset_library_test.dart' show testPicture;
+import 'support/image_scene.dart';
 import 'task_runner_test.dart' show ScriptProvider;
 
 class _Images implements ImageProvider {
@@ -179,18 +180,24 @@ void main() {
                     ? {
                         'images': [
                           {
+                            ...emptyImageContext,
                             'name': '红伞',
                             'prompt': 'red umbrella',
                             'quote': '红伞过桥。',
                           },
                           {
+                            ...emptyImageContext,
                             'name': '白船',
                             'prompt': 'white boat',
                             'quote': '白船靠岸。',
                           },
                         ],
                       }
-                    : {'name': '红伞', 'prompt': 'red umbrella'},
+                    : {
+                        ...emptyImageContext,
+                        'name': '红伞',
+                        'prompt': 'red umbrella',
+                      },
               );
               yield const GenerationFinished('tool_calls');
             } else if (calls == 2) {

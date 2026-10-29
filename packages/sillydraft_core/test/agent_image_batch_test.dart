@@ -1,3 +1,5 @@
+import 'support/image_scene.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -125,6 +127,7 @@ void main() {
                             'white boat' => '白船靠岸。',
                             _ => '灯塔亮起。',
                           },
+                    ...emptyImageContext,
                     'prompt': outcome == 'invalid' && prompt == 'white boat'
                         ? ''
                         : prompt,

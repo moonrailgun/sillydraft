@@ -14,8 +14,42 @@ import 'package:sillydraft/features/illustrations/illustration_gallery.dart';
 import 'package:sillydraft/features/illustrations/illustration_request.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
+import '../packages/sillydraft_core/test/support/image_scene.dart';
 import 'support/finders.dart';
 import 'support/host.dart';
+
+class _Planner implements ModelProvider {
+  _Planner(this.config);
+  @override
+  final ModelConnection config;
+  @override
+  Stream<ProviderEvent> generate(
+    ProviderRequest request, {
+    GenerationCancellation? cancellation,
+  }) async* {
+    if (request.executionId?.startsWith('conversation-title-') == true) {
+      yield const TextDelta('插画');
+      yield const GenerationFinished('stop');
+      return;
+    }
+    expect(request.messages.toString(), contains('不会被生图任务改动的正文'));
+    expect(request.messages.toString(), contains('雾中的港口，水彩'));
+    yield ToolCallReady('image', 'generate_image', {
+      ...emptyImageContext,
+      'name': 'AI 名称',
+      'prompt': '雾中的港口，水彩',
+    });
+    yield const GenerationFinished('tool_calls');
+  }
+
+  @override
+  Future<List<String>> listModels() async => [config.model];
+  @override
+  List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) =>
+      [];
+  @override
+  void close() {}
+}
 
 class _WaitingImageProvider implements ImageProvider {
   _WaitingImageProvider(this.config, this.started);
@@ -125,6 +159,7 @@ void main() {
           repository: StoryRepository.memory(),
           secrets: MemorySecrets(),
           dataDirectory: dir,
+          modelProviderFactory: (c) async => _Planner(c),
           imageProviderFactory: (c) async => _WaitingImageProvider(c, started),
         );
         addTearDown(() async {
@@ -138,6 +173,15 @@ void main() {
             baseUrl: 'http://localhost:1/v1',
             model: 'fixture-image',
             protocol: protocol,
+          ),
+        );
+        await services.saveConnection(
+          ModelConnection(
+            id: 'editor',
+            name: '编辑助手',
+            baseUrl: 'http://localhost:1',
+            model: 'text',
+            kind: ModelKind.text,
           ),
         );
         await services.repository.setSetting(
@@ -180,7 +224,7 @@ void main() {
           final referenceButton = tester.widget<FButton>(
             find.widgetWithText(FButton, '选择或导入参考图'),
           );
-          expect(referenceButton.onPress, isNull);
+          expect(referenceButton.onPress, isNotNull);
         }
         await tester.scrollUntilVisible(
           find.text('开始生成'),
@@ -191,6 +235,13 @@ void main() {
         for (var i = 0; i < 15; i++) {
           await tester.pump(const Duration(milliseconds: 50));
         }
+        expect(started.isCompleted, isFalse);
+        await tester.ensureVisible(find.text('确认生成'));
+        await tester.tap(find.text('确认生成'));
+        for (var i = 0; i < 15; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(started.isCompleted, isTrue);
         expect((await started.future).prompt, '雾中的港口，水彩');
         expect((await started.future).parameters['size'], '832x1216');
         expect(
@@ -198,13 +249,23 @@ void main() {
           protocol == ModelProtocol.novelAI ? isNull : 'high',
         );
         expect(
-          (await repo.listTasks(branchId: chapter.branchId)).single.kind,
+          (await repo.listTasks(branchId: chapter.branchId))
+              .singleWhere((t) => t.kind == TaskKind.illustration)
+              .kind,
           TaskKind.illustration,
         );
-        await tester.tap(find.text('取消生成'));
+        expect(
+          (await repo.listTasks(branchId: chapter.branchId))
+              .singleWhere((t) => t.kind == TaskKind.illustration)
+              .input['name'],
+          '港口',
+        );
+        await tester.tap(findAction('停止编辑回复'));
         await tester.pumpAndSettle();
         expect(
-          (await repo.listTasks(branchId: chapter.branchId)).single.status,
+          (await repo.listTasks(branchId: chapter.branchId))
+              .singleWhere((t) => t.kind == TaskKind.illustration)
+              .status,
           TaskStatus.cancelled,
         );
         expect(
@@ -275,7 +336,9 @@ void main() {
       await tester.tap(find.text('带插画的小说'));
       await tester.pumpAndSettle();
       await editChapter(tester, chapter.title);
-      await tester.tap(findAction('插入图片'));
+      await tester.tap(findAction('编辑操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('插入图片'));
       await tester.pump();
       await settleImages();
       await tester.tap(find.text('港口插画'));
@@ -486,6 +549,7 @@ void main() {
       content: '摆渡人',
       data: {
         'images': [portrait.id],
+        'referencePrompt': 'short black hair',
       },
     );
     await tester.pumpWidget(
@@ -513,7 +577,7 @@ void main() {
     await tester.tap(find.byKey(Key('character-reference-${lin.id}')));
     await tester.pumpAndSettle();
     expect(find.text('参考图片 · 1/16'), findsOneWidget);
-    expect(find.text('这个人物的形象图都已添加'), findsOneWidget);
+    expect(find.text('这份资料的参考图都已添加'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

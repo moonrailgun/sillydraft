@@ -124,12 +124,21 @@ Future<_Studio> _studio(Map<String, Map<String, dynamic>> graphs) async {
   addTearDown(runner.close);
   final service = IllustrationService(repository: repo, runner: runner);
   final novel = await repo.createNovel(title: '同框');
-  Future<StoryAsset> portrait(String name) => library.importImage(
-    branchId: novel.activeBranchId,
-    name: name,
-    bytes: testPicture(),
-    purpose: AssetPurpose.reference,
-  );
+  Future<StoryAsset> portrait(String name) async {
+    final asset = await library.importImage(
+      branchId: novel.activeBranchId,
+      name: name,
+      bytes: testPicture(),
+      purpose: AssetPurpose.reference,
+    );
+    await repo.setAssetReference(
+      asset.id,
+      kind: LoreKind.character,
+      prompt: '$name, short black hair',
+    );
+    return asset;
+  }
+
   return (
     url: 'http://127.0.0.1:${server.port}',
     reads: reads,
@@ -254,7 +263,13 @@ void main() {
       final edited = await s.draw(connection, [s.first.id]);
       expect(edited.status, TaskStatus.completed, reason: edited.error);
       expect(s.reads, ['workflows/图生图.json']);
-      expect(prompts.single['6']['inputs']['text'], '两人在渡口');
+      expect(
+        prompts.single['6']['inputs']['text'],
+        allOf(
+          startsWith('两人在渡口'),
+          contains('character 林岚: 林岚, short black hair'),
+        ),
+      );
       expect(prompts.single['10']['inputs']['image'], 'ref1.png');
       expect(prompts.single['11']['inputs']['image'], 'ref1.png');
       expect(
@@ -272,19 +287,20 @@ void main() {
         '文生图.json',
       );
 
-      final over = await s.draw(connection, [
+      final duplicate = await s.draw(connection, [
         s.first.id,
         s.first.id,
         s.first.id,
       ]);
-      expect(over.status, TaskStatus.failed);
-      expect(over.error, contains('最多使用 2 张'));
-      expect(prompts, hasLength(2));
+      expect(duplicate.status, TaskStatus.completed, reason: duplicate.error);
+      expect(prompts.last['10']['inputs']['image'], 'ref2.png');
+      expect(prompts.last['11']['inputs']['image'], 'ref2.png');
+      expect(prompts, hasLength(3));
 
       final pair = await s.draw(connection, [s.first.id, s.second.id]);
       expect(pair.status, TaskStatus.completed, reason: pair.error);
-      expect(prompts.last['10']['inputs']['image'], 'ref2.png');
-      expect(prompts.last['11']['inputs']['image'], 'ref3.png');
+      expect(prompts.last['10']['inputs']['image'], 'ref3.png');
+      expect(prompts.last['11']['inputs']['image'], 'ref4.png');
     },
   );
 
@@ -420,5 +436,13 @@ void main() {
       'workflows/图生图.json',
     ]);
     expect(s.prompts, hasLength(1));
+    final textOnly = await s.draw(
+      ModelConnection.fromJson({...connection.raw, 'maxReferenceImages': 0}),
+      [s.first.id],
+    );
+    expect(textOnly.status, TaskStatus.completed, reason: textOnly.error);
+    expect(s.reads.last, 'workflows/文生图.json');
+    expect(s.prompts.last.containsKey('10'), isFalse);
+    expect(s.prompts.last['6']['inputs']['text'], contains('short black hair'));
   });
 }

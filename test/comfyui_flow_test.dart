@@ -361,7 +361,8 @@ void main() {
             body['prompt']['10']['inputs']['image'],
             'inputs/reference.png',
           );
-          expect(body['prompt']['6']['inputs']['text'], '参考港口');
+          expect(body['prompt']['6']['inputs']['text'], startsWith('参考港口'));
+          expect(body['prompt']['6']['inputs']['text'], contains('石砌码头，红色灯塔'));
           r.response.write('{"prompt_id":"gallery","node_errors":{}}');
         case '/comfy/history/gallery':
           r.response.write(
@@ -400,6 +401,11 @@ void main() {
       bytes: picture,
       purpose: AssetPurpose.reference,
     );
+    await services.repository.setAssetReference(
+      reference.id,
+      kind: LoreKind.location,
+      prompt: '石砌码头，红色灯塔',
+    );
     final task = await services.illustrations.generate(
       branchId: novel.activeBranchId,
       connection: custom,
@@ -414,7 +420,8 @@ void main() {
     );
     expect(asset.name, '港口插画');
     expect(asset.metadata['model'], 'new.safetensors');
-    expect(asset.metadata['prompt'], '参考港口');
+    expect(asset.metadata['prompt'], startsWith('参考港口'));
+    expect(asset.metadata['prompt'], contains('石砌码头，红色灯塔'));
     expect(await services.assets!.read(asset.id), isNotEmpty);
     expect(paths, [
       '/comfy/upload/image',

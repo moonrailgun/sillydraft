@@ -1,3 +1,5 @@
+import 'support/image_scene.dart';
+
 import 'dart:io';
 
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -66,6 +68,7 @@ void main() {
           providerFactory: (c) async => ScriptProvider(c, (_, _) async* {
             modelCalls++;
             yield ToolCallReady('image', 'generate_image', {
+              ...emptyImageContext,
               'prompt': 'red umbrella',
               'name': '雨伞',
             });
@@ -212,6 +215,7 @@ void main() {
         [const TextDelta('已写好插图提示词'), const GenerationFinished('stop')],
         [
           ToolCallReady('a', 'generate_image', {
+            ...emptyImageContext,
             'prompt': '雨夜渡口，撑红伞的少女',
             'name': '渡口',
           }),
@@ -337,6 +341,7 @@ void main() {
       script = [
         [
           ToolCallReady('b', 'generate_image', {
+            ...emptyImageContext,
             'prompt': '1girl, red umbrella, rain, stone bridge',
             'negative_prompt': 'lowres, blurry',
             'name': '渡口',
@@ -389,6 +394,7 @@ void main() {
           if (asked) throw StateError('No second round after close');
           asked = true;
           yield ToolCallReady('a', 'generate_image', {
+            ...emptyImageContext,
             'prompt': '雨夜',
             'name': '渡口',
           });
@@ -431,6 +437,11 @@ void main() {
         name: '林岚',
         bytes: testPicture(),
         purpose: AssetPurpose.reference,
+      );
+      await repo.setAssetReference(
+        portrait.id,
+        kind: LoreKind.character,
+        prompt: 'short black hair',
       );
       final foreign = await library.importImage(
         branchId: other.activeBranchId,
@@ -488,11 +499,12 @@ void main() {
           ),
         )).id,
       );
-      expect(properties(requests.last).containsKey('references'), isFalse);
+      expect(properties(requests.last).containsKey('references'), isTrue);
 
       script = [
         [
           ToolCallReady('a', 'generate_image', {
+            ...emptyImageContext,
             'prompt': '外人',
             'name': '外人',
             'references': [foreign.id],
@@ -501,6 +513,7 @@ void main() {
         ],
         [
           ToolCallReady('b', 'generate_image', {
+            ...emptyImageContext,
             'prompt': '短发的林岚撑着红伞',
             'name': '林岚',
             'references': [portrait.id],
@@ -523,7 +536,8 @@ void main() {
       final pending = await _awaitConfirmation(repo, task.id);
       expect(properties(requests.last)['references']['maxItems'], 16);
       final confirmation = pending.result['imageConfirmation'] as Map;
-      expect(confirmation['prompt'], '短发的林岚撑着红伞');
+      expect(confirmation['prompt'], contains('短发的林岚撑着红伞'));
+      expect(confirmation['prompt'], contains('short black hair'));
       expect(confirmation['references'], [portrait.id]);
       await runner.respondToImageConfirmation(
         task.id,

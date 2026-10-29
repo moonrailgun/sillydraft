@@ -507,6 +507,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
   late ComfyWorkflow? _workflow = widget.connection?.comfyWorkflow;
   late ComfyWorkflow? _editWorkflow = widget.connection?.comfyEditWorkflow;
   late bool _showEdit = _editWorkflow != null;
+  late int _maxReferences = widget.connection?.maxReferenceImages ?? 16;
   bool get _comfy => _protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _protocol == ModelProtocol.novelAI;
   bool get _text => !_comfy && !_novelAI && _kind != ModelKind.image;
@@ -591,6 +592,7 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
           : _kind,
       comfyWorkflow: _comfy ? _workflow : null,
       comfyEditWorkflow: _comfy && _showEdit ? _editWorkflow : null,
+      maxReferenceImages: _maxReferences,
       contextWindow: int.parse(_context.text),
       maxOutputTokens: int.parse(_output.text),
       outputTokenParameter: _tokenParameter,
@@ -1107,6 +1109,29 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                   prefix: const Icon(FLucideIcons.images),
                   child: const Text('添加图生图工作流（参考图生图）'),
                 ),
+              const SizedBox(height: 16),
+            ],
+            if (!_comfy &&
+                !_novelAI &&
+                (_kind != ModelKind.text ||
+                    _protocol == ModelProtocol.codexCli)) ...[
+              FSelect<int>(
+                key: const Key('image-reference-capacity'),
+                label: const Text('生图参考图上限'),
+                description: const Text(
+                  '按服务商支持填写；0 表示纯文生图，1 张时优先人物。此连接内的模型共用。',
+                ),
+                items: {
+                  for (var i = 0; i <= 16; i++)
+                    i == 0 ? '0 · 仅使用外观描述' : '$i 张': i,
+                },
+                control: FSelectControl<int>.lifted(
+                  value: _maxReferences,
+                  onChange: (value) {
+                    if (value != null) setState(() => _maxReferences = value);
+                  },
+                ),
+              ),
               const SizedBox(height: 16),
             ],
             if (!_comfy || _workflow?.modelInput.isNotEmpty == true) ...[

@@ -59,7 +59,7 @@ void main() {
         if (!request.messages.any((m) => m['role'] == 'tool')) {
           expect(
             request.messages.first['content'],
-            contains('本轮任务是为作者选中的正文生成插图'),
+            contains('本轮任务是根据作者的画面要求和附带正文生成插图'),
           );
           expect(jsonEncode(request.messages), isNot(contains('忽略插图请求')));
           yield ToolCallReady('write', 'propose_chapter', {

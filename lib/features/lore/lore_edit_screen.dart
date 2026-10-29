@@ -45,6 +45,16 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       _state = TextEditingController(
         text: widget.entry?.data['state'] as String?,
       );
+  late final _referencePrompt = TextEditingController(
+    text:
+        widget.entry?.data['referencePrompt'] as String? ??
+        (widget.entry?.kind == LoreKind.location
+            ? widget.entry?.content
+            : [
+                widget.entry?.data['appearance'],
+                widget.entry?.data['outfit'],
+              ].whereType<String>().join(', ')),
+  );
   late final List<String> _images = [
     ...(widget.entry?.data['images'] as List? ?? const []).cast<String>(),
   ];
@@ -68,6 +78,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       _time,
       _outfit,
       _state,
+      _referencePrompt,
     ]) {
       c.dispose();
     }
@@ -77,6 +88,12 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
   Future<void> _save({bool deleted = false}) async {
     setState(() => _busy = true);
     try {
+      if (!deleted &&
+          _images.isNotEmpty &&
+          [LoreKind.character, LoreKind.location].contains(_kind) &&
+          _referencePrompt.text.trim().isEmpty) {
+        throw const FormatException('请填写与参考图对应的固定外观描述');
+      }
       final repo = ref.read(repositoryProvider);
       // A copy: a save that fails leaves the open entry as it was.
       var provenance = {...?widget.entry?.provenance};
@@ -111,7 +128,10 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
             'goal': _goal.text,
             'outfit': _outfit.text,
             'state': _state.text,
+          },
+          if ([LoreKind.character, LoreKind.location].contains(_kind)) ...{
             'images': _images,
+            'referencePrompt': _referencePrompt.text.trim(),
           },
           if (_kind == LoreKind.event || _kind == LoreKind.foreshadow)
             'storyTime': _time.text,
@@ -172,46 +192,63 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     final services = ref.read(servicesProvider);
     final painter = await services.connectionFor('image');
     if (painter == null) throw const FormatException('请先在设置中配置插画模型');
-    final writer =
-        await services.connectionFor('analysis') ??
-        await services.connectionFor('writing');
-    if (writer == null) throw const FormatException('请先在设置中配置资料整理模型');
-    final drafted = await services.personas.imagePrompt(
-      writer,
-      Persona(
-        id: '',
-        name: _name.text,
-        appearance: _appearance.text,
-        outfit: _outfit.text,
-      ),
-      painter,
-    );
+    var drafted = _referencePrompt.text.trim();
+    if (drafted.isEmpty && _kind == LoreKind.character) {
+      final writer =
+          await services.connectionFor('analysis') ??
+          await services.connectionFor('writing');
+      if (writer == null) throw const FormatException('请填写固定外观描述，或配置资料整理模型');
+      drafted = await services.personas.imagePrompt(
+        writer,
+        Persona(
+          id: '',
+          name: _name.text,
+          appearance: _appearance.text,
+          outfit: _outfit.text,
+        ),
+        painter,
+      );
+    } else if (drafted.isEmpty) {
+      drafted = _content.text;
+    }
     if (!mounted) return const [];
     final prompt = await askText(
       context,
-      title: '形象图提示词',
+      title: '参考图外观描述',
       initial: drafted,
       label: '提示词',
       maxLines: 6,
     );
     if (prompt == null) return const [];
+    if (prompt.trim().isEmpty) throw const FormatException('请填写固定外观描述');
     final task = await services.illustrations.generate(
       branchId: widget.branchId,
       connection: painter,
-      name: '${_name.text.trim()} · 形象图',
+      name: '${_name.text.trim()} · 参考图',
       request: IllustrationService.requestFrom(
         painter,
-        prompt,
+        _kind == LoreKind.location
+            ? 'Empty location, no people. $prompt'
+            : prompt,
         await services.illustrations.savedDefaults(painter),
       ),
-      referenceAssetIds: [
-        if (_images.isNotEmpty && referenceLimit(painter) > 0) _images.first,
+      visualReferences: [
+        if (_images.isNotEmpty)
+          VisualReference(
+            kind: _kind,
+            name: _name.text.trim(),
+            prompt: prompt,
+            assetId: _images.first,
+          ),
       ],
       purpose: AssetPurpose.reference,
     );
     final done = await services.runner.wait(task.id);
-    if (done.result['assetId'] case final String id) return [id];
-    throw FormatException(done.error.isEmpty ? '形象图没有生成' : done.error);
+    if (done.result['assetId'] case final String id) {
+      _referencePrompt.text = prompt;
+      return [id];
+    }
+    throw FormatException(done.error.isEmpty ? '参考图没有生成' : done.error);
   });
 
   /// The protagonist's portraits from the persona this branch binds.
@@ -246,12 +283,12 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '形象图 · ${_images.length}/$maxCharacterImages',
+          '${_kind == LoreKind.location ? '场景参考图' : '形象图'} · ${_images.length}/$maxCharacterImages',
           style: theme.typography.body.md.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
-          '助手生成插图时会把形象图作为参考图，让人物前后一致。',
+          '参考图与外观描述共同固定人物或地点。纯文生图使用同一份描述；修改描述时请同步调整参考图。',
           style: theme.typography.body.xs.copyWith(
             color: theme.colors.mutedForeground,
           ),
@@ -292,7 +329,9 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
                             right: 4,
                             top: 4,
                             child: IconAction(
-                              tooltip: '移除形象图',
+                              tooltip: _kind == LoreKind.location
+                                  ? '移除场景参考图'
+                                  : '移除形象图',
                               icon: FLucideIcons.x,
                               variant: FButtonVariant.secondary,
                               onPress: () => setState(() => _images.remove(id)),
@@ -323,9 +362,9 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
               mainAxisSize: MainAxisSize.min,
               onPress: _busy || _full ? null : _generateImage,
               prefix: const Icon(FLucideIcons.sparkles),
-              child: const Text('生成形象图'),
+              child: Text(_kind == LoreKind.location ? '生成场景参考图' : '生成形象图'),
             ),
-            if (_user)
+            if (_user && _kind == LoreKind.character)
               FButton(
                 variant: FButtonVariant.outline,
                 mainAxisSize: MainAxisSize.min,
@@ -540,6 +579,21 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
                 hint: '伤势、情绪、处境',
               ),
               const SizedBox(height: 16),
+            ],
+            if ([LoreKind.character, LoreKind.location].contains(_kind)) ...[
+              FTextField(
+                key: const Key('lore-reference-prompt'),
+                control: FTextFieldControl.managed(
+                  controller: _referencePrompt,
+                ),
+                minLines: 2,
+                maxLines: 6,
+                label: const Text('参考图固定外观描述'),
+                hint: _kind == LoreKind.character
+                    ? '与参考图对应的外貌、服饰和辨识特征'
+                    : '建筑、空间布局、材质和固定陈设；天气与时间在具体场景中记录',
+              ),
+              const SizedBox(height: 16),
               _portraits(),
               const SizedBox(height: 16),
             ],
@@ -579,7 +633,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Text(
-                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选', 'sidecar': '旁路整理'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['chapterId'] == null ? '' : ' · 正文章节'}',
+                  '来源：${const {'manual': '手动整理', 'analysis': 'AI 建议，经作者采纳', 'card': '角色卡', 'candidate': '故事走向候选', 'sidecar': '旁路整理', 'visualReference': '已确认的视觉参考'}[widget.entry!.provenance['type']] ?? '导入资料'}${widget.entry!.provenance['chapterId'] == null ? '' : ' · 正文章节'}',
                 ),
               ),
             const SizedBox(height: 24),
