@@ -66,6 +66,8 @@ class _UsageChartState extends State<_UsageChart> {
     );
 
     return FCard(
+      builder: (_, style, child) =>
+          Padding(padding: style.padding, child: child),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
