@@ -12,6 +12,7 @@ Future<Uint8List> icon(
   ui.Image source,
   int size, {
   bool rounded = false,
+  double inset = 12,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder)..scale(size / 256);
@@ -25,7 +26,7 @@ Future<Uint8List> icon(
     source,
     ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
     rounded
-        ? const ui.Rect.fromLTWH(12, 12, 232, 232)
+        ? const ui.Rect.fromLTWH(0, 0, 256, 256).deflate(inset)
         : const ui.Rect.fromLTWH(0, 0, 256, 256),
     ui.Paint()..filterQuality = ui.FilterQuality.high,
   );
@@ -55,10 +56,21 @@ void main() {
       expect(source.width, greaterThanOrEqualTo(1024));
       expect(source.height, source.width);
 
-      // Check both platform treatments before replacing the icon files.
+      // Check the platform treatments before replacing the icon files.
       final rounded = raster.decodePng(await icon(source, 64, rounded: true))!;
       expect(rounded.getPixel(0, 0).a, 0);
       expect(rounded.getPixel(32, 6).a, 255);
+      final macos = raster.decodePng(
+        await icon(source, 256, rounded: true, inset: 25),
+      )!;
+      for (final edge in [24, 231]) {
+        expect(macos.getPixel(128, edge).a, 0);
+        expect(macos.getPixel(edge, 128).a, 0);
+      }
+      for (final edge in [25, 230]) {
+        expect(macos.getPixel(128, edge).a, 255);
+        expect(macos.getPixel(edge, 128).a, 255);
+      }
       final opaque = raster.decodePng(await icon(source, 64))!;
       expect(opaque.numChannels, 3);
       expect(opaque.getPixel(0, 0).r, 255);
@@ -83,6 +95,8 @@ void main() {
               source,
               (points * scale).round(),
               rounded: platform == 'macos',
+              // Match the 824/1024 body proportions of macOS system icons.
+              inset: platform == 'macos' ? 25 : 12,
             ),
           );
         }

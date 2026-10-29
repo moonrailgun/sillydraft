@@ -11,3 +11,5 @@ flutter test tool/generate_icons.dart
 ```
 
 脚本从 PNG 生成全部原生平台图标。Android、macOS、Windows 和 Linux 保留白色圆角底及外侧透明留白；iOS 使用不带透明通道的白底，由系统裁切圆角。
+
+macOS 使用独立的留白比例：1024 × 1024 画布中，图标主体为 824 × 824，四边各留 100 像素透明边距；16–1024 像素各档资源等比生成。这个比例对齐本机 Finder、备忘录等系统图标的实际主体边界，避免在 Dock 中显得过大。此处用于现有 PNG 资源目录，不是 Icon Composer 分层图标的制作规范；其他平台保持原有比例。
