@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import IOKit.hidsystem
 import WebKit
 import XCTest
 @testable import SillyDraft
@@ -64,5 +65,102 @@ private final class HtmlNavigationWaiter: NSObject, WKNavigationDelegate {
   init(_ loaded: XCTestExpectation) { self.loaded = loaded }
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     loaded.fulfill()
+  }
+}
+
+@MainActor
+final class CommandEventTests: XCTestCase {
+  private let leftCommand = UInt(NX_DEVICELCMDKEYMASK)
+  private let rightCommand = UInt(NX_DEVICERCMDKEYMASK)
+  private lazy var window = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 80, height: 40),
+    styleMask: .borderless, backing: .buffered, defer: false)
+
+  func testSyntheticCommandDownAndUpAreNormalizedBeforeLocalMonitors() throws {
+    XCTAssertTrue(NSApplication.shared is SillyDraftApplication)
+    for type: NSEvent.EventType in [.keyDown, .keyUp] {
+      let original = try keyEvent(type: type, flags: .command)
+      let forwarded = try dispatch(original)
+
+      XCTAssertEqual(forwarded.modifierFlags.rawValue, NSEvent.ModifierFlags.command.rawValue | leftCommand)
+      XCTAssertEqual(original.modifierFlags, .command, "The incoming event must not be mutated")
+      XCTAssertFalse(forwarded === original)
+    }
+  }
+
+  func testNormalizationPreservesKeyboardEventInformation() throws {
+    for type: NSEvent.EventType in [.keyDown, .keyUp] {
+      let cgEvent = try XCTUnwrap(keyEvent(
+        type: type, flags: [.command, .shift, .option], repeatKey: true).cgEvent)
+      cgEvent.setIntegerValueField(.eventSourceUserData, value: 123456)
+      cgEvent.setIntegerValueField(.keyboardEventKeyboardType, value: 40)
+      let original = try XCTUnwrap(NSEvent(cgEvent: cgEvent))
+      let forwarded = try dispatch(original)
+      let forwardedCGEvent = try XCTUnwrap(forwarded.cgEvent)
+
+      XCTAssertEqual(forwarded.type, original.type)
+      XCTAssertEqual(forwarded.keyCode, original.keyCode)
+      XCTAssertEqual(forwarded.characters, original.characters)
+      XCTAssertEqual(forwarded.charactersIgnoringModifiers, original.charactersIgnoringModifiers)
+      XCTAssertEqual(forwarded.timestamp, original.timestamp)
+      XCTAssertEqual(forwarded.locationInWindow, original.locationInWindow)
+      XCTAssertEqual(forwarded.windowNumber, original.windowNumber)
+      XCTAssertEqual(forwarded.isARepeat, original.isARepeat)
+      XCTAssertEqual(forwarded.modifierFlags.rawValue, original.modifierFlags.rawValue | leftCommand)
+      XCTAssertEqual(forwardedCGEvent.timestamp, cgEvent.timestamp)
+      XCTAssertEqual(forwardedCGEvent.getIntegerValueField(.eventSourceUserData), 123456)
+      XCTAssertEqual(forwardedCGEvent.getIntegerValueField(.keyboardEventKeyboardType), 40)
+      XCTAssertEqual(cgEvent.flags.rawValue, UInt64(original.modifierFlags.rawValue))
+    }
+  }
+
+  func testOrdinaryKeysAndPhysicalCommandEventsKeepTheirIdentity() throws {
+    let flags: [NSEvent.ModifierFlags] = [
+      [], [.shift, .option, .control], .init(rawValue: leftCommand | rightCommand),
+      .init(rawValue: NSEvent.ModifierFlags.command.rawValue | leftCommand),
+      .init(rawValue: NSEvent.ModifierFlags.command.rawValue | rightCommand),
+      .init(rawValue: NSEvent.ModifierFlags.command.rawValue | leftCommand | rightCommand),
+    ]
+    for type: NSEvent.EventType in [.keyDown, .keyUp] {
+      for modifiers in flags {
+        let original = try keyEvent(type: type, flags: modifiers)
+        XCTAssertTrue(try dispatch(original) === original)
+        XCTAssertEqual(original.modifierFlags, modifiers)
+      }
+    }
+  }
+
+  func testOtherEventTypesKeepTheirIdentity() throws {
+    let flagsChanged = try keyEvent(type: .flagsChanged, flags: .command)
+    let mouse = try XCTUnwrap(NSEvent.mouseEvent(
+      with: .leftMouseDown, location: NSPoint(x: 15, y: 25), modifierFlags: .command,
+      timestamp: 123, windowNumber: window.windowNumber, context: nil,
+      eventNumber: 1, clickCount: 2, pressure: 1))
+    for original in [flagsChanged, mouse] {
+      XCTAssertTrue(try dispatch(original) === original)
+    }
+  }
+
+  private func keyEvent(
+    type: NSEvent.EventType, flags: NSEvent.ModifierFlags, repeatKey: Bool = false
+  ) throws -> NSEvent {
+    try XCTUnwrap(NSEvent.keyEvent(
+      with: type, location: NSPoint(x: 15, y: 25), modifierFlags: flags,
+      timestamp: 123, windowNumber: window.windowNumber, context: nil, characters: "C",
+      charactersIgnoringModifiers: "c", isARepeat: repeatKey, keyCode: 8))
+  }
+
+  private func dispatch(_ event: NSEvent) throws -> NSEvent {
+    var forwarded: NSEvent?
+    let monitor = try XCTUnwrap(NSEvent.addLocalMonitorForEvents(
+      matching: [.keyDown, .keyUp, .flagsChanged, .leftMouseDown]
+    ) { received in
+      forwarded = received
+      // Consume the test event before any shortcut can touch the clipboard.
+      return nil
+    })
+    defer { NSEvent.removeMonitor(monitor) }
+    NSApplication.shared.sendEvent(event)
+    return try XCTUnwrap(forwarded, "The application must forward the event to local monitors")
   }
 }

@@ -27,7 +27,7 @@
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<string>$(PRODUCT_MODULE_NAME).SillyDraftApplication</string>
 	<!-- shortcut: Skia avoids macOS Impeller glyph corruption; retry Impeller after an engine upgrade. -->
 	<key>FLTEnableImpeller</key>
 	<false/>

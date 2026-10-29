@@ -85,16 +85,24 @@ flutter drive --driver=test_driver/native_verification.dart \
 
 测试只访问本地模拟模型，不需要真实 API key。测试真实服务时，由使用者明确设置连接，并承担对应服务费用。
 
-macOS 文件保存还有独立原生检查：
+macOS 键盘事件、网页背景和文件保存还有独立原生检查（在仓库根目录运行）：
 
 ```sh
-xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' -derivedDataPath build/macos test
+xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug \
+  -destination 'platform=macOS' -derivedDataPath build/macos-command-tests \
+  -parallel-testing-enabled NO \
+  'PRODUCT_BUNDLE_IDENTIFIER=com.moonrailgun.sillydraft.command-tests.$(PRODUCT_NAME:rfc1034identifier)' \
+  FLUTTER_TARGET="$PWD/macos/RunnerTests/main.dart" test
 python3 tool/verify_macos_atomic_export.py
 ```
 
-后者在临时目录中验证仅授予单个文件写权限时的创建和替换，不读取或改动现有作品。
+XCTest 使用空 Dart 入口，不打开作品库；独立应用标识和构建目录避免替换或退出正在运行的 SillyDraft。键盘测试直接向测试实例分发构造事件，并在本地监听器截住，不向系统发送快捷键，也不执行复制。后者在临时目录中验证仅授予单个文件写权限时的创建和替换，不读取或改动现有作品。
 
-原生测试与 Flutter 共用 `build/macos` 构建目录，避免切换构建方式时，生成的 `macos/Flutter/ephemeral/FlutterOutputs.xcfilelist` 在默认 `DerivedData` 和项目目录之间切换，引发 `Stale file ... outside of the allowed root paths` 警告。已有旧路径时，下一次 Flutter 构建可能仍提示一次；构建更新输出清单后再检查，无需为此修改应用权限。
+独立原生测试与常规 Flutter 构建切换时，生成的 `macos/Flutter/ephemeral/FlutterOutputs.xcfilelist` 可能暂时包含另一个构建目录，引发 `Stale file ... outside of the allowed root paths` 警告。下一次构建会更新输出清单，无需为此修改应用权限。正式应用仍用默认入口重新执行 `flutter build macos --release`。
+
+Flutter 3.47.7（engine `deb287481e`）的 [Command 映射](https://github.com/flutter/flutter/blob/deb287481e/engine/src/flutter/shell/platform/darwin/macos/framework/Source/KeyCodeMap.g.mm) 依赖左右设备标记，只有通用 Command 标记的模拟事件可能导致快捷键未处理并响铃，参见 [Flutter #178609](https://github.com/flutter/flutter/issues/178609)。`SillyDraftApplication.sendEvent` 仅为这类 `keyDown` / `keyUp` 补齐左 Command 标记，复制原 CGEvent 保留其余信息，转换失败则转发原事件；入口早于 AppKit 快捷键分发和 Flutter 的本地 keyUp 监听。升级引擎后需重新核对该兼容处理是否仍必要。
+
+这是原生修复，Dart 热重载或热重启无效：先保存草稿并正常退出旧实例，再打开重新构建的 `build/macos/Build/Products/Release/SillyDraft.app`。自动化测试通过只证明事件处理符合预期；实际双击是否不再响、外部事件是否来自 Lark 及其具体功能，仍需现场确认。已有外部 ⌘C 在修复后可能正常复制并更新剪贴板，应用本身不添加自动复制行为。
 
 ## 发布
 
