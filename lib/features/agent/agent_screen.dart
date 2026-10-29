@@ -2057,14 +2057,6 @@ class _AgentState extends ConsumerState<AgentPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            mine ? '你' : '编辑助手',
-            style: theme.typography.body.xs.copyWith(
-              color: theme.colors.mutedForeground,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
           // On a phone a long press brings up the actions, not a selection.
           if (mine)
             (touchPlatform ? Text.new : SelectableText.new)(
