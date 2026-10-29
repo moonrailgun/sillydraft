@@ -22,6 +22,21 @@ class _Images implements ImageProvider {
   void close() {}
 }
 
+Future<String> _confirmation(
+  StoryRepository repo,
+  String taskId, {
+  String? previous,
+}) async {
+  for (var i = 0; i < 200; i++) {
+    final task = await repo.getTask(taskId);
+    final id = task.result['imageConfirmation']?['id'] as String?;
+    if (id != null && id != previous) return id;
+    if (!task.isActive) break;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  throw StateError('No new image confirmation');
+}
+
 void main() {
   late StoryRepository repo;
   late Chapter chapter;
@@ -152,7 +167,7 @@ void main() {
 
   for (final batch in [false, true]) {
     test(
-      'ordinary chat composes generate_${batch ? 'images' : 'image'} then insert_images',
+      'ordinary chat continues generating after inserting ${batch ? 'multiple images' : 'an image'}',
       () async {
         final dir = Directory.systemTemp.createTempSync('insert-tool-');
         addTearDown(() => dir.deleteSync(recursive: true));
@@ -216,11 +231,19 @@ void main() {
                 ],
               });
               yield const GenerationFinished('tool_calls');
-            } else {
+            } else if (calls == 3) {
               expect(
                 request.messages.last['content'],
                 contains('"insertedCount":${batch ? 2 : 1}'),
               );
+              yield ToolCallReady('generate-next', 'generate_image', {
+                ...emptyImageContext,
+                'name': '新插图',
+                'prompt': 'white boat',
+              });
+              yield const GenerationFinished('tool_calls');
+            } else {
+              expect(request.messages.last['content'], contains('"assetId":'));
               yield const TextDelta('两张插图已插入正文');
               yield const GenerationFinished('stop');
             }
@@ -234,26 +257,112 @@ void main() {
           attachChapterId: chapter.id,
           message: '生成两张图并插入正文',
         );
-        GenerationTask pending = task;
-        for (var i = 0; i < 200; i++) {
-          pending = await repo.getTask(task.id);
-          if (!pending.isActive ||
-              pending.result['imageConfirmation'] != null) {
-            break;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 5));
+        String? previousConfirmation;
+        for (var generation = 0; generation < 2; generation++) {
+          final id = await _confirmation(
+            repo,
+            task.id,
+            previous: previousConfirmation,
+          );
+          await runner.respondToImageConfirmation(task.id, id, approved: true);
+          previousConfirmation = id;
         }
-        expect(pending.result['imageConfirmation'], isNotNull);
-        await runner.respondToImageConfirmation(
-          task.id,
-          pending.result['imageConfirmation']['id'] as String,
-          approved: true,
+        final done = await runner.wait(task.id);
+        expect(done.status, TaskStatus.completed, reason: done.error);
+        expect(calls, 4);
+        expect(
+          await repo.listAssets(
+            (await repo.getBranch(chapter.branchId)).novelId,
+          ),
+          hasLength(batch ? 3 : 2),
         );
-        expect((await runner.wait(task.id)).status, TaskStatus.completed);
-        expect(calls, 3);
+        expect(
+          (done.input['chapterSnapshot'] as List).single['revisionId'],
+          chapter.revisionId,
+        );
         expect(
           (await current()).content.text,
           batch ? '红伞过桥。\n\uFFFC\n白船靠岸。\n\uFFFC\n\n' : '红伞过桥。\n\uFFFC\n白船靠岸。\n',
+        );
+      },
+    );
+  }
+
+  for (final repeatInsertion in [false, true]) {
+    test(
+      'manual edit after insertion still blocks generation (repeat insertion: $repeatInsertion)',
+      () async {
+        final dir = Directory.systemTemp.createTempSync('insert-edit-');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final assetId = await image(chapter.branchId);
+        final args = {
+          'chapterId': chapter.id,
+          'images': [
+            {'assetId': assetId, 'quote': '红伞过桥。'},
+          ],
+        };
+        var calls = 0, imageCalls = 0;
+        late Chapter edited;
+        final runner = TaskRunner(
+          repository: repo,
+          assetLibrary: AssetLibrary(repository: repo, directory: dir),
+          imageProviderFactory: (c) async {
+            imageCalls++;
+            return _Images(c);
+          },
+          providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+            if (calls++ == 0) {
+              yield ToolCallReady('insert', 'insert_images', args);
+            } else {
+              expect(calls, 2);
+              expect(
+                request.messages.last['content'],
+                contains('"insertedCount":1'),
+              );
+              final inserted = await current();
+              edited = await repo.saveChapter(
+                branchId: chapter.branchId,
+                chapterId: chapter.id,
+                expectedRevisionId: inserted.revisionId,
+                content: ManuscriptContent.fromDelta([
+                  ...inserted.content.delta,
+                  {'insert': '作者补写。\n'},
+                ]),
+              );
+              if (repeatInsertion) {
+                yield ToolCallReady('repeat', 'insert_images', args);
+              }
+              yield ToolCallReady('generate', 'generate_image', {
+                ...emptyImageContext,
+                'name': '新插图',
+                'prompt': 'white boat',
+              });
+            }
+            yield const GenerationFinished('tool_calls');
+          }),
+        );
+        addTearDown(runner.close);
+        final task = await EditorAgent(repository: repo, runner: runner).send(
+          conversationId: conversation,
+          connection: connection,
+          imageConnection: connection,
+          attachChapterId: chapter.id,
+          message: '插入已有图片，再生成一张图',
+        );
+        await runner.respondToImageConfirmation(
+          task.id,
+          await _confirmation(repo, task.id),
+          approved: true,
+        );
+        final done = await runner.wait(task.id);
+        expect(done.status, TaskStatus.failed);
+        expect(done.error, contains('正文已变化'));
+        expect(imageCalls, 0);
+        expect((await current()).revisionId, edited.revisionId);
+        expect((await current()).content.text, contains('作者补写。'));
+        expect(
+          (await current()).content.delta.where((op) => op['insert'] is Map),
+          hasLength(1),
         );
       },
     );

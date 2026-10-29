@@ -60,13 +60,16 @@ void main() {
         source: source,
       );
       final ids = [umbrella, bridge, boat];
-      Future<int> insert() => repo.insertAgentIllustrations(
+      Future<List<Chapter>> insert() => repo.insertAgentIllustrations(
         branchId: chapter.branchId,
         assetIds: ids,
         source: source,
       );
-      expect(await insert(), 2);
+      final saved = await insert();
+      expect(saved, hasLength(2));
       final inserted = await current();
+      expect(saved.last.revisionId, inserted.revisionId);
+      expect(saved.last.content.text, inserted.content.text);
       expect(
         inserted.content.delta
             .where((op) => op['insert'] is Map)
@@ -74,7 +77,7 @@ void main() {
         ids.map((id) => 'asset:$id'),
       );
       expect(inserted.content.text, '红伞过桥。\n\uFFFC\n\uFFFC\n白船靠岸。\n\uFFFC\n\n');
-      expect(await insert(), 0);
+      expect(await insert(), isEmpty);
       expect((await current()).revisionId, inserted.revisionId);
     },
   );

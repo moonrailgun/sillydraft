@@ -1029,8 +1029,16 @@ extension _AgentExecution on TaskRunner {
           source: source,
           anchors: anchors,
         );
+        if (inserted.isNotEmpty) {
+          final updated = inserted.last;
+          // Only adopt our inserted revision, never a later concurrent edit.
+          chapter.addAll({
+            'revisionId': updated.revisionId,
+            'text': updated.content.text,
+          });
+        }
         return {
-          'insertedCount': inserted,
+          'insertedCount': inserted.length,
           'chapterId': chapter['id'],
           'assetIds': anchors.keys.toList(),
         };

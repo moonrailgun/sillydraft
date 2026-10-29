@@ -169,13 +169,14 @@ extension AssetOperations on StoryRepository {
     }
   }
 
-  Future<int> insertAgentIllustrations({
+  /// Returns the saved chapter version for each insertion, in execution order.
+  Future<List<Chapter>> insertAgentIllustrations({
     required String branchId,
     required List<String> assetIds,
     required AgentMessage source,
     Map<String, Map<String, dynamic>> anchors = const {},
   }) => _write(() async {
-    var inserted = 0;
+    final inserted = <Chapter>[];
     // Insertion prepends to a paragraph's images; reverse to keep result order.
     for (final assetId in assetIds.reversed) {
       final asset = await getAsset(assetId);
@@ -194,13 +195,14 @@ extension AssetOperations on StoryRepository {
       )) {
         continue;
       }
-      await insertAgentIllustration(
-        branchId: branchId,
-        assetId: assetId,
-        source: source,
-        illustrationAnchor: anchor.cast<String, dynamic>(),
+      inserted.add(
+        await insertAgentIllustration(
+          branchId: branchId,
+          assetId: assetId,
+          source: source,
+          illustrationAnchor: anchor.cast<String, dynamic>(),
+        ),
       );
-      inserted++;
     }
     return inserted;
   });

@@ -341,7 +341,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
           source: source,
         );
         if (mounted) {
-          toast(context, inserted == 0 ? '这些图片已在正文中' : '已插入 $inserted 张插图');
+          toast(
+            context,
+            inserted.isEmpty ? '这些图片已在正文中' : '已插入 ${inserted.length} 张插图',
+          );
         }
         return;
       }
