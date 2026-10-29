@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft/features/settings/usage_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -12,6 +15,76 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'support/host.dart';
 
 void main() {
+  testWidgets('usage scrolls from desktop gutters and keeps content centered', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final models = List.generate(
+      30,
+      (i) => UsageTotal(
+        label: 'model $i',
+        requests: 1,
+        inputTokens: 10,
+        outputTokens: 5,
+        cost: 0,
+        unpriced: 1,
+        estimated: false,
+        costEstimated: false,
+      ),
+    );
+    for (final (windowWidth, paneWidth) in [
+      (1440.0, 1440.0),
+      (1440.0, 600.0),
+      (390.0, 390.0),
+    ]) {
+      tester.view.physicalSize = Size(windowWidth, 800);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            usageProvider.overrideWith(
+              (_) async => (
+                months: [models.first],
+                models: models,
+                days: <UsageTotal>[],
+              ),
+            ),
+          ],
+          child: testHost(
+            Align(
+              child: SizedBox(width: paneWidth, child: const UsageScreen()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final list = find.byType(ListView);
+      final viewport = tester.getRect(list);
+      expect(viewport.left, (windowWidth - paneWidth) / 2);
+      expect(viewport.right, (windowWidth + paneWidth) / 2);
+      final chart = tester.getRect(
+        find
+            .ancestor(of: find.text('近 30 天'), matching: find.byType(FCard))
+            .first,
+      );
+      expect(chart.center.dx, windowWidth / 2);
+      expect(chart.width, paneWidth > 800 ? 752 : paneWidth - 48);
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(of: list, matching: find.byType(Scrollable)).first,
+      );
+      final before = scroll.position.pixels;
+      tester.binding.handlePointerEvent(
+        PointerScrollEvent(
+          position: Offset(viewport.right - 12, viewport.center.dy),
+          scrollDelta: const Offset(0, 200),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(scroll.position.pixels, greaterThan(before));
+      await tester.pumpWidget(const SizedBox());
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   test('requests through the app providers are recorded', () async {
     // Real loopback traffic; the test binding's own HttpClient answers 400.
     final previous = HttpOverrides.current;

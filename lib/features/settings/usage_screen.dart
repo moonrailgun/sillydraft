@@ -69,33 +69,30 @@ class UsageScreen extends ConsumerWidget {
     );
     return PageScaffold(
       title: '用量与成本',
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: AsyncView(
-            value: ref.watch(usageProvider),
-            builder: (usage) => ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                if (usage.months.isEmpty)
-                  const Text('还没有模型请求。每次请求结束后会记在这里。')
-                else ...[
-                  _UsageChart(days: usage.days),
-                  const SizedBox(height: 24),
-                  group('按月', usage.months),
-                  const SizedBox(height: 24),
-                  group('按连接与模型', usage.models),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  '金额为美元。上游返回了成本就用上游的；没有时，OpenRouter、ElectronHub、Chutes 按 SillyTavern 的做法用模型列表单价乘 token 数；其余请求只记 token，算作“无价格”，不计入金额。上游没返回 token 数，或请求中途失败、取消时，token 按字数估算，标为“≈”。',
-                  style: theme.typography.body.sm.copyWith(
-                    color: theme.colors.mutedForeground,
-                  ),
-                ),
+      body: ContentLayout(
+        maxWidth: 800,
+        builder: (_, inset) => AsyncView(
+          value: ref.watch(usageProvider),
+          builder: (usage) => ListView(
+            padding: inset + const EdgeInsets.all(24),
+            children: [
+              if (usage.months.isEmpty)
+                const Text('还没有模型请求。每次请求结束后会记在这里。')
+              else ...[
+                _UsageChart(days: usage.days),
+                const SizedBox(height: 24),
+                group('按月', usage.months),
+                const SizedBox(height: 24),
+                group('按连接与模型', usage.models),
               ],
-            ),
+              const SizedBox(height: 16),
+              Text(
+                '金额为美元。上游返回了成本就用上游的；没有时，OpenRouter、ElectronHub、Chutes 按 SillyTavern 的做法用模型列表单价乘 token 数；其余请求只记 token，算作“无价格”，不计入金额。上游没返回 token 数，或请求中途失败、取消时，token 按字数估算，标为“≈”。',
+                style: theme.typography.body.sm.copyWith(
+                  color: theme.colors.mutedForeground,
+                ),
+              ),
+            ],
           ),
         ),
       ),
