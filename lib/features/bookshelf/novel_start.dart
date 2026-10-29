@@ -393,98 +393,95 @@ class _NovelImportState extends ConsumerState<NovelImportScreen> {
       ),
       details: Text('${count(c)} 字'),
     );
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              '${chapters.length} 章 · ${book.characters} 字',
-              key: const Key('import-summary'),
-              style: theme.typography.body.xl2.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.foreground,
+    return ContentLayout(
+      maxWidth: 720,
+      builder: (_, inset) => ListView(
+        padding: inset + const EdgeInsets.all(24),
+        children: [
+          Text(
+            '${chapters.length} 章 · ${book.characters} 字',
+            key: const Key('import-summary'),
+            style: theme.typography.body.xl2.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colors.foreground,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '来自 ${widget.filename}。导入后正文属于新作品，原文件不会改动；之后可以从最后一章接着写，也可以让助手续写。',
+            style: theme.typography.body.sm.copyWith(
+              color: colors.mutedForeground,
+            ),
+          ),
+          for (final warning in book.warnings)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: FAlert(
+                icon: const Icon(FLucideIcons.triangleAlert),
+                title: Text(warning),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '来自 ${widget.filename}。导入后正文属于新作品，原文件不会改动；之后可以从最后一章接着写，也可以让助手续写。',
-              style: theme.typography.body.sm.copyWith(
-                color: colors.mutedForeground,
-              ),
+          const SizedBox(height: 24),
+          FTextField(
+            key: const Key('import-title'),
+            control: FTextFieldControl.managed(controller: _title),
+            label: const Text('作品名称'),
+          ),
+          const SizedBox(height: 16),
+          FTextField(
+            control: FTextFieldControl.managed(controller: _synopsis),
+            minLines: 2,
+            maxLines: 5,
+            label: const Text('故事简介'),
+          ),
+          const SizedBox(height: 16),
+          FSelect<String>(
+            label: const Text('叙事视角'),
+            items: {
+              for (final v in ['第三人称', '第一人称', '多视角']) v: v,
+            },
+            control: FSelectControl.lifted(
+              value: _pov,
+              onChange: (v) => setState(() => _pov = v ?? _pov),
             ),
-            for (final warning in book.warnings)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: FAlert(
-                  icon: const Icon(FLucideIcons.triangleAlert),
-                  title: Text(warning),
-                ),
-              ),
-            const SizedBox(height: 24),
-            FTextField(
-              key: const Key('import-title'),
-              control: FTextFieldControl.managed(controller: _title),
-              label: const Text('作品名称'),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '识别到的章节',
+            style: theme.typography.body.md.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colors.foreground,
             ),
-            const SizedBox(height: 16),
-            FTextField(
-              control: FTextFieldControl.managed(controller: _synopsis),
-              minLines: 2,
-              maxLines: 5,
-              label: const Text('故事简介'),
-            ),
-            const SizedBox(height: 16),
-            FSelect<String>(
-              label: const Text('叙事视角'),
-              items: {
-                for (final v in ['第三人称', '第一人称', '多视角']) v: v,
-              },
-              control: FSelectControl.lifted(
-                value: _pov,
-                onChange: (v) => setState(() => _pov = v ?? _pov),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '识别到的章节',
-              style: theme.typography.body.md.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.foreground,
-              ),
-            ),
-            const SizedBox(height: 8),
-            FCard(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Column(
-                  children: [
-                    for (final c in head) chapter(c),
-                    if (tail.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '…… 中间还有 ${chapters.length - head.length - tail.length} 章',
-                          style: small,
-                        ),
+          ),
+          const SizedBox(height: 8),
+          FCard(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                children: [
+                  for (final c in head) chapter(c),
+                  if (tail.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        '…… 中间还有 ${chapters.length - head.length - tail.length} 章',
+                        style: small,
                       ),
-                      for (final c in tail) chapter(c),
-                    ],
+                    ),
+                    for (final c in tail) chapter(c),
                   ],
-                ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            FButton(
-              key: const Key('import-create'),
-              onPress: _busy ? null : _create,
-              prefix: const Icon(FLucideIcons.bookOpen),
-              child: Text(_busy ? '正在导入…' : '导入并开始续写'),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 24),
+          FButton(
+            key: const Key('import-create'),
+            onPress: _busy ? null : _create,
+            prefix: const Icon(FLucideIcons.bookOpen),
+            child: Text(_busy ? '正在导入…' : '导入并开始续写'),
+          ),
+        ],
       ),
     );
   }

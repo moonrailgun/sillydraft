@@ -68,80 +68,79 @@ class _SearchState extends ConsumerState<GlobalSearchScreen> {
   @override
   Widget build(BuildContext context) => PageScaffold(
     title: '搜索作品与正文',
-    body: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: FTextField(
-                key: const Key('global-search-field'),
-                autofocus: true,
-                label: const Text('搜索所有作品的当前分支'),
-                description: const Text('包含已归档作品；最多显示 200 条结果。'),
-                prefixBuilder: (context, style, variants) =>
-                    FTextField.prefixIconBuilder(
-                      context,
-                      style,
-                      variants,
-                      const Icon(FLucideIcons.search),
-                    ),
-                control: FTextFieldControl.managed(
-                  onChange: (value) {
-                    if (value.text != _query) {
-                      setState(() => _query = value.text);
-                    }
-                  },
-                ),
+    body: ContentLayout(
+      maxWidth: 900,
+      builder: (_, inset) => Column(
+        children: [
+          Padding(
+            padding: inset + const EdgeInsets.all(20),
+            child: FTextField(
+              key: const Key('global-search-field'),
+              autofocus: true,
+              label: const Text('搜索所有作品的当前分支'),
+              description: const Text('包含已归档作品；最多显示 200 条结果。'),
+              prefixBuilder: (context, style, variants) =>
+                  FTextField.prefixIconBuilder(
+                    context,
+                    style,
+                    variants,
+                    const Icon(FLucideIcons.search),
+                  ),
+              control: FTextFieldControl.managed(
+                onChange: (value) {
+                  if (value.text != _query) {
+                    setState(() => _query = value.text);
+                  }
+                },
               ),
             ),
-            Expanded(
-              child: AsyncView(
-                value: ref.watch(_searchProvider(_query)),
-                builder: (matches) => matches.isEmpty
-                    ? Center(
-                        child: Text(
-                          _query.trim().isEmpty ? '输入书名、章节名或正文内容' : '没有找到相关内容',
-                          style: context.theme.typography.body.sm.copyWith(
-                            color: context.theme.colors.mutedForeground,
-                          ),
+          ),
+          Expanded(
+            child: AsyncView(
+              value: ref.watch(_searchProvider(_query)),
+              builder: (matches) => matches.isEmpty
+                  ? Center(
+                      child: Text(
+                        _query.trim().isEmpty ? '输入书名、章节名或正文内容' : '没有找到相关内容',
+                        style: context.theme.typography.body.sm.copyWith(
+                          color: context.theme.colors.mutedForeground,
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: matches.length,
-                        itemBuilder: (context, index) {
-                          final match = matches[index];
-                          return FItem(
-                            prefix: Icon(
-                              match.chapter == null
-                                  ? FLucideIcons.book
-                                  : FLucideIcons.fileText,
-                            ),
-                            title: Text(
-                              '${match.novel.title}${match.chapter == null ? '' : ' · ${match.chapter!.title}'}${match.novel.archived ? '（已归档）' : ''}',
-                            ),
-                            subtitle: Text(
-                              '${match.branch == null ? '' : '${match.branch}\n'}${match.excerpt}',
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onPress: () => Navigator.push(
-                              context,
-                              MaterialPageRoute<void>(
-                                builder: (_) => match.chapter == null
-                                    ? NovelWorkspace(novelId: match.novel.id)
-                                    : EditorScreen(chapter: match.chapter!),
-                              ),
-                            ),
-                          );
-                        },
                       ),
-              ),
+                    )
+                  : ListView.builder(
+                      padding:
+                          inset + const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: matches.length,
+                      itemBuilder: (context, index) {
+                        final match = matches[index];
+                        return FItem(
+                          prefix: Icon(
+                            match.chapter == null
+                                ? FLucideIcons.book
+                                : FLucideIcons.fileText,
+                          ),
+                          title: Text(
+                            '${match.novel.title}${match.chapter == null ? '' : ' · ${match.chapter!.title}'}${match.novel.archived ? '（已归档）' : ''}',
+                          ),
+                          subtitle: Text(
+                            '${match.branch == null ? '' : '${match.branch}\n'}${match.excerpt}',
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onPress: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => match.chapter == null
+                                  ? NovelWorkspace(novelId: match.novel.id)
+                                  : EditorScreen(chapter: match.chapter!),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );

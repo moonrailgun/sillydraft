@@ -71,22 +71,19 @@ class _BranchState extends ConsumerState<BranchScreen> {
         child: const Text('新建分支'),
       ),
     ],
-    body: Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: AsyncView(
-          value: ref.watch(novelProvider(widget.novelId)),
-          builder: (novel) => AsyncView(
-            value: ref.watch(branchesProvider(novel.id)),
-            builder: (branches) => _page(novel, branches),
-          ),
+    body: ContentLayout(
+      maxWidth: 720,
+      builder: (_, inset) => AsyncView(
+        value: ref.watch(novelProvider(widget.novelId)),
+        builder: (novel) => AsyncView(
+          value: ref.watch(branchesProvider(novel.id)),
+          builder: (branches) => _page(novel, branches, inset),
         ),
       ),
     ),
   );
 
-  Widget _page(Novel novel, List<StoryBranch> branches) {
+  Widget _page(Novel novel, List<StoryBranch> branches, EdgeInsets inset) {
     final byId = {for (final b in branches) b.id: b};
     final children = <String?, List<StoryBranch>>{};
     for (final b in branches) {
@@ -129,7 +126,7 @@ class _BranchState extends ConsumerState<BranchScreen> {
 
     final focus = byId[_selected] ?? byId[novel.activeBranchId];
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: inset + const EdgeInsets.all(20),
       children: [
         Text(
           '每条分支保留各自的正文、人物资料和故事变量。点一条分支，可以切换过去或与当前比较。',
