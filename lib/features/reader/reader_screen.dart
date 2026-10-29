@@ -1278,157 +1278,150 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                       if (_selected.isEmpty) _menu.remove();
                     },
                     contextMenuBuilder: (_, region) => _selectionMenu(region),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: 704 + _style.margin * 2,
-                        ),
-                        child: SingleChildScrollView(
-                          key: _viewportKey,
-                          controller: _scroll,
-                          padding: EdgeInsets.fromLTRB(
-                            _style.margin,
-                            24 + _barOverlap.top,
-                            _style.margin,
-                            48 + _barOverlap.bottom,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                _chapterTitle(chapter),
-                                style: TextStyle(
-                                  fontSize: _style.fontSize + 6,
-                                  fontWeight: FontWeight.w600,
-                                  color: foreground,
-                                  fontFamily: _style.font.family,
-                                  fontFamilyFallback: _style.font.fallback,
+                    child: ContentLayout(
+                      maxWidth: 704 + _style.margin * 2,
+                      builder: (_, inset) => SingleChildScrollView(
+                        key: _viewportKey,
+                        controller: _scroll,
+                        padding:
+                            inset +
+                            EdgeInsets.fromLTRB(
+                              _style.margin,
+                              24 + _barOverlap.top,
+                              _style.margin,
+                              48 + _barOverlap.bottom,
+                            ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              _chapterTitle(chapter),
+                              style: TextStyle(
+                                fontSize: _style.fontSize + 6,
+                                fontWeight: FontWeight.w600,
+                                color: foreground,
+                                fontFamily: _style.font.family,
+                                fontFamilyFallback: _style.font.fallback,
+                              ),
+                            ),
+                            SizedBox(height: _style.fontSize * 1.5),
+                            if (!replacing && (hasText || draft == null))
+                              CustomPaint(
+                                painter: _LineSelectionPainter(
+                                  () => _paragraph,
+                                  _pageTheme.selection,
+                                ),
+                                child: Text.rich(
+                                  _document!.span,
+                                  key: _textKey,
+                                  textAlign: _style.justify
+                                      ? TextAlign.justify
+                                      : TextAlign.start,
+                                  style: _style.body(foreground),
+                                  // Painted line by line underneath instead.
+                                  selectionColor: const Color(0x00000000),
                                 ),
                               ),
-                              SizedBox(height: _style.fontSize * 1.5),
-                              if (!replacing && (hasText || draft == null))
-                                CustomPaint(
-                                  painter: _LineSelectionPainter(
-                                    () => _paragraph,
-                                    _pageTheme.selection,
-                                  ),
-                                  child: Text.rich(
-                                    _document!.span,
-                                    key: _textKey,
-                                    textAlign: _style.justify
-                                        ? TextAlign.justify
-                                        : TextAlign.start,
-                                    style: _style.body(foreground),
-                                    // Painted line by line underneath instead.
-                                    selectionColor: const Color(0x00000000),
-                                  ),
-                                ),
-                              if (draft != null)
-                                ChapterDraft(
-                                  key: ValueKey('draft:${draft.id}'),
-                                  task: draft,
-                                  prose: (text, {caret = false}) =>
-                                      _prose(text, foreground, caret: caret),
-                                  controls: _noTap,
-                                )
-                              else if (hasText)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 20),
-                                  child: Center(
-                                    child: _noTap(
-                                      Wrap(
-                                        alignment: WrapAlignment.center,
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          FButton(
-                                            key: const Key(
-                                              'chapter-regenerate',
-                                            ),
-                                            variant: FButtonVariant.outline,
-                                            size: FButtonSizeVariant.sm,
-                                            mainAxisSize: MainAxisSize.min,
-                                            onPress: canWrite
-                                                ? () => _generateChapter(
-                                                    chapter,
-                                                    brief:
-                                                        '重新写当前章节《${chapter.title}》的完整正文。',
-                                                    rewrite: true,
-                                                  )
-                                                : null,
-                                            prefix: const Icon(
-                                              FLucideIcons.refreshCw,
-                                            ),
-                                            child: const Text('重新生成'),
-                                          ),
-                                          FButton(
-                                            key: const Key('chapter-continue'),
-                                            variant: FButtonVariant.outline,
-                                            size: FButtonSizeVariant.sm,
-                                            mainAxisSize: MainAxisSize.min,
-                                            onPress: canWrite
-                                                ? () => _generateChapter(
-                                                    chapter,
-                                                    brief:
-                                                        '接着当前章节的正文末尾继续写，依据已有情节自然推进，'
-                                                        '保持人物动机与叙事视角一致。只输出要追加的正文，'
-                                                        '不要重复或改写已有内容，不要另起一章，不输出标题或说明。',
-                                                  )
-                                                : null,
-                                            prefix: const Icon(
-                                              FLucideIcons.penLine,
-                                            ),
-                                            child: const Text('继续续写'),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(height: 36),
-                              if (!writing)
-                                Text(
-                                  last ? '— 当前正文结束 —' : '— 本章完 —',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: faint, fontSize: 13),
-                                ),
-                              const SizedBox(height: 16),
-                              if (!last)
-                                Center(
+                            if (draft != null)
+                              ChapterDraft(
+                                key: ValueKey('draft:${draft.id}'),
+                                task: draft,
+                                prose: (text, {caret = false}) =>
+                                    _prose(text, foreground, caret: caret),
+                                controls: _noTap,
+                              )
+                            else if (hasText)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 20),
+                                child: Center(
                                   child: _noTap(
-                                    FButton(
-                                      key: const Key('reader-next-chapter'),
-                                      variant: FButtonVariant.secondary,
-                                      mainAxisSize: MainAxisSize.min,
-                                      onPress: () => _go(_index + 1),
-                                      prefix: const Icon(
-                                        FLucideIcons.arrowDown,
-                                      ),
-                                      child: Flexible(
-                                        child: Text(
-                                          '下一章：${_chapterTitle(story.chapters[_index + 1])}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                    Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        FButton(
+                                          key: const Key('chapter-regenerate'),
+                                          variant: FButtonVariant.outline,
+                                          size: FButtonSizeVariant.sm,
+                                          mainAxisSize: MainAxisSize.min,
+                                          onPress: canWrite
+                                              ? () => _generateChapter(
+                                                  chapter,
+                                                  brief:
+                                                      '重新写当前章节《${chapter.title}》的完整正文。',
+                                                  rewrite: true,
+                                                )
+                                              : null,
+                                          prefix: const Icon(
+                                            FLucideIcons.refreshCw,
+                                          ),
+                                          child: const Text('重新生成'),
                                         ),
+                                        FButton(
+                                          key: const Key('chapter-continue'),
+                                          variant: FButtonVariant.outline,
+                                          size: FButtonSizeVariant.sm,
+                                          mainAxisSize: MainAxisSize.min,
+                                          onPress: canWrite
+                                              ? () => _generateChapter(
+                                                  chapter,
+                                                  brief:
+                                                      '接着当前章节的正文末尾继续写，依据已有情节自然推进，'
+                                                      '保持人物动机与叙事视角一致。只输出要追加的正文，'
+                                                      '不要重复或改写已有内容，不要另起一章，不输出标题或说明。',
+                                                )
+                                              : null,
+                                          prefix: const Icon(
+                                            FLucideIcons.penLine,
+                                          ),
+                                          child: const Text('继续续写'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 36),
+                            if (!writing)
+                              Text(
+                                last ? '— 当前正文结束 —' : '— 本章完 —',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: faint, fontSize: 13),
+                              ),
+                            const SizedBox(height: 16),
+                            if (!last)
+                              Center(
+                                child: _noTap(
+                                  FButton(
+                                    key: const Key('reader-next-chapter'),
+                                    variant: FButtonVariant.secondary,
+                                    mainAxisSize: MainAxisSize.min,
+                                    onPress: () => _go(_index + 1),
+                                    prefix: const Icon(FLucideIcons.arrowDown),
+                                    child: Flexible(
+                                      child: Text(
+                                        '下一章：${_chapterTitle(story.chapters[_index + 1])}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ),
-                                )
-                              else if (!writing) ...[
-                                const SizedBox(height: 16),
-                                _noTap(
-                                  StoryDirections(
-                                    story: story,
-                                    onOpenChapter: _openChapter,
-                                    // Not before the author's own setting
-                                    // is known.
-                                    auto: _styleLoaded && _style.autoDirections,
-                                  ),
                                 ),
-                              ],
+                              )
+                            else if (!writing) ...[
+                              const SizedBox(height: 16),
+                              _noTap(
+                                StoryDirections(
+                                  story: story,
+                                  onOpenChapter: _openChapter,
+                                  // Not before the author's own setting
+                                  // is known.
+                                  auto: _styleLoaded && _style.autoDirections,
+                                ),
+                              ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
                     ),

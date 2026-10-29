@@ -507,22 +507,20 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ),
           ),
         Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 840),
-              child: QuillEditor.basic(
-                key: const Key('manuscript-editor'),
-                controller: _controller,
-                focusNode: _focus,
-                scrollController: _scroll,
-                config: QuillEditorConfig(
-                  editorKey: _editorKey,
-                  embedBuilders: const [LocalImageEmbedBuilder()],
-                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 80),
-                  expands: true,
-                  placeholder: '从一句话开始，让故事向前走。',
-                  autoFocus: true,
-                ),
+          child: ContentLayout(
+            maxWidth: 840,
+            builder: (_, inset) => QuillEditor.basic(
+              key: const Key('manuscript-editor'),
+              controller: _controller,
+              focusNode: _focus,
+              scrollController: _scroll,
+              config: QuillEditorConfig(
+                editorKey: _editorKey,
+                embedBuilders: const [LocalImageEmbedBuilder()],
+                padding: inset + const EdgeInsets.fromLTRB(24, 28, 24, 80),
+                expands: true,
+                placeholder: '从一句话开始，让故事向前走。',
+                autoFocus: true,
               ),
             ),
           ),
