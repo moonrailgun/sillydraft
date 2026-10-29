@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart'
         CupertinoTheme,
         CupertinoThemeData;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OverflowBoxFit;
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -148,6 +149,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   bool _sending = false;
   Object? _error;
   final _expandedTools = <String>{};
+  final _expandedReplies = <String>{};
 
   /// The author's message being rewritten in the input, if any.
   AgentMessage? _editing;
@@ -1245,7 +1247,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
                                         const SizedBox(height: 12),
                                         task.partialText.isEmpty
                                             ? const SelectableText('编辑助手正在工作…')
-                                            : _markdown(task.partialText),
+                                            : _reply(
+                                                'task-${task.id}',
+                                                task.partialText,
+                                              ),
                                       ],
                                       const SizedBox(height: 8),
                                       Wrap(
@@ -1799,6 +1804,52 @@ class _AgentState extends ConsumerState<AgentPanel> {
     );
   }
 
+  Widget _reply(String id, String text, {bool selectable = true}) {
+    final markdown = _markdown(text, selectable: selectable);
+    // shortcut: Length approximates visual height; measure layout if rich replies need finer detection.
+    if (text.length <= 600 && '\n'.allMatches(text).length <= 10) {
+      return markdown;
+    }
+    final expanded = _expandedReplies.contains(id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRect(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: expanded ? double.infinity : 187,
+            ),
+            // Keep the Markdown intact, including lists and fenced code.
+            child: OverflowBox(
+              alignment: Alignment.topLeft,
+              fit: OverflowBoxFit.deferToChild,
+              minHeight: 0,
+              maxHeight: double.infinity,
+              child: markdown,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Semantics(
+          expanded: expanded,
+          child: FButton(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: () => setState(() {
+              expanded ? _expandedReplies.remove(id) : _expandedReplies.add(id);
+            }),
+            prefix: Icon(
+              expanded ? FLucideIcons.chevronUp : FLucideIcons.chevronDown,
+              size: 16,
+            ),
+            child: Text(expanded ? '收起' : '展开全部'),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// The assistant's reply as Markdown, which is what chat models write.
   Widget _markdown(String text, {bool selectable = true}) {
     final theme = context.theme;
@@ -2022,7 +2073,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
               ),
             )
           else
-            _markdown(message.content, selectable: !touchPlatform),
+            _reply(message.id, message.content, selectable: !touchPlatform),
           if (metadata['attachment'] case {'title': final String title})
             Padding(
               padding: const EdgeInsets.only(top: 8),
