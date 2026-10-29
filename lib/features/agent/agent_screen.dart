@@ -2006,7 +2006,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                   ),
                 ),
               ),
-            if (ids.length > 1)
+            if (ids.length > 1) ...[
               _chip(
                 icon: FLucideIcons.filePlus,
                 label: const Text('全部插入正文'),
@@ -2014,6 +2014,8 @@ class _AgentState extends ConsumerState<AgentPanel> {
                     ? null
                     : () => _insertImages(ids, message),
               ),
+              const SizedBox(height: 16),
+            ],
           ],
         );
       }
