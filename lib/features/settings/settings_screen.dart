@@ -1289,36 +1289,71 @@ class _ConnectionState extends ConsumerState<ConnectionDialog> {
                   ),
                 ],
               ),
-            // Kept out of the footer, away from 取消, so it isn't hit by mistake.
-            if (widget.connection != null) ...[
-              const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FButton(
-                  variant: FButtonVariant.ghost,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: _busy ? null : _delete,
-                  prefix: Icon(
-                    FLucideIcons.trash2,
-                    color: theme.colors.destructive,
-                  ),
-                  child: Text(
-                    '删除此连接',
-                    style: TextStyle(color: theme.colors.destructive),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
       actions: [
-        FButton(
-          variant: FButtonVariant.outline,
-          onPress: _busy ? null : () => Navigator.pop(context),
-          child: const Text('取消'),
+        SizedBox(
+          width: double.infinity,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              alignment: widget.connection == null
+                  ? WrapAlignment.end
+                  : WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (widget.connection != null)
+                  if (constraints.maxWidth < 400)
+                    FTooltip(
+                      tipBuilder: (_, _) => const Text('删除此连接'),
+                      child: FButton.icon(
+                        variant: FButtonVariant.ghost,
+                        onPress: _busy ? null : _delete,
+                        semanticsLabel: '删除此连接',
+                        child: Icon(
+                          FLucideIcons.trash2,
+                          color: theme.colors.destructive,
+                        ),
+                      ),
+                    )
+                  else
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _busy ? null : _delete,
+                      prefix: Icon(
+                        FLucideIcons.trash2,
+                        color: theme.colors.destructive,
+                      ),
+                      child: Text(
+                        '删除此连接',
+                        style: TextStyle(color: theme.colors.destructive),
+                      ),
+                    ),
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FButton(
+                      variant: FButtonVariant.outline,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _busy ? null : () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                    FButton(
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _busy ? null : _save,
+                      child: const Text('保存连接'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
-        FButton(onPress: _busy ? null : _save, child: const Text('保存连接')),
       ],
     );
   }
