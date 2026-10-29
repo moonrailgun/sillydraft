@@ -37,6 +37,30 @@ class AsyncView<T> extends StatelessWidget {
   );
 }
 
+/// Centers content via inner padding so scroll viewports fill their pane.
+class ContentLayout extends StatelessWidget {
+  const ContentLayout({
+    super.key,
+    required this.maxWidth,
+    required this.builder,
+  });
+
+  final double maxWidth;
+  final Widget Function(BuildContext context, EdgeInsets inset) builder;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) => builder(
+      context,
+      EdgeInsets.symmetric(
+        horizontal: bounds.maxWidth > maxWidth
+            ? (bounds.maxWidth - maxWidth) / 2
+            : 0,
+      ),
+    ),
+  );
+}
+
 class ErrorPane extends StatelessWidget {
   const ErrorPane({super.key, required this.message, this.retry});
   final String message;

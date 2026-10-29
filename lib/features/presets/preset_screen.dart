@@ -352,271 +352,297 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
         ],
         body: _setting == null
             ? const Center(child: FCircularProgress())
-            : Align(
-                alignment: Alignment.topCenter,
-                child: AbsorbPointer(
-                  absorbing: _busy,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 900),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (_busy) const FProgress(),
-                          const SizedBox(height: 8),
-                          FSelect<String>.rich(
-                            key: ValueKey(
-                              'preset:${_resource?.id}:${presets.length}',
-                            ),
-                            label: const Text('当前预设'),
-                            description: narrow
-                                ? null
-                                : const Text('修改自动保存到当前分支，不影响预设库和其他分支'),
-                            enabled: !_busy,
-                            format: (id) => id == _none
-                                ? '不使用预设（SillyDraft 默认）'
-                                : '${names[id] ?? id}${customizedIds.contains(id) ? ' · 已自定义' : ''}',
-                            control: FSelectControl<String>.lifted(
-                              value: _resource?.id ?? _none,
-                              onChange: (id) {
-                                if (id != null) {
-                                  _switch(id == _none ? null : id);
-                                }
-                              },
-                            ),
-                            children: [
-                              FSelectItem<String>(
-                                title: const Text('不使用预设（SillyDraft 默认）'),
-                                value: _none,
+            : AbsorbPointer(
+                absorbing: _busy,
+                child: ContentLayout(
+                  maxWidth: 900,
+                  builder: (_, inset) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding:
+                            inset + const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_busy) const FProgress(),
+                            const SizedBox(height: 8),
+                            FSelect<String>.rich(
+                              key: ValueKey(
+                                'preset:${_resource?.id}:${presets.length}',
                               ),
-                              for (final r in presets)
-                                FSelectItem<String>(
-                                  title: Text(
-                                    '${r.name}${customizedIds.contains(r.id) ? ' · 已自定义' : ''}',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  value: r.id,
-                                ),
-                            ],
-                          ),
-                          gap,
-                          if (_resource == null)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 24),
-                              child: Text(
-                                '还没有选择预设。点右上角导入 SillyTavern 的预设文件（聊天补全预设、提示词包或高级格式组合包），或在资源库导入后在这里选择。',
-                              ),
-                            )
-                          else ...[
-                            FTile(
-                              key: const Key('assistant-uses-preset'),
-                              enabled: assistantCapable,
-                              title: _wrapped('助手对话也使用此预设'),
-                              // Narrow: only the reason it is unavailable.
-                              subtitle: !assistantCapable
-                                  ? _wrapped('文本补全模板不能用于助手对话')
-                                  : narrow
+                              label: const Text('当前预设'),
+                              description: narrow
                                   ? null
-                                  : _wrapped('助手的身份与语气按预设组装；编辑规则与工具权限不变'),
-                              suffix: FSwitch(
-                                value: assistant && assistantCapable,
-                                enabled: assistantCapable,
-                                onChange: _setAssistant,
+                                  : const Text('修改自动保存到当前分支，不影响预设库和其他分支'),
+                              enabled: !_busy,
+                              format: (id) => id == _none
+                                  ? '不使用预设（SillyDraft 默认）'
+                                  : '${names[id] ?? id}${customizedIds.contains(id) ? ' · 已自定义' : ''}',
+                              control: FSelectControl<String>.lifted(
+                                value: _resource?.id ?? _none,
+                                onChange: (id) {
+                                  if (id != null) {
+                                    _switch(id == _none ? null : id);
+                                  }
+                                },
                               ),
-                              onPress: assistantCapable
-                                  ? () => _setAssistant(!assistant)
-                                  : null,
-                            ),
-                            gap,
-                            Row(
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    _saveError != null
-                                        ? '自动保存失败，修改尚未保存'
-                                        : _pendingWrites > 0
-                                        ? '正在自动保存…'
-                                        : _customized
-                                        ? '已自定义 · 已自动保存'
-                                        : '使用预设库原件 · 修改自动保存到当前分支',
-                                  ),
+                                FSelectItem<String>(
+                                  title: const Text('不使用预设（SillyDraft 默认）'),
+                                  value: _none,
                                 ),
-                                if (_saveError != null)
-                                  FButton(
-                                    variant: FButtonVariant.outline,
-                                    mainAxisSize: MainAxisSize.min,
-                                    onPress: _pendingWrites > 0
-                                        ? null
-                                        : _persist,
-                                    child: const Text('重试'),
-                                  ),
-                                if (_customized)
-                                  FButton(
-                                    key: const Key('preset-reset'),
-                                    variant: FButtonVariant.ghost,
-                                    mainAxisSize: MainAxisSize.min,
-                                    onPress: _busy ? null : _reset,
-                                    child: const Text('恢复预设'),
+                                for (final r in presets)
+                                  FSelectItem<String>(
+                                    title: Text(
+                                      '${r.name}${customizedIds.contains(r.id) ? ' · 已自定义' : ''}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    value: r.id,
                                   ),
                               ],
                             ),
                             gap,
-                            Expanded(
-                              child: _PresetTabs(
-                                key: ValueKey('preset-tabs:${_resource!.id}'),
+                            if (_resource == null)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Text(
+                                  '还没有选择预设。点右上角导入 SillyTavern 的预设文件（聊天补全预设、提示词包或高级格式组合包），或在资源库导入后在这里选择。',
+                                ),
+                              )
+                            else ...[
+                              FTile(
+                                key: const Key('assistant-uses-preset'),
+                                enabled: assistantCapable,
+                                title: _wrapped('助手对话也使用此预设'),
+                                // Narrow: only the reason it is unavailable.
+                                subtitle: !assistantCapable
+                                    ? _wrapped('文本补全模板不能用于助手对话')
+                                    : narrow
+                                    ? null
+                                    : _wrapped('助手的身份与语气按预设组装；编辑规则与工具权限不变'),
+                                suffix: FSwitch(
+                                  value: assistant && assistantCapable,
+                                  enabled: assistantCapable,
+                                  onChange: _setAssistant,
+                                ),
+                                onPress: assistantCapable
+                                    ? () => _setAssistant(!assistant)
+                                    : null,
+                              ),
+                              gap,
+                              Row(
                                 children: [
-                                  if (chat || text)
-                                    FTabEntry(
-                                      label: const Text('采样参数'),
-                                      child: Builder(
-                                        builder: (_) => ListView(
-                                          key: const PageStorageKey(
-                                            'preset-samplers',
-                                          ),
-                                          padding: const EdgeInsets.only(
-                                            bottom: 32,
-                                          ),
-                                          children: [
-                                            for (final s
-                                                in chat
-                                                    ? _chatSamplers
-                                                    : _textSamplers)
-                                              _slider(s),
-                                            for (final s
-                                                in chat
-                                                    ? _chatLimits
-                                                    : _textLimits)
-                                              _number(s),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  if (PresetPromptEditor.supports(_draft!))
-                                    FTabEntry(
-                                      label: const Text('提示词管理'),
-                                      child: PresetPromptEditor(
-                                        key: ValueKey(
-                                          'prompts:${_resource!.id}:$_revision',
-                                        ),
-                                        value: _draft!,
-                                        onChanged: (value) => _changed(() {
-                                          // Only take prompt fields so sampler edits survive.
-                                          if (value['data'] is Map) {
-                                            _draft!['data'] = value['data'];
-                                          } else {
-                                            _draft!['prompts'] =
-                                                value['prompts'];
-                                            _draft!['prompt_order'] =
-                                                value['prompt_order'];
-                                          }
-                                        }),
-                                      ),
-                                    ),
-                                  if (regex.isNotEmpty)
-                                    FTabEntry(
-                                      label: const Text('预设正则'),
-                                      child: Builder(
-                                        builder: (_) => ListView(
-                                          key: const PageStorageKey(
-                                            'preset-regex',
-                                          ),
-                                          padding: const EdgeInsets.only(
-                                            bottom: 32,
-                                          ),
-                                          children: [
-                                            Text(
-                                              '启用 ${regex.where((r) => r['disabled'] != true).length} / ${regex.length}',
-                                            ),
-                                            const SizedBox(height: 4),
-                                            const Text(
-                                              '开关自动保存到当前分支；显示正则立即刷新已有章节，不改动原正文。后续生成使用新设置。',
-                                            ),
-                                            const SizedBox(height: 8),
-                                            FTileGroup.builder(
-                                              count: regex.length,
-                                              tileBuilder: (_, i) =>
-                                                  _regexTile(regex[i], i),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  FTabEntry(
-                                    label: const Text('原始 JSON'),
-                                    child: Builder(
-                                      builder: (_) => ListView(
-                                        key: const PageStorageKey(
-                                          'preset-json',
-                                        ),
-                                        padding: const EdgeInsets.only(
-                                          bottom: 32,
-                                        ),
-                                        children: [
-                                          const Text('当前分支使用的完整预设，包含已做的修改。'),
-                                          const SizedBox(height: 8),
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: FButton(
-                                              variant: FButtonVariant.outline,
-                                              mainAxisSize: MainAxisSize.min,
-                                              onPress: () => Clipboard.setData(
-                                                ClipboardData(
-                                                  text: _json.convert(_draft!),
-                                                ),
-                                              ),
-                                              child: const Text('复制完整 JSON'),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          JsonTreeView(_draft!),
-                                        ],
-                                      ),
+                                  Expanded(
+                                    child: Text(
+                                      _saveError != null
+                                          ? '自动保存失败，修改尚未保存'
+                                          : _pendingWrites > 0
+                                          ? '正在自动保存…'
+                                          : _customized
+                                          ? '已自定义 · 已自动保存'
+                                          : '使用预设库原件 · 修改自动保存到当前分支',
                                     ),
                                   ),
-                                  FTabEntry(
-                                    label: const Text('兼容提示'),
-                                    child: Builder(
-                                      builder: (_) => ListView(
-                                        key: const PageStorageKey(
-                                          'preset-diagnostics',
-                                        ),
-                                        padding: const EdgeInsets.only(
-                                          bottom: 32,
-                                        ),
-                                        children: [
-                                          if (preset!.diagnostics.isEmpty)
-                                            const Text('此预设没有导入兼容提示。')
-                                          else
-                                            FTileGroup(
-                                              children: [
-                                                for (final d
-                                                    in preset.diagnostics)
-                                                  FTile(
-                                                    prefix: Icon(
-                                                      d.severity ==
-                                                              DiagnosticSeverity
-                                                                  .error
-                                                          ? FLucideIcons
-                                                                .circleAlert
-                                                          : FLucideIcons.info,
-                                                    ),
-                                                    title: _wrapped(d.message),
-                                                    subtitle: Text(d.code),
-                                                  ),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
+                                  if (_saveError != null)
+                                    FButton(
+                                      variant: FButtonVariant.outline,
+                                      mainAxisSize: MainAxisSize.min,
+                                      onPress: _pendingWrites > 0
+                                          ? null
+                                          : _persist,
+                                      child: const Text('重试'),
                                     ),
-                                  ),
+                                  if (_customized)
+                                    FButton(
+                                      key: const Key('preset-reset'),
+                                      variant: FButtonVariant.ghost,
+                                      mainAxisSize: MainAxisSize.min,
+                                      onPress: _busy ? null : _reset,
+                                      child: const Text('恢复预设'),
+                                    ),
                                 ],
                               ),
-                            ),
+                              gap,
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
+                      if (_resource != null)
+                        Expanded(
+                          child: _PresetTabs(
+                            padding:
+                                inset +
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            key: ValueKey('preset-tabs:${_resource!.id}'),
+                            children: [
+                              if (chat || text)
+                                FTabEntry(
+                                  label: const Text('采样参数'),
+                                  child: Builder(
+                                    builder: (_) => ListView(
+                                      key: const PageStorageKey(
+                                        'preset-samplers',
+                                      ),
+                                      padding:
+                                          inset +
+                                          const EdgeInsets.fromLTRB(
+                                            16,
+                                            0,
+                                            16,
+                                            32,
+                                          ),
+                                      children: [
+                                        for (final s
+                                            in chat
+                                                ? _chatSamplers
+                                                : _textSamplers)
+                                          _slider(s),
+                                        for (final s
+                                            in chat ? _chatLimits : _textLimits)
+                                          _number(s),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              if (PresetPromptEditor.supports(_draft!))
+                                FTabEntry(
+                                  label: const Text('提示词管理'),
+                                  child: PresetPromptEditor(
+                                    padding:
+                                        inset +
+                                        const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          32,
+                                        ),
+                                    key: ValueKey(
+                                      'prompts:${_resource!.id}:$_revision',
+                                    ),
+                                    value: _draft!,
+                                    onChanged: (value) => _changed(() {
+                                      // Only take prompt fields so sampler edits survive.
+                                      if (value['data'] is Map) {
+                                        _draft!['data'] = value['data'];
+                                      } else {
+                                        _draft!['prompts'] = value['prompts'];
+                                        _draft!['prompt_order'] =
+                                            value['prompt_order'];
+                                      }
+                                    }),
+                                  ),
+                                ),
+                              if (regex.isNotEmpty)
+                                FTabEntry(
+                                  label: const Text('预设正则'),
+                                  child: Builder(
+                                    builder: (_) => ListView(
+                                      key: const PageStorageKey('preset-regex'),
+                                      padding:
+                                          inset +
+                                          const EdgeInsets.fromLTRB(
+                                            16,
+                                            0,
+                                            16,
+                                            32,
+                                          ),
+                                      children: [
+                                        Text(
+                                          '启用 ${regex.where((r) => r['disabled'] != true).length} / ${regex.length}',
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          '开关自动保存到当前分支；显示正则立即刷新已有章节，不改动原正文。后续生成使用新设置。',
+                                        ),
+                                        const SizedBox(height: 8),
+                                        FTileGroup.builder(
+                                          count: regex.length,
+                                          tileBuilder: (_, i) =>
+                                              _regexTile(regex[i], i),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              FTabEntry(
+                                label: const Text('原始 JSON'),
+                                child: Builder(
+                                  builder: (_) => ListView(
+                                    key: const PageStorageKey('preset-json'),
+                                    padding:
+                                        inset +
+                                        const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          32,
+                                        ),
+                                    children: [
+                                      const Text('当前分支使用的完整预设，包含已做的修改。'),
+                                      const SizedBox(height: 8),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: FButton(
+                                          variant: FButtonVariant.outline,
+                                          mainAxisSize: MainAxisSize.min,
+                                          onPress: () => Clipboard.setData(
+                                            ClipboardData(
+                                              text: _json.convert(_draft!),
+                                            ),
+                                          ),
+                                          child: const Text('复制完整 JSON'),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      JsonTreeView(_draft!),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              FTabEntry(
+                                label: const Text('兼容提示'),
+                                child: Builder(
+                                  builder: (_) => ListView(
+                                    key: const PageStorageKey(
+                                      'preset-diagnostics',
+                                    ),
+                                    padding:
+                                        inset +
+                                        const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          32,
+                                        ),
+                                    children: [
+                                      if (preset!.diagnostics.isEmpty)
+                                        const Text('此预设没有导入兼容提示。')
+                                      else
+                                        FTileGroup(
+                                          children: [
+                                            for (final d in preset.diagnostics)
+                                              FTile(
+                                                prefix: Icon(
+                                                  d.severity ==
+                                                          DiagnosticSeverity
+                                                              .error
+                                                      ? FLucideIcons.circleAlert
+                                                      : FLucideIcons.info,
+                                                ),
+                                                title: _wrapped(d.message),
+                                                subtitle: Text(d.code),
+                                              ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -813,9 +839,10 @@ class _PresetScreenState extends ConsumerState<PresetScreen> {
 
 // FTabs stretches its bar; keep the same theme with a content-width header.
 class _PresetTabs extends StatelessWidget {
-  const _PresetTabs({super.key, required this.children});
+  const _PresetTabs({super.key, required this.children, required this.padding});
 
   final List<FTabEntry> children;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
@@ -828,29 +855,32 @@ class _PresetTabs extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DecoratedBox(
-              decoration: style.decoration,
-              child: TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                dividerHeight: 0,
-                padding: style.padding,
-                indicator: style.indicatorDecoration,
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelStyle: style.labelTextStyle.resolve({
-                  context.platformVariant,
-                  FTabVariant.selected,
-                }),
-                unselectedLabelStyle: style.labelTextStyle.resolve({
-                  context.platformVariant,
-                }),
-                tabs: [
-                  for (final tab in children)
-                    ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: style.minHeight),
-                      child: Center(widthFactor: 1, child: tab.label),
-                    ),
-                ],
+            Padding(
+              padding: padding,
+              child: DecoratedBox(
+                decoration: style.decoration,
+                child: TabBar(
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  dividerHeight: 0,
+                  padding: style.padding,
+                  indicator: style.indicatorDecoration,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelStyle: style.labelTextStyle.resolve({
+                    context.platformVariant,
+                    FTabVariant.selected,
+                  }),
+                  unselectedLabelStyle: style.labelTextStyle.resolve({
+                    context.platformVariant,
+                  }),
+                  tabs: [
+                    for (final tab in children)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: style.minHeight),
+                        child: Center(widthFactor: 1, child: tab.label),
+                      ),
+                  ],
+                ),
               ),
             ),
             SizedBox(height: style.spacing),

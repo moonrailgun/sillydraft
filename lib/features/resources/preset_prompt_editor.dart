@@ -14,9 +14,11 @@ class PresetPromptEditor extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.padding = const EdgeInsets.only(bottom: 32),
   });
   final Map<String, dynamic> value;
   final ValueChanged<Map<String, dynamic>> onChanged;
+  final EdgeInsets padding;
 
   static bool supports(Map<String, dynamic> value) =>
       value['prompts'] is List ||
@@ -357,8 +359,7 @@ class _PresetPromptState extends State<PresetPromptEditor> {
     return ReorderableListView.builder(
       key: const PageStorageKey('preset-prompt-list'),
       buildDefaultDragHandles: false,
-      // Hosts supply the side padding, like the other preset tabs.
-      padding: const EdgeInsets.only(bottom: 32),
+      padding: widget.padding,
       // The lifted entry casts a soft shadow instead of Material elevation.
       proxyDecorator: (child, _, _) => DecoratedBox(
         decoration: BoxDecoration(

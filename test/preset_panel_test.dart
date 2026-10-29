@@ -126,9 +126,14 @@ void main() {
           .ancestor(of: find.text('兼容提示'), matching: find.byType(DecoratedBox))
           .first,
     );
-    final content = tester.getRect(
+    final viewport = tester.getRect(
       find.byKey(const PageStorageKey('preset-json')),
     );
+    final content = tester.getRect(find.byType(JsonTreeView));
+    expect(viewport.left, 0);
+    expect(viewport.right, 1200);
+    expect(content.center.dx, 600);
+    expect(content.width, 868);
     expect(bar.left, content.left);
     expect(bar.width, lessThan(content.width));
     expect(bar.right - tester.getRect(find.text('兼容提示')).right, lessThan(32));
