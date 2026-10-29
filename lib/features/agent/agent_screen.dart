@@ -725,17 +725,16 @@ class _AgentState extends ConsumerState<AgentPanel> {
             .firstOrNull ??
         queued.firstOrNull ??
         conversationTasks.firstOrNull;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920),
-        child: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: _chat(
-            currentTask,
-            queued: queued,
-            pending: pending,
-            running: running,
-          ),
+    return ContentLayout(
+      maxWidth: 920,
+      builder: (_, inset) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: _chat(
+          currentTask,
+          inset: inset,
+          queued: queued,
+          pending: pending,
+          running: running,
         ),
       ),
     );
@@ -1011,6 +1010,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   Widget _chat(
     GenerationTask? task, {
+    required EdgeInsets inset,
     required List<GenerationTask> queued,
     required int pending,
     required int running,
@@ -1028,6 +1028,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: bounds.maxHeight * .4),
             child: SingleChildScrollView(
+              padding: inset,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1142,7 +1143,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
           ),
           Expanded(
             child: _conversation == null
-                ? ListView(children: [_starter()])
+                ? ListView(padding: inset, children: [_starter()])
                 : AsyncView(
                     value: ref.watch(messagesProvider(_conversation!)),
                     // Reversed so it opens at the latest message and stays
@@ -1165,7 +1166,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                           // ponytail: lays out every message, fine for chat-sized
                           // threads; switch to a builder if threads get huge.
                           shrinkWrap: true,
-                          padding: const EdgeInsets.all(20),
+                          padding: inset + const EdgeInsets.all(20),
                           children: [
                             if (active?.result['imageConfirmation']
                                 case final Map<String, dynamic> pending)
@@ -1299,7 +1300,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
                   ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: inset + const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Column(
               children: [
                 if (queued.isNotEmpty)
