@@ -77,6 +77,63 @@ Future<void> _tapAt(WidgetTester tester, double x) async {
 }
 
 void main() {
+  test('system mode resolves the two saved backgrounds independently', () {
+    final style = ReaderStyle.fromJson({
+      'themeMode': 'system',
+      'lightTheme': 'sepia',
+      'darkTheme': 'black',
+    });
+    expect(style.effectiveTheme(Brightness.light), ReaderTheme.sepia);
+    expect(style.effectiveTheme(Brightness.dark), ReaderTheme.black);
+    final restored = ReaderStyle.fromJson(style.toJson());
+    expect(restored.effectiveTheme(Brightness.light), ReaderTheme.sepia);
+    expect(restored.effectiveTheme(Brightness.dark), ReaderTheme.black);
+  });
+
+  test('explicit reader modes ignore system brightness', () {
+    for (final brightness in Brightness.values) {
+      expect(
+        ReaderStyle.fromJson({'themeMode': 'light', 'lightTheme': 'green'})
+            .effectiveTheme(brightness),
+        ReaderTheme.green,
+      );
+      expect(
+        ReaderStyle.fromJson({'themeMode': 'dark', 'darkTheme': 'black'})
+            .effectiveTheme(brightness),
+        ReaderTheme.black,
+      );
+    }
+  });
+
+  test('legacy backgrounds retain their mode and chosen palette', () {
+    for (final theme in ReaderTheme.values) {
+      for (final autoNight in [true, false]) {
+        final style = ReaderStyle.fromJson({
+          'theme': theme.name,
+          'autoNight': autoNight,
+        });
+        final saved = style.toJson();
+        expect(
+          saved['themeMode'],
+          theme.dark ? 'dark' : (autoNight ? 'system' : 'light'),
+        );
+        expect(saved[theme.dark ? 'darkTheme' : 'lightTheme'], theme.name);
+        expect(ReaderStyle.fromJson(saved), style);
+      }
+    }
+  });
+
+  test('invalid background choices fall back to the matching brightness', () {
+    final style = ReaderStyle.fromJson({
+      'themeMode': 'unknown',
+      'lightTheme': 'black',
+      'darkTheme': 'green',
+    });
+    expect(style.toJson()['themeMode'], 'system');
+    expect(style.effectiveTheme(Brightness.light), ReaderTheme.paper);
+    expect(style.effectiveTheme(Brightness.dark), ReaderTheme.night);
+  });
+
   test('stored reader settings are read back, clamped, and old ones kept', () {
     final style = ReaderStyle.fromJson({
       'fontSize': 99,
@@ -86,7 +143,7 @@ void main() {
     });
     expect(style.fontSize, ReaderStyle.fontRange.max);
     expect(style.lineHeight, 1.5);
-    expect(style.theme, ReaderTheme.sepia);
+    expect(style.lightTheme, ReaderTheme.sepia);
     expect(style.font, ReaderFont.kai);
     expect(style.indent, isTrue);
     expect(style.hideHtml, isFalse);
@@ -134,6 +191,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('阅读设置'), findsOneWidget);
     await tester.tap(find.byKey(const Key('reader-font-larger')));
+    await tester.tap(find.text('黑体'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('reader-theme-green')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('reader-theme-green')));
     await tester.pumpAndSettle();
     expect(_background(tester), ReaderTheme.green.background);
@@ -156,7 +217,8 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 1));
     final saved = await services.repository.getSetting('reader');
     expect(saved?['fontSize'], 21);
-    expect(saved?['theme'], 'green');
+    expect(saved?['font'], 'sans');
+    expect(saved?['lightTheme'], 'green');
     expect(saved?['justify'], isFalse);
     expect(tester.takeException(), isNull);
   });
@@ -242,11 +304,92 @@ void main() {
     expect(_shownTitle(tester), '第二章 灯塔');
   });
 
+  testWidgets('settings keep independent backgrounds and all three modes', (
+    tester,
+  ) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    final (services, _) = await _open(tester);
+    await tester.tap(findAction('排版与主题'));
+    await tester.pumpAndSettle();
+
+    Future<void> choose(String key) async {
+      final target = find.byKey(Key(key));
+      await tester.scrollUntilVisible(
+        target,
+        key.startsWith('reader-mode-') ? -120 : 120,
+        scrollable: find.descendant(
+          of: find.byType(AppSheet),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    await choose('reader-theme-sepia');
+    expect(_background(tester), ReaderTheme.sepia.background);
+    await choose('reader-theme-black');
+    expect(_background(tester), ReaderTheme.sepia.background);
+    await choose('reader-mode-dark');
+    expect(_background(tester), ReaderTheme.black.background);
+    await choose('reader-theme-green');
+    expect(_background(tester), ReaderTheme.black.background);
+    await choose('reader-mode-light');
+    expect(_background(tester), ReaderTheme.green.background);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    await choose('reader-mode-system');
+    expect(_background(tester), ReaderTheme.black.background);
+    await tester.pump(const Duration(seconds: 1));
+    final saved = await services.repository.getSetting('reader');
+    expect(saved?['themeMode'], 'system');
+    expect(saved?['lightTheme'], 'green');
+    expect(saved?['darkTheme'], 'black');
+
+    // Reopening reads the reader's current values rather than sheet defaults.
+    Navigator.of(tester.element(find.byType(AppSheet))).pop();
+    await tester.pumpAndSettle();
+    await _tapAt(tester, .5);
+    await tester.tap(findAction('排版与主题'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoicePill>(find.byKey(const Key('reader-mode-system')))
+          .selected,
+      isTrue,
+    );
+    for (final theme in ['green', 'black']) {
+      await tester.scrollUntilVisible(
+        find.byKey(Key('reader-theme-$theme')),
+        120,
+        scrollable: find.descendant(
+          of: find.byType(AppSheet),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FTappable>(find.byKey(Key('reader-theme-$theme')))
+            .selected,
+        isTrue,
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'night follows a dark app unless turned off; dimming covers the page',
+    'system brightness updates the page and the toolbar cycles three modes',
     (tester) async {
-      await _open(tester, mode: ThemeMode.dark, style: {'dim': .4});
-      expect(_background(tester), ReaderTheme.night.background);
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      // The app stays light throughout; system mode follows the OS instead.
+      final (services, _) = await _open(
+        tester,
+        style: {'dim': .4, 'lightTheme': 'green', 'darkTheme': 'black'},
+      );
+      expect(_background(tester), ReaderTheme.black.background);
       expect(
         find.byWidgetPredicate(
           (w) =>
@@ -254,9 +397,33 @@ void main() {
         ),
         findsOneWidget,
       );
-      await tester.tap(findAction('日间'));
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
       await tester.pumpAndSettle();
-      expect(_background(tester), ReaderTheme.paper.background);
+      expect(_background(tester), ReaderTheme.green.background);
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      await tester.pumpAndSettle();
+      expect(_background(tester), ReaderTheme.black.background);
+
+      await tester.tap(findAction('跟随系统'));
+      await tester.pumpAndSettle();
+      expect(findAction('亮色'), findsOneWidget);
+      expect(_background(tester), ReaderTheme.green.background);
+      await tester.tap(findAction('亮色'));
+      await tester.pumpAndSettle();
+      expect(findAction('暗色'), findsOneWidget);
+      expect(_background(tester), ReaderTheme.black.background);
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      await tester.pumpAndSettle();
+      expect(_background(tester), ReaderTheme.black.background);
+      await tester.tap(findAction('暗色'));
+      await tester.pumpAndSettle();
+      expect(findAction('跟随系统'), findsOneWidget);
+      expect(_background(tester), ReaderTheme.green.background);
+      await tester.pump(const Duration(seconds: 1));
+      final saved = await services.repository.getSetting('reader');
+      expect(saved?['themeMode'], 'system');
+      expect(saved?['lightTheme'], 'green');
+      expect(saved?['darkTheme'], 'black');
     },
   );
 

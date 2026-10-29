@@ -11,7 +11,7 @@ import 'package:flutter/cupertino.dart'
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart'
-    show MaterialPageRoute, SelectionArea, SelectionAreaState;
+    show MaterialPageRoute, SelectionArea, SelectionAreaState, ThemeMode;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -173,10 +173,9 @@ class _ReaderState extends ConsumerState<ReaderScreen>
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
-  /// The page colours in use: night when the app is dark and the author
-  /// lets the reader follow it.
+  /// System mode follows the OS even when the app forces its own appearance.
   ReaderTheme get _pageTheme =>
-      _style.effectiveTheme(context.theme.colors.brightness);
+      _style.effectiveTheme(MediaQuery.platformBrightnessOf(context));
 
   @override
   void didUpdateWidget(ReaderScreen oldWidget) {
@@ -1677,7 +1676,6 @@ class _ReaderState extends ConsumerState<ReaderScreen>
     final left =
         ((1 - _fraction()) * chapter.content.text.length / _charactersPerMinute)
             .ceil();
-    final night = _pageTheme.dark;
     return _slideIn(
       top: false,
       child: DecoratedBox(
@@ -1762,13 +1760,23 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                       onPress: () => _bookmarks(story),
                     ),
                     _BarAction(
-                      icon: night ? FLucideIcons.sun : FLucideIcons.moon,
-                      tooltip: night ? '日间' : '夜间',
+                      icon: switch (_style.themeMode) {
+                        ThemeMode.system => FLucideIcons.sunMoon,
+                        ThemeMode.light => FLucideIcons.sun,
+                        ThemeMode.dark => FLucideIcons.moon,
+                      },
+                      tooltip: switch (_style.themeMode) {
+                        ThemeMode.system => '跟随系统',
+                        ThemeMode.light => '亮色',
+                        ThemeMode.dark => '暗色',
+                      },
                       onPress: () => _setStyle(
                         _style.copyWith(
-                          theme: night ? ReaderTheme.paper : ReaderTheme.night,
-                          // Choosing explicitly overrides following the system.
-                          autoNight: false,
+                          themeMode: switch (_style.themeMode) {
+                            ThemeMode.system => ThemeMode.light,
+                            ThemeMode.light => ThemeMode.dark,
+                            ThemeMode.dark => ThemeMode.system,
+                          },
                         ),
                       ),
                     ),

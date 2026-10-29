@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 
 /// Page colours. Each pairs a background with a text colour that stays
@@ -69,8 +70,9 @@ final class ReaderStyle {
     this.margin = 28,
     this.indent = true,
     this.justify = true,
-    this.theme = ReaderTheme.paper,
-    this.autoNight = true,
+    this.themeMode = ThemeMode.system,
+    this.lightTheme = ReaderTheme.paper,
+    this.darkTheme = ReaderTheme.night,
     this.font = ReaderFont.serif,
     this.dim = 0,
     this.keepAwake = true,
@@ -94,8 +96,9 @@ final class ReaderStyle {
 
   /// Space after each paragraph, in lines of body text.
   final double paragraphSpacing;
-  final bool indent, justify, autoNight, keepAwake;
-  final ReaderTheme theme;
+  final bool indent, justify, keepAwake;
+  final ThemeMode themeMode;
+  final ReaderTheme lightTheme, darkTheme;
   final ReaderFont font;
 
   /// Auto-scroll speed in logical pixels per second.
@@ -113,12 +116,11 @@ final class ReaderStyle {
 
   final bool hideHtml, hideImages;
 
-  /// The theme to paint with: night when the system is dark and the author
-  /// reads on a light page with [autoNight] on.
-  ReaderTheme effectiveTheme(Brightness platform) =>
-      autoNight && platform == Brightness.dark && !theme.dark
-      ? ReaderTheme.night
-      : theme;
+  ReaderTheme effectiveTheme(Brightness platform) => switch (themeMode) {
+    ThemeMode.system => platform == Brightness.dark ? darkTheme : lightTheme,
+    ThemeMode.light => lightTheme,
+    ThemeMode.dark => darkTheme,
+  };
 
   ReaderStyle copyWith({
     double? fontSize,
@@ -128,8 +130,9 @@ final class ReaderStyle {
     double? margin,
     bool? indent,
     bool? justify,
-    ReaderTheme? theme,
-    bool? autoNight,
+    ThemeMode? themeMode,
+    ReaderTheme? lightTheme,
+    ReaderTheme? darkTheme,
     ReaderFont? font,
     double? dim,
     bool? keepAwake,
@@ -147,8 +150,9 @@ final class ReaderStyle {
     margin: margin ?? this.margin,
     indent: indent ?? this.indent,
     justify: justify ?? this.justify,
-    theme: theme ?? this.theme,
-    autoNight: autoNight ?? this.autoNight,
+    themeMode: themeMode ?? this.themeMode,
+    lightTheme: lightTheme ?? this.lightTheme,
+    darkTheme: darkTheme ?? this.darkTheme,
     font: font ?? this.font,
     dim: dim ?? this.dim,
     keepAwake: keepAwake ?? this.keepAwake,
@@ -168,8 +172,9 @@ final class ReaderStyle {
     'margin': margin,
     'indent': indent,
     'justify': justify,
-    'theme': theme.name,
-    'autoNight': autoNight,
+    'themeMode': themeMode.name,
+    'lightTheme': lightTheme.name,
+    'darkTheme': darkTheme.name,
     'font': font.name,
     'dim': dim,
     'keepAwake': keepAwake,
@@ -182,15 +187,21 @@ final class ReaderStyle {
   };
 
   /// Reads a stored setting, keeping defaults for anything missing and
-  /// clamping out-of-range values. The old `sepia`/`paper`/`night` names
-  /// carry over.
+  /// clamping out-of-range values. Legacy backgrounds keep their palette
+  /// and whether they followed system brightness.
   factory ReaderStyle.fromJson(Map<String, dynamic>? json) {
     const d = ReaderStyle();
     if (json == null) return d;
     double number(String key, double fallback, ({double min, double max}) r) =>
         ((json[key] as num?)?.toDouble() ?? fallback).clamp(r.min, r.max);
-    T named<T extends Enum>(List<T> values, String key, T fallback) =>
+    T named<T extends Enum>(Iterable<T> values, String key, T fallback) =>
         values.where((v) => v.name == json[key]).firstOrNull ?? fallback;
+    final legacyTheme = named(ReaderTheme.values, 'theme', d.lightTheme);
+    final legacyMode = legacyTheme.dark
+        ? ThemeMode.dark
+        : json['autoNight'] == false
+        ? ThemeMode.light
+        : ThemeMode.system;
     return ReaderStyle(
       fontSize: number('fontSize', d.fontSize, fontRange),
       lineHeight: number('lineHeight', d.lineHeight, lineRange),
@@ -203,8 +214,19 @@ final class ReaderStyle {
       margin: number('margin', d.margin, marginRange),
       indent: json['indent'] as bool? ?? d.indent,
       justify: json['justify'] as bool? ?? d.justify,
-      theme: named(ReaderTheme.values, 'theme', d.theme),
-      autoNight: json['autoNight'] as bool? ?? d.autoNight,
+      themeMode: json.containsKey('themeMode')
+          ? named(ThemeMode.values, 'themeMode', d.themeMode)
+          : legacyMode,
+      lightTheme: named(
+        ReaderTheme.values.where((t) => !t.dark),
+        'lightTheme',
+        legacyTheme.dark ? d.lightTheme : legacyTheme,
+      ),
+      darkTheme: named(
+        ReaderTheme.values.where((t) => t.dark),
+        'darkTheme',
+        legacyTheme.dark ? legacyTheme : d.darkTheme,
+      ),
       font: named(ReaderFont.values, 'font', d.font),
       dim: number('dim', d.dim, dimRange),
       keepAwake: json['keepAwake'] as bool? ?? d.keepAwake,

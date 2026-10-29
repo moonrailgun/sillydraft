@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 
 import '../../app/widgets.dart';
@@ -178,6 +179,65 @@ class _ReaderSettingsState extends State<_ReaderSettings> {
     onChanged: onChanged,
   );
 
+  Widget _backgrounds({required bool dark}) {
+    final theme = context.theme;
+    final colors = theme.colors;
+    final selected = dark ? _style.darkTheme : _style.lightTheme;
+    final title = dark ? '暗色模式背景' : '亮色模式背景';
+    return _section(
+      title,
+      Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          for (final t in ReaderTheme.values.where((t) => t.dark == dark))
+            FTooltip(
+              tipBuilder: (_, _) => Text(t.label),
+              child: FTappable(
+                key: Key('reader-theme-${t.name}'),
+                semanticsLabel: '$title ${t.label}',
+                selected: selected == t,
+                onPress: () => _set(
+                  dark
+                      ? _style.copyWith(darkTheme: t)
+                      : _style.copyWith(lightTheme: t),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: t.background,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selected == t ? colors.primary : colors.border,
+                          width: selected == t ? 3 : 1,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '文',
+                        style: TextStyle(color: t.foreground, fontSize: 15),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      t.label,
+                      style: theme.typography.body.xs.copyWith(
+                        color: colors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _switch(
     String title,
     bool value,
@@ -302,61 +362,27 @@ class _ReaderSettingsState extends State<_ReaderSettings> {
           ),
         ),
         _section(
-          '背景',
+          '主题',
           Wrap(
-            spacing: 12,
+            spacing: 8,
             runSpacing: 8,
             children: [
-              for (final t in ReaderTheme.values)
-                FTooltip(
-                  tipBuilder: (_, _) => Text(t.label),
-                  child: FTappable(
-                    key: Key('reader-theme-${t.name}'),
-                    semanticsLabel: '背景 ${t.label}',
-                    selected: s.theme == t,
-                    onPress: () => _set(_style.copyWith(theme: t)),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: t.background,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: s.theme == t
-                                  ? colors.primary
-                                  : colors.border,
-                              width: s.theme == t ? 3 : 1,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '文',
-                            style: TextStyle(color: t.foreground, fontSize: 15),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          t.label,
-                          style: theme.typography.body.xs.copyWith(
-                            color: colors.mutedForeground,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              for (final mode in ThemeMode.values)
+                ChoicePill(
+                  key: Key('reader-mode-${mode.name}'),
+                  label: switch (mode) {
+                    ThemeMode.system => '跟随系统',
+                    ThemeMode.light => '亮色',
+                    ThemeMode.dark => '暗色',
+                  },
+                  selected: s.themeMode == mode,
+                  onPress: () => _set(_style.copyWith(themeMode: mode)),
                 ),
             ],
           ),
         ),
-        const SizedBox(height: 6),
-        _switch(
-          '系统深色时自动夜间',
-          s.autoNight,
-          (v) => _set(_style.copyWith(autoNight: v)),
-        ),
+        _backgrounds(dark: false),
+        _backgrounds(dark: true),
         _section(
           '亮度',
           Row(
