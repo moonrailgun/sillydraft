@@ -127,7 +127,9 @@ void main() {
       ManuscriptContent.plainText('新段\n共同结尾').delta,
     );
     await tester.pump();
-    await tester.tap(findAction('正文版本'));
+    await tester.tap(findAction('编辑操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('正文版本'));
     await tester.pumpAndSettle();
     final current = await repo.getChapter(
       branchId: chapter.branchId,

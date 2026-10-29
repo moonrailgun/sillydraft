@@ -351,9 +351,18 @@ class _EditorState extends ConsumerState<EditorScreen> {
     }
   }
 
+  Future<void> _saveNow() async {
+    try {
+      await _flush();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dirty = _content.encoded != _saved;
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final dock = MediaQuery.sizeOf(context).width >= 1100;
     final docked = dock && _assistant;
     // A generation written into this chapter while this page is open, e.g.
@@ -378,6 +387,8 @@ class _EditorState extends ConsumerState<EditorScreen> {
               children: [
                 Text(
                   _chapter.title.isEmpty ? '正文编辑' : _chapter.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.typography.body.md.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.3,
@@ -409,16 +420,18 @@ class _EditorState extends ConsumerState<EditorScreen> {
             ),
           ],
           suffixes: [
-            HeaderIconAction(
-              icon: FLucideIcons.imagePlus,
-              tooltip: '插入图片',
-              onPress: _insertImage,
-            ),
-            HeaderIconAction(
-              icon: FLucideIcons.wandSparkles,
-              tooltip: '生成或改写选区',
-              onPress: _generate,
-            ),
+            if (!compact)
+              HeaderIconAction(
+                icon: FLucideIcons.imagePlus,
+                tooltip: '插入图片',
+                onPress: _insertImage,
+              ),
+            if (!compact)
+              HeaderIconAction(
+                icon: FLucideIcons.wandSparkles,
+                tooltip: '生成或改写选区',
+                onPress: _generate,
+              ),
             _HeaderToggle(
               key: const Key('editor-assistant'),
               icon: docked
@@ -428,22 +441,33 @@ class _EditorState extends ConsumerState<EditorScreen> {
               selected: docked,
               onPress: () => _askAssistant(dock),
             ),
-            HeaderIconAction(
-              icon: FLucideIcons.history,
-              tooltip: '正文版本',
-              onPress: _history,
-            ),
-            HeaderIconAction(
-              icon: FLucideIcons.check,
-              tooltip: '立即保存',
-              onPress: () async {
-                try {
-                  await _flush();
-                } catch (e) {
-                  if (context.mounted) showError(context, e);
-                }
-              },
-            ),
+            if (compact)
+              MenuAction(
+                header: true,
+                tooltip: '编辑操作',
+                entries: [
+                  menuEntry('插入图片', _insertImage, icon: FLucideIcons.imagePlus),
+                  menuEntry(
+                    '生成或改写选区',
+                    _generate,
+                    icon: FLucideIcons.wandSparkles,
+                  ),
+                  menuEntry('正文版本', _history, icon: FLucideIcons.history),
+                  menuEntry('立即保存', _saveNow, icon: FLucideIcons.check),
+                ],
+              ),
+            if (!compact)
+              HeaderIconAction(
+                icon: FLucideIcons.history,
+                tooltip: '正文版本',
+                onPress: _history,
+              ),
+            if (!compact)
+              HeaderIconAction(
+                icon: FLucideIcons.check,
+                tooltip: '立即保存',
+                onPress: _saveNow,
+              ),
           ],
         ),
         child: SafeArea(

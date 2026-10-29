@@ -71,7 +71,9 @@ void main() {
             ChangeSource.local,
           );
       await tester.pump();
-      await tester.tap(findAction('生成或改写选区'));
+      await tester.tap(findAction('编辑操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生成或改写选区'));
       await tester.pumpAndSettle();
       expect(find.text('原文'), findsWidgets);
       await tester.enterText(find.byKey(const Key('writing-brief')), '更简洁');
