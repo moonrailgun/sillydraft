@@ -622,55 +622,70 @@ class _AgentState extends ConsumerState<AgentPanel> {
             const SizedBox(height: 4),
             Text(imageEngineLabel(engine)),
             if (batch) const Text('确认后按顺序逐张生成；取消或失败会停止后续图片。'),
-            for (final (index, preview) in previews.indexed) ...[
-              if (batch)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text('${index + 1}. ${preview['name']}'),
+            const SizedBox(height: 8),
+            FAccordion(
+              key: ValueKey('image-confirmation-${pending['id']}'),
+              children: [
+                FAccordionItem(
+                  title: const Text('提示词与参考图'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (index, preview) in previews.indexed) ...[
+                        if (batch)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text('${index + 1}. ${preview['name']}'),
+                          ),
+                        const SizedBox(height: 8),
+                        Text('提示词', style: label),
+                        const SizedBox(height: 4),
+                        SelectableText('${preview['prompt']}'),
+                        if (preview['illustrationAnchor'] case {
+                          'quote': final String quote,
+                        }) ...[
+                          const SizedBox(height: 8),
+                          Text('插入位置：以下原文所在段落下方', style: label),
+                          const SizedBox(height: 4),
+                          SelectableText(quote),
+                        ],
+                        if (preview['negativePrompt']
+                            case final String negative) ...[
+                          const SizedBox(height: 8),
+                          Text('负面提示词', style: label),
+                          const SizedBox(height: 4),
+                          SelectableText(negative),
+                        ],
+                        if (preview['references'] case final List references
+                            when references.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text('参考图', style: label),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final id in references.cast<String>())
+                                ClipRRect(
+                                  key: Key('agent-image-reference-$id'),
+                                  borderRadius: theme.style.borderRadius.md,
+                                  child: AssetImageView(
+                                    assetId: id,
+                                    thumbnail: true,
+                                    width: 64,
+                                    height: 64,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
                 ),
-              const SizedBox(height: 8),
-              Text('提示词', style: label),
-              const SizedBox(height: 4),
-              SelectableText('${preview['prompt']}'),
-              if (preview['illustrationAnchor'] case {
-                'quote': final String quote,
-              }) ...[
-                const SizedBox(height: 8),
-                Text('插入位置：以下原文所在段落下方', style: label),
-                const SizedBox(height: 4),
-                SelectableText(quote),
               ],
-              if (preview['negativePrompt'] case final String negative) ...[
-                const SizedBox(height: 8),
-                Text('负面提示词', style: label),
-                const SizedBox(height: 4),
-                SelectableText(negative),
-              ],
-              if (preview['references'] case final List references
-                  when references.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text('参考图', style: label),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final id in references.cast<String>())
-                      ClipRRect(
-                        key: Key('agent-image-reference-$id'),
-                        borderRadius: theme.style.borderRadius.md,
-                        child: AssetImageView(
-                          assetId: id,
-                          thumbnail: true,
-                          width: 64,
-                          height: 64,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ],
+            ),
             const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.end,
