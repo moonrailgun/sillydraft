@@ -59,6 +59,8 @@ extension on TaskRunner {
             : messages.map((m) => m['content']).join('\n\n'),
         parameters: {'max_tokens': outputLimit},
         executionId: 'writing-quality-${task.id}-$stage',
+        usagePurpose: 'quality',
+        usageBranchId: task.branchId,
       );
       // Use the same conservative estimate as compilation; never truncate facts.
       if (jsonEncode(messages).length / 2 + outputLimit >

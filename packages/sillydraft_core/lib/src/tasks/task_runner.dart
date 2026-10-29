@@ -345,6 +345,8 @@ final class TaskRunner implements TaskControl {
       );
       final request = ProviderRequest.fromJson({
         ...jsonObject(input['request'], 'request'),
+        'usagePurpose': task.kind.name,
+        'usageBranchId': task.branchId,
         if (task.isRemote) 'executionId': task.id,
         if (task.isRemote)
           'retrieveOnly': task.result['remoteReconnect'] == true,

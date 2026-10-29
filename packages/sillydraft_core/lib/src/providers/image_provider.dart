@@ -9,12 +9,16 @@ final class ImageRequest extends JsonSource {
     Map<String, dynamic> parameters = const {},
     List<String> allowedDownloadHosts = const [],
     String? executionId,
+    String? usagePurpose,
+    String? usageBranchId,
     bool retrieveOnly = false,
   }) : super({
          'prompt': prompt,
          'parameters': parameters,
          'allowedDownloadHosts': allowedDownloadHosts,
          'executionId': ?executionId,
+         'usagePurpose': ?usagePurpose,
+         'usageBranchId': ?usageBranchId,
          if (retrieveOnly) 'retrieveOnly': true,
        }) {
     if (prompt.trim().isEmpty || prompt.length > 32000) {
@@ -27,10 +31,14 @@ final class ImageRequest extends JsonSource {
     allowedDownloadHosts: (raw['allowedDownloadHosts'] as List? ?? [])
         .cast<String>(),
     executionId: raw['executionId'] as String?,
+    usagePurpose: raw['usagePurpose'] as String?,
+    usageBranchId: raw['usageBranchId'] as String?,
     retrieveOnly: raw['retrieveOnly'] as bool? ?? false,
   );
   String get prompt => raw['prompt'] as String;
   String? get executionId => raw['executionId'] as String?;
+  String? get usagePurpose => raw['usagePurpose'] as String?;
+  String? get usageBranchId => raw['usageBranchId'] as String?;
   bool get retrieveOnly => raw['retrieveOnly'] == true;
   Map<String, dynamic> get parameters =>
       raw['parameters'] as Map<String, dynamic>;

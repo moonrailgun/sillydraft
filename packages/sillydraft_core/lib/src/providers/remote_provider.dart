@@ -156,6 +156,8 @@ final class RemoteRunnerClient {
     _job(id);
     final clean = {...request}
       ..remove('executionId')
+      ..remove('usagePurpose')
+      ..remove('usageBranchId')
       ..remove('retrieveOnly');
     var state = retrieveOnly
         ? await _json('GET', _job(id), cancellation: cancellation)

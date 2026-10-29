@@ -462,6 +462,8 @@ final class WritingService {
       ],
       // A remote runner keeps jobs by ID; this one is never resumed.
       executionId: 'chapter-title-${const Uuid().v4()}',
+      usagePurpose: 'title',
+      usageBranchId: branchId,
     );
     // ponytail: a chapter beyond the context window keeps its number; send
     // its head and tail if that ever matters.

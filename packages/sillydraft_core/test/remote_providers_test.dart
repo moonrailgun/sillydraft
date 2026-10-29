@@ -119,6 +119,35 @@ void main() {
     );
   });
 
+  test(
+    'phone requests retain book attribution in desktop accounting',
+    () async {
+      final repo = desktop.repository;
+      final novel = await repo.createNovel(title: '远程作品');
+      final metered = UsageMeter(repo).text(
+        ScriptProvider(writer, (_, _) async* {
+          yield const TextDelta('新标题');
+          yield const GenerationFinished('stop', usage: {'cost': 0.25});
+        }),
+      );
+      script = (request, cancel) =>
+          metered.generate(request, cancellation: cancel);
+      final written = repo.changes.first;
+      await DesktopModelProvider(phone, writer)
+          .generate(
+            ProviderRequest(
+              usagePurpose: 'title',
+              usageBranchId: novel.activeBranchId,
+            ),
+          )
+          .drain<void>();
+      await written.timeout(const Duration(seconds: 5));
+      final book = (await repo.usageByBook()).single;
+      expect((book.label, book.requests, book.cost), ('远程作品', 1, 0.25));
+      expect((await repo.usageByTool()).single.label, '标题生成');
+    },
+  );
+
   test('cancelling on the phone cancels the desktop call', () async {
     script = (_, cancel) async* {
       yield const TextDelta('甲');

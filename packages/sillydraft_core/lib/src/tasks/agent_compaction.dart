@@ -80,6 +80,8 @@ final class _AgentContext {
     final summaryLimit = min(4096, outputTokens);
     final summaryRequest = ProviderRequest(
       executionId: 'agent-compaction-$taskId-${++_summaries}',
+      usagePurpose: 'compaction',
+      usageBranchId: request.usageBranchId,
       parameters: {'max_tokens': summaryLimit},
       messages: [
         {

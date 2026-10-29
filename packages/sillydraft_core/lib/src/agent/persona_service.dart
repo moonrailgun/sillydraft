@@ -127,22 +127,21 @@ final class PersonaService {
       runner: runner,
     );
     final frozen = await illustrations.withLatestWorkflow(painter);
-    var request = IllustrationService.requestFrom(
+    final request = IllustrationService.requestFrom(
       frozen,
       prompt,
       await illustrations.savedDefaults(painter),
     );
-    if (frozen.protocol == ModelProtocol.sillyDraftRunner) {
-      // A remote runner keeps jobs by ID; this one is never resumed.
-      request = ImageRequest.fromJson({
-        ...request.raw,
-        'executionId': 'persona-${const Uuid().v4()}',
-      });
-    }
     final provider = await factory(frozen);
     try {
       final output = await provider.generate(
-        request,
+        ImageRequest.fromJson({
+          ...request.raw,
+          'usagePurpose': 'persona',
+          // A remote runner keeps jobs by ID; this one is never resumed.
+          if (frozen.protocol == ModelProtocol.sillyDraftRunner)
+            'executionId': 'persona-${const Uuid().v4()}',
+        }),
         cancellation: cancellation,
       );
       return PersonaImage.of(await library.prepare(output.bytes));
@@ -168,6 +167,7 @@ final class PersonaService {
           ],
           // A remote runner keeps jobs by ID; this one is never resumed.
           executionId: 'persona-${const Uuid().v4()}',
+          usagePurpose: 'persona',
         ),
         cancellation: cancellation,
       )) {

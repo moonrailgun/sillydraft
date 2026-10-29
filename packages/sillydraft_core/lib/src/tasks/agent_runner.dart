@@ -570,6 +570,8 @@ extension _AgentExecution on TaskRunner {
           },
         ],
         executionId: 'conversation-title-${task.id}',
+        usagePurpose: 'title',
+        usageBranchId: task.branchId,
       );
       if (estimateTokens(jsonEncode(request.messages)) +
               provider.config.maxOutputTokens >
@@ -633,9 +635,11 @@ extension _AgentExecution on TaskRunner {
     String name = '编辑',
     bool imageRequired = false,
   }) async {
-    final request = ProviderRequest.fromJson(
-      jsonObject(task.input['request'], 'request'),
-    );
+    final request = ProviderRequest.fromJson({
+      ...jsonObject(task.input['request'], 'request'),
+      'usagePurpose': task.kind.name,
+      'usageBranchId': task.branchId,
+    });
     final context = _AgentContext(request);
     final messages = context.messages;
     var missingImageReplies = 0;
@@ -672,6 +676,8 @@ extension _AgentExecution on TaskRunner {
           messages: messages,
           tools: List.of(tools),
           parameters: request.parameters,
+          usagePurpose: request.usagePurpose,
+          usageBranchId: request.usageBranchId,
         ),
         cancellation: cancel,
       )) {

@@ -63,6 +63,7 @@ Future<ConnectionProbeResult> probeConnection(
         ],
         parameters: {'max_tokens': min(provider.config.maxOutputTokens, 512)},
         executionId: 'connection-test-$id',
+        usagePurpose: 'connectionTest',
       ),
       cancellation: cancel,
     )) {

@@ -223,6 +223,8 @@ final class ProviderRequest extends JsonSource {
     List<Map<String, dynamic>> tools = const [],
     List<String> stopStrings = const [],
     String? executionId,
+    String? usagePurpose,
+    String? usageBranchId,
     bool retrieveOnly = false,
   }) : super({
          'messages': messages,
@@ -231,6 +233,8 @@ final class ProviderRequest extends JsonSource {
          'tools': tools,
          'stopStrings': stopStrings,
          'executionId': ?executionId,
+         'usagePurpose': ?usagePurpose,
+         'usageBranchId': ?usageBranchId,
          if (retrieveOnly) 'retrieveOnly': true,
        });
   factory ProviderRequest.fromJson(Map<String, dynamic> json) =>
@@ -242,6 +246,8 @@ final class ProviderRequest extends JsonSource {
         tools: (json['tools'] as List? ?? []).cast<Map<String, dynamic>>(),
         stopStrings: stringList(json['stopStrings'], 'stopStrings'),
         executionId: json['executionId'] as String?,
+        usagePurpose: json['usagePurpose'] as String?,
+        usageBranchId: json['usageBranchId'] as String?,
         retrieveOnly: json['retrieveOnly'] as bool? ?? false,
       );
   List<Map<String, dynamic>> get messages =>
@@ -253,6 +259,9 @@ final class ProviderRequest extends JsonSource {
       (raw['tools'] as List).cast<Map<String, dynamic>>();
   List<String> get stopStrings => (raw['stopStrings'] as List).cast<String>();
   String? get executionId => raw['executionId'] as String?;
+  // Local bookkeeping; providers must not include these in model payloads.
+  String? get usagePurpose => raw['usagePurpose'] as String?;
+  String? get usageBranchId => raw['usageBranchId'] as String?;
   bool get retrieveOnly => raw['retrieveOnly'] == true;
 }
 

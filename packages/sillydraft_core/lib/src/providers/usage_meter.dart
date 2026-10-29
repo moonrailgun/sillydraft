@@ -162,9 +162,11 @@ final class UsageMeter {
     ModelConnection connection,
     String kind,
     String? executionId,
-    Map<String, dynamic> usage, [
+    Map<String, dynamic> usage, {
+    String? purpose,
+    String? branchId,
     ({int input, int output}) Function()? estimate,
-  ]) async {
+  }) async {
     try {
       final counted = usageTokens(usage);
       final guess = counted.input == null || counted.output == null
@@ -189,6 +191,8 @@ final class UsageMeter {
       await _repository.recordUsage(
         connection: connection,
         kind: kind,
+        purpose: purpose,
+        branchId: branchId,
         executionId: executionId,
         inputTokens: input,
         outputTokens: output,
@@ -240,7 +244,9 @@ class _MeteredText implements ModelProvider {
             'text',
             request.executionId,
             finish?.usage ?? const {},
-            () => (
+            purpose: request.usagePurpose,
+            branchId: request.usageBranchId,
+            estimate: () => (
               input: estimateTokens(
                 request.completionText ?? jsonEncode(request.messages),
               ),
@@ -287,7 +293,14 @@ class _MeteredImage implements ImageProvider {
       cancellation: cancellation,
     );
     unawaited(
-      _meter._record(config, 'image', request.executionId, image.usage),
+      _meter._record(
+        config,
+        'image',
+        request.executionId,
+        image.usage,
+        purpose: request.usagePurpose,
+        branchId: request.usageBranchId,
+      ),
     );
     return image;
   }

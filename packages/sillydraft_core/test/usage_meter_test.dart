@@ -26,17 +26,19 @@ Future<void> _drain(StoryRepository repo, ModelProvider provider) async {
 }
 
 final class _Painter implements ImageProvider, WorkflowSource {
+  _Painter({
+    ModelConnection? config,
+    this.usage = const {'input_tokens': 7, 'output_tokens': 70},
+  }) : config = config ?? connection;
   @override
-  ModelConnection get config => connection;
+  final ModelConnection config;
+  final Map<String, dynamic> usage;
   @override
   Future<GeneratedImage> generate(
     ImageRequest request, {
     List<ImageReference> references = const [],
     GenerationCancellation? cancellation,
-  }) async => GeneratedImage(
-    bytes: Uint8List(1),
-    usage: {'input_tokens': 7, 'output_tokens': 70},
-  );
+  }) async => GeneratedImage(bytes: Uint8List(1), usage: usage);
   @override
   Future<Map<String, dynamic>> readWorkflow(String filename) async => {};
   @override
@@ -47,6 +49,86 @@ void main() {
   late StoryRepository repo;
   setUp(() => repo = StoryRepository.memory());
   tearDown(() => repo.close());
+
+  test('writing tasks charge the originating book and tool', () async {
+    final novel = await repo.createNovel(title: '雾港');
+    final chapter = await repo.createChapter(branchId: novel.activeBranchId);
+    final meter = UsageMeter(repo);
+    final runner = TaskRunner(
+      repository: repo,
+      providerFactory: (c) async => meter.text(
+        ScriptProvider(
+          c,
+          (_, _) => _reply([
+            const TextDelta('新的正文'),
+            const GenerationFinished(
+              'stop',
+              usage: {'input_tokens': 10, 'output_tokens': 5, 'cost': 0.25},
+            ),
+          ]),
+        ),
+      ),
+    );
+    addTearDown(runner.close);
+    final service = WritingService(repository: repo, runner: runner);
+    for (final rewrite in [false, true]) {
+      final task = await service.generate(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '写一段',
+        rewrite: rewrite,
+      );
+      final done = await runner.wait(task.id);
+      expect(done.status, TaskStatus.completed, reason: done.error);
+    }
+    final book = (await repo.usageByBook()).single;
+    expect((book.label, book.requests, book.cost), ('雾港', 2, 0.5));
+    expect((await repo.usageByTool()).map((t) => t.label).toSet(), {
+      '正文生成',
+      '正文改写',
+    });
+  });
+
+  test('text and image requests retain book attribution across JSON', () async {
+    final novel = await repo.createNovel(title: '雾中来信');
+    final meter = UsageMeter(repo);
+    final text = meter.text(
+      ScriptProvider(
+        connection,
+        (_, _) => _reply([
+          const GenerationFinished('stop', usage: {'cost': 0.5}),
+        ]),
+      ),
+    );
+    var written = repo.changes.first;
+    await text
+        .generate(
+          ProviderRequest.fromJson({
+            ...ProviderRequest(messages: const []).raw,
+            'usagePurpose': 'agent',
+            'usageBranchId': novel.activeBranchId,
+          }),
+        )
+        .drain<void>();
+    await written;
+    written = repo.changes.first;
+    await meter
+        .image(_Painter(usage: const {'cost': 1.0}))
+        .generate(
+          ImageRequest.fromJson({
+            'prompt': '一封信',
+            'usagePurpose': 'illustration',
+            'usageBranchId': novel.activeBranchId,
+          }),
+        );
+    await written;
+    final book = (await repo.usageByBook()).single;
+    expect(book.label, '雾中来信');
+    expect(book.requests, 2);
+    expect(book.cost, 1.5);
+    expect((await repo.usageByTool()).map((t) => t.label), ['生图', '写作助手']);
+  });
 
   test('a cost the upstream reports is taken as it is', () async {
     final meter = UsageMeter(

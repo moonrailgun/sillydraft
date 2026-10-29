@@ -12,6 +12,8 @@ extension _IllustrationExecution on TaskRunner {
     final input = task.input,
         request = ImageRequest.fromJson({
           ...jsonObject(task.input['imageRequest'], 'imageRequest'),
+          'usagePurpose': task.kind.name,
+          'usageBranchId': task.branchId,
           if (task.isRemote) 'executionId': task.id,
           if (task.isRemote)
             'retrieveOnly': task.result['remoteReconnect'] == true,
