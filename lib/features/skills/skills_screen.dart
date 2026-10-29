@@ -115,58 +115,55 @@ class SkillsScreen extends ConsumerWidget {
     ),
     body: AsyncView(
       value: ref.watch(skillsProvider),
-      builder: (entries) => Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  '技能是可复用的做事方法，采用通用的 Agent Skills（SKILL.md）格式，可以直接导入 Claude、Codex 等社区里分享的技能。'
-                  '助手平时只看到名称和简介，任务相符时才加载完整说明；也可以在对话开头输入“/技能名”直接启用。',
-                  style: TextStyle(color: context.theme.colors.mutedForeground),
-                ),
+      builder: (entries) => ContentLayout(
+        maxWidth: 900,
+        builder: (_, inset) => ListView(
+          padding: inset + const EdgeInsets.fromLTRB(16, 8, 16, 120),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '技能是可复用的做事方法，采用通用的 Agent Skills（SKILL.md）格式，可以直接导入 Claude、Codex 等社区里分享的技能。'
+                '助手平时只看到名称和简介，任务相符时才加载完整说明；也可以在对话开头输入“/技能名”直接启用。',
+                style: TextStyle(color: context.theme.colors.mutedForeground),
               ),
-              const SizedBox(height: 8),
-              if (entries.isNotEmpty)
-                FTileGroup(
-                  children: [
-                    for (final e in entries)
-                      FTile(
-                        prefix: Icon(
-                          e.skill.builtIn
-                              ? FLucideIcons.sparkles
-                              : FLucideIcons.puzzle,
-                        ),
-                        title: Text(e.skill.title),
-                        subtitle: Text(
-                          '/${e.skill.name}${e.skill.builtIn ? ' · 内置' : ''}'
-                          '${e.skill.modelInvocable ? '' : ' · 仅手动启用'}\n${e.skill.description}',
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onPress: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => SkillDetailScreen(skill: e.skill),
-                          ),
-                        ),
-                        suffix: FSwitch(
-                          key: Key('skill-enabled-${e.skill.name}'),
-                          value: e.enabled,
-                          onChange: (v) => ref
-                              .read(servicesProvider)
-                              .skills
-                              .setEnabled(e.skill.name, v),
+            ),
+            const SizedBox(height: 8),
+            if (entries.isNotEmpty)
+              FTileGroup(
+                children: [
+                  for (final e in entries)
+                    FTile(
+                      prefix: Icon(
+                        e.skill.builtIn
+                            ? FLucideIcons.sparkles
+                            : FLucideIcons.puzzle,
+                      ),
+                      title: Text(e.skill.title),
+                      subtitle: Text(
+                        '/${e.skill.name}${e.skill.builtIn ? ' · 内置' : ''}'
+                        '${e.skill.modelInvocable ? '' : ' · 仅手动启用'}\n${e.skill.description}',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPress: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => SkillDetailScreen(skill: e.skill),
                         ),
                       ),
-                  ],
-                ),
-            ],
-          ),
+                      suffix: FSwitch(
+                        key: Key('skill-enabled-${e.skill.name}'),
+                        value: e.enabled,
+                        onChange: (v) => ref
+                            .read(servicesProvider)
+                            .skills
+                            .setEnabled(e.skill.name, v),
+                      ),
+                    ),
+                ],
+              ),
+          ],
         ),
       ),
     ),
@@ -245,74 +242,71 @@ class SkillDetailScreen extends ConsumerWidget {
           ],
         ),
       ],
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
+      body: ContentLayout(
+        maxWidth: 900,
+        builder: (_, inset) => ListView(
+          padding: inset + const EdgeInsets.all(20),
+          children: [
+            Text(
+              '/${skill.name}',
+              style: theme.typography.body.sm.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(skill.description),
+            if (skill.license.isNotEmpty || skill.compatibility.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  [
+                    if (skill.license.isNotEmpty) '许可：${skill.license}',
+                    if (skill.compatibility.isNotEmpty)
+                      '环境：${skill.compatibility}',
+                  ].join(' · '),
+                  style: muted,
+                ),
+              ),
+            for (final d in skill.diagnostics)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: FAlert(
+                  icon: const Icon(FLucideIcons.info),
+                  title: Text(d),
+                ),
+              ),
+            const FDivider(),
+            SelectableText(skill.body, style: const TextStyle(height: 1.6)),
+            if (skill.files.isNotEmpty ||
+                skill.unsupportedFiles.isNotEmpty) ...[
+              const FDivider(),
               Text(
-                '/${skill.name}',
-                style: theme.typography.body.sm.copyWith(
+                '附带文件',
+                style: theme.typography.body.md.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(skill.description),
-              if (skill.license.isNotEmpty || skill.compatibility.isNotEmpty)
+              if (skill.files.isNotEmpty)
+                FAccordion(
+                  children: [
+                    for (final e in skill.files.entries)
+                      FAccordionItem(
+                        title: Text(e.key),
+                        child: SelectableText(e.value),
+                      ),
+                  ],
+                ),
+              for (final path in skill.unsupportedFiles)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    [
-                      if (skill.license.isNotEmpty) '许可：${skill.license}',
-                      if (skill.compatibility.isNotEmpty)
-                        '环境：${skill.compatibility}',
-                    ].join(' · '),
-                    style: muted,
+                  child: FTile(
+                    prefix: const Icon(FLucideIcons.fileX),
+                    title: Text(path),
+                    subtitle: const Text('脚本或二进制文件，不会读取或执行'),
                   ),
                 ),
-              for (final d in skill.diagnostics)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: FAlert(
-                    icon: const Icon(FLucideIcons.info),
-                    title: Text(d),
-                  ),
-                ),
-              const FDivider(),
-              SelectableText(skill.body, style: const TextStyle(height: 1.6)),
-              if (skill.files.isNotEmpty ||
-                  skill.unsupportedFiles.isNotEmpty) ...[
-                const FDivider(),
-                Text(
-                  '附带文件',
-                  style: theme.typography.body.md.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (skill.files.isNotEmpty)
-                  FAccordion(
-                    children: [
-                      for (final e in skill.files.entries)
-                        FAccordionItem(
-                          title: Text(e.key),
-                          child: SelectableText(e.value),
-                        ),
-                    ],
-                  ),
-                for (final path in skill.unsupportedFiles)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: FTile(
-                      prefix: const Icon(FLucideIcons.fileX),
-                      title: Text(path),
-                      subtitle: const Text('脚本或二进制文件，不会读取或执行'),
-                    ),
-                  ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -397,66 +391,62 @@ class _SkillEditState extends ConsumerState<SkillEditScreen> {
     ],
     body: Form(
       key: _form,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-            children: [
-              FTextFormField(
-                key: const Key('skill-name'),
-                control: FTextFieldControl.managed(controller: _name),
-                label: const Text('名称（name）'),
-                description: const Text(
-                  '小写字母、数字和连字符，例如 villain-voice；对话里用 /名称 启用',
-                ),
-                validator: (v) {
-                  final value = v?.trim() ?? '';
-                  if (!RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(value)) {
-                    return '只能包含小写字母、数字和单个连字符';
-                  }
-                  return value.length > 64 ? '最多 64 个字符' : null;
-                },
+      child: ContentLayout(
+        maxWidth: 900,
+        builder: (_, inset) => ListView(
+          padding: inset + const EdgeInsets.fromLTRB(20, 16, 20, 40),
+          children: [
+            FTextFormField(
+              key: const Key('skill-name'),
+              control: FTextFieldControl.managed(controller: _name),
+              label: const Text('名称（name）'),
+              description: const Text(
+                '小写字母、数字和连字符，例如 villain-voice；对话里用 /名称 启用',
               ),
-              const SizedBox(height: 16),
-              FTextFormField(
-                control: FTextFieldControl.managed(controller: _title),
-                label: const Text('显示名称（可选）'),
+              validator: (v) {
+                final value = v?.trim() ?? '';
+                if (!RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(value)) {
+                  return '只能包含小写字母、数字和单个连字符';
+                }
+                return value.length > 64 ? '最多 64 个字符' : null;
+              },
+            ),
+            const SizedBox(height: 16),
+            FTextFormField(
+              control: FTextFieldControl.managed(controller: _title),
+              label: const Text('显示名称（可选）'),
+            ),
+            const SizedBox(height: 16),
+            FTextFormField(
+              key: const Key('skill-description'),
+              control: FTextFieldControl.managed(controller: _description),
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 1024,
+              label: const Text('简介（description）'),
+              description: const Text('写清做什么、什么时候用。助手靠它判断是否加载这个技能'),
+              validator: (v) => (v?.trim().isEmpty ?? true) ? '请填写简介' : null,
+            ),
+            const SizedBox(height: 16),
+            FTile(
+              title: const Text('允许助手自动使用'),
+              subtitle: const Text('关闭后只能在对话里输入 /名称 手动启用'),
+              suffix: FSwitch(
+                value: _modelInvocable,
+                onChange: (v) => setState(() => _modelInvocable = v),
               ),
-              const SizedBox(height: 16),
-              FTextFormField(
-                key: const Key('skill-description'),
-                control: FTextFieldControl.managed(controller: _description),
-                minLines: 2,
-                maxLines: 4,
-                maxLength: 1024,
-                label: const Text('简介（description）'),
-                description: const Text('写清做什么、什么时候用。助手靠它判断是否加载这个技能'),
-                validator: (v) => (v?.trim().isEmpty ?? true) ? '请填写简介' : null,
-              ),
-              const SizedBox(height: 16),
-              FTile(
-                title: const Text('允许助手自动使用'),
-                subtitle: const Text('关闭后只能在对话里输入 /名称 手动启用'),
-                suffix: FSwitch(
-                  value: _modelInvocable,
-                  onChange: (v) => setState(() => _modelInvocable = v),
-                ),
-                onPress: () =>
-                    setState(() => _modelInvocable = !_modelInvocable),
-              ),
-              const SizedBox(height: 16),
-              FTextFormField(
-                key: const Key('skill-body'),
-                control: FTextFieldControl.managed(controller: _body),
-                minLines: 12,
-                maxLines: null,
-                label: const Text('说明（SKILL.md 正文，Markdown）'),
-                validator: (v) => (v?.trim().isEmpty ?? true) ? '请填写说明' : null,
-              ),
-            ],
-          ),
+              onPress: () => setState(() => _modelInvocable = !_modelInvocable),
+            ),
+            const SizedBox(height: 16),
+            FTextFormField(
+              key: const Key('skill-body'),
+              control: FTextFieldControl.managed(controller: _body),
+              minLines: 12,
+              maxLines: null,
+              label: const Text('说明（SKILL.md 正文，Markdown）'),
+              validator: (v) => (v?.trim().isEmpty ?? true) ? '请填写说明' : null,
+            ),
+          ],
         ),
       ),
     ),
