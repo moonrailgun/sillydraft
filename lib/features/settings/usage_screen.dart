@@ -12,6 +12,8 @@ final usageProvider =
       ({
         List<UsageTotal> months,
         List<UsageTotal> models,
+        List<UsageTotal> tools,
+        List<UsageTotal> books,
         List<UsageTotal> days,
       })
     >((ref) async {
@@ -20,6 +22,8 @@ final usageProvider =
       return (
         months: await repo.usageByMonth(),
         models: await repo.usageByModel(),
+        tools: await repo.usageByTool(),
+        books: await repo.usageByBook(),
         days: await repo.usageByDay(),
       );
     });
@@ -53,11 +57,17 @@ class UsageScreen extends ConsumerWidget {
       children: [
         for (final t in totals)
           FTile(
-            title: Text(t.label),
+            title: Text(
+              t.label,
+              overflow: TextOverflow.visible,
+              softWrap: true,
+            ),
             subtitle: Text(
               '${t.requests} 次${t.unpriced == 0 ? '' : '（${t.unpriced} 次无价格）'}'
               ' · 输入 ${t.estimated ? '≈' : ''}${t.inputTokens}'
               ' · 输出 ${t.estimated ? '≈' : ''}${t.outputTokens} token',
+              overflow: TextOverflow.visible,
+              softWrap: true,
             ),
             suffix: Text(
               t.unpriced == t.requests
@@ -83,10 +93,15 @@ class UsageScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 group('按月', usage.months),
                 const SizedBox(height: 24),
+                group('按工具', usage.tools),
+                const SizedBox(height: 24),
+                group('按书籍', usage.books),
+                const SizedBox(height: 24),
                 group('按连接与模型', usage.models),
               ],
               const SizedBox(height: 16),
               Text(
+                '工具按正文生成、写作助手、生图等用途分类。工具与书籍均为累计统计；历史记录缺少用途时列为“未分类工具”，未记录书籍或全局工具的请求列为“未归属书籍”。\n\n'
                 '金额为美元。上游返回了成本就用上游的；没有时，OpenRouter、ElectronHub、Chutes 按 SillyTavern 的做法用模型列表单价乘 token 数；其余请求只记 token，算作“无价格”，不计入金额。上游没返回 token 数，或请求中途失败、取消时，token 按字数估算，标为“≈”。',
                 style: theme.typography.body.sm.copyWith(
                   color: theme.colors.mutedForeground,

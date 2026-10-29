@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
-
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +46,8 @@ void main() {
               (_) async => (
                 months: [models.first],
                 models: models,
+                tools: <UsageTotal>[],
+                books: <UsageTotal>[],
                 days: <UsageTotal>[],
               ),
             ),
@@ -202,8 +204,98 @@ void main() {
     expect(find.text('2 次 · 输入 2000 · 输出 400 token'), findsOneWidget);
     expect(find.text('网关 · flash'), findsOneWidget);
     expect(find.text('1 次（1 次无价格） · 输入 ≈10 · 输出 ≈5 token'), findsOneWidget);
-    // Per month the same three requests.
-    expect(find.text('3 次（1 次无价格） · 输入 ≈2010 · 输出 ≈405 token'), findsOneWidget);
+    // Month, unclassified tool and unassigned book cover the same requests.
+    expect(
+      find.text('3 次（1 次无价格） · 输入 ≈2010 · 输出 ≈405 token'),
+      findsNWidgets(3),
+    );
+    expect(find.text('按工具'), findsOneWidget);
+    expect(find.text('按书籍'), findsOneWidget);
+    expect(find.text('未归属书籍'), findsOneWidget);
+  });
+
+  testWidgets('tool and book totals stay readable with long titles', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const bookTitle = '雾港来信：在漫长冬夜追寻失落灯塔的旅人';
+    UsageTotal total(String label, double cost) => UsageTotal(
+      label: label,
+      requests: 2,
+      inputTokens: 12345,
+      outputTokens: 678,
+      cost: cost,
+      unpriced: 0,
+      estimated: false,
+      costEstimated: false,
+    );
+    for (final width in [390.0, 1000.0]) {
+      tester.view.physicalSize = Size(width, 1000);
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              usageProvider.overrideWith(
+                (_) async => (
+                  months: [total('2026-10', 3)],
+                  models: [total('测试连接 · 模型', 3)],
+                  tools: [total('正文生成', 1), total('生图', 2)],
+                  books: [total(bookTitle, 2.5), total('第二本书', 0.5)],
+                  days: <UsageTotal>[],
+                ),
+              ),
+            ],
+            child: testHost(
+              Builder(
+                builder: (context) => MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: TextScaler.linear(width < 400 ? 1.5 : 1),
+                  ),
+                  child: const UsageScreen(),
+                ),
+              ),
+              brightness: brightness,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final scrollable = find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        for (final (label, price) in [
+          ('正文生成', '\$1.00'),
+          ('生图', '\$2.00'),
+          (bookTitle, '\$2.50'),
+          ('第二本书', '\$0.5000'),
+        ]) {
+          await tester.scrollUntilVisible(
+            find.text(label),
+            150,
+            scrollable: scrollable,
+          );
+          await tester.pumpAndSettle();
+          final row = find.ancestor(
+            of: find.text(label),
+            matching: find.byType(FTile),
+          );
+          expect(
+            find.descendant(of: row, matching: find.text(price)),
+            findsOneWidget,
+          );
+          for (final paragraph in tester.renderObjectList<RenderParagraph>(
+            find.descendant(of: row, matching: find.byType(RichText)),
+          )) {
+            expect(paragraph.didExceedMaxLines, isFalse);
+          }
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      }
+    }
   });
 
   testWidgets(
@@ -236,6 +328,8 @@ void main() {
               (_) async => (
                 months: [total(date(0).substring(0, 7), unpriced: 1)],
                 models: [total('网关 · m')],
+                tools: [total('正文生成')],
+                books: [total('测试作品')],
                 days: [total(date(-2)), total(date(0), unpriced: 1)],
               ),
             ),
@@ -270,6 +364,8 @@ void main() {
             (_) async => (
               months: <UsageTotal>[],
               models: <UsageTotal>[],
+              tools: <UsageTotal>[],
+              books: <UsageTotal>[],
               days: <UsageTotal>[],
             ),
           ),
