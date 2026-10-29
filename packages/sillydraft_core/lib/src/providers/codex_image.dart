@@ -7,7 +7,7 @@ import 'local_cli.dart';
 import 'provider.dart';
 
 /// Uses Codex's native image tool and subscription, not an API key or shell skill.
-/// Protocol: codex-cli 0.163.0 `app-server generate-json-schema --experimental`.
+/// Protocol: codex-cli 0.165.0 `app-server generate-json-schema --experimental`.
 final class CodexImageProvider implements ImageProvider {
   CodexImageProvider({required this.config, CliLocator? locator})
     : _locator = locator ?? CliLocator.shared;
@@ -188,7 +188,13 @@ final class CodexImageProvider implements ImageProvider {
     }
 
     GeneratedImage? image;
-    Map<String, dynamic> usage = {};
+    final tokenUsage = <Map>[];
+    final reroutes = <Map>[];
+    final codex = <String, dynamic>{
+      'token_usage': tokenUsage,
+      'model_reroutes': reroutes,
+    };
+    Map<String, dynamic> usage = {'codex': codex};
     try {
       cancel.check();
       send('initialize', {
@@ -263,6 +269,9 @@ final class CodexImageProvider implements ImageProvider {
               if (threadId is! String || threadId.isEmpty) {
                 throw const ProviderException('codex_image', 'Codex 没有返回生图会话');
               }
+              usage['model'] = result['model'];
+              codex['model_provider'] = result['modelProvider'];
+              codex['service_tier'] = result['serviceTier'];
               send('turn/start', {
                 'threadId': threadId,
                 'input': [
@@ -298,14 +307,29 @@ final class CodexImageProvider implements ImageProvider {
             image = _image(item);
           }
         } else if (method == 'thread/tokenUsage/updated') {
-          final last = (params['tokenUsage'] as Map?)?['last'];
-          if (last is Map) {
+          final tokens = params['tokenUsage'];
+          if (tokens is Map) {
+            tokenUsage.add(tokens);
+            final counts = tokens['total'] ?? tokens['last'];
             usage = {
-              if (last['inputTokens'] is num)
-                'input_tokens': last['inputTokens'],
-              if (last['outputTokens'] is num)
-                'output_tokens': last['outputTokens'],
+              'model': usage['model'],
+              'codex': codex,
+              if (counts is Map)
+                for (final (from, to) in const [
+                  ('inputTokens', 'input_tokens'),
+                  ('cachedInputTokens', 'cached_input_tokens'),
+                  ('cacheWriteInputTokens', 'cache_write_input_tokens'),
+                  ('outputTokens', 'output_tokens'),
+                  ('reasoningOutputTokens', 'reasoning_output_tokens'),
+                ])
+                  if (counts[from] is num) to: counts[from],
             };
+          }
+        } else if (method == 'model/rerouted') {
+          reroutes.add(params);
+          if (params['toModel'] case final String model) {
+            usage['model'] =
+                '${usage['model'] ?? params['fromModel']} → $model';
           }
         } else if (method == 'turn/completed') {
           final turn = params['turn'] as Map?;

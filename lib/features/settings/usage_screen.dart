@@ -7,6 +7,8 @@ import '../../app/widgets.dart';
 
 part 'usage_chart.dart';
 
+const _codexCostNote = 'Codex 对话模型估算，未含生图工具费';
+
 final usageProvider =
     FutureProvider<
       ({
@@ -38,12 +40,18 @@ String dollars(double cost) =>
   final now = DateTime.now();
   final current = '${now.year}-${now.month.toString().padLeft(2, '0')}';
   final total = months.fold(0.0, (sum, m) => sum + m.cost);
-  final month = months.where((m) => m.label == current).firstOrNull?.cost ?? 0;
+  final month = months.where((m) => m.label == current).firstOrNull;
   final unpriced = months.fold(0, (sum, m) => sum + m.unpriced);
   final estimated = months.any((m) => m.costEstimated) ? '≈' : '';
+  final notes = [
+    if (months.any((m) => m.includesCodexConversation)) _codexCostNote,
+    if (unpriced > 0) '另有 $unpriced 次请求没有价格',
+  ];
   return (
-    title: '累计 $estimated${dollars(total)} · 本月 ${dollars(month)}',
-    note: unpriced == 0 ? null : '另有 $unpriced 次请求没有价格',
+    title:
+        '累计 $estimated${dollars(total)} · 本月 '
+        '${month?.costEstimated == true ? '≈' : ''}${dollars(month?.cost ?? 0)}',
+    note: notes.isEmpty ? null : notes.join('\n'),
   );
 }
 
@@ -65,7 +73,8 @@ class UsageScreen extends ConsumerWidget {
             subtitle: Text(
               '${t.requests} 次${t.unpriced == 0 ? '' : '（${t.unpriced} 次无价格）'}'
               ' · 输入 ${t.estimated ? '≈' : ''}${t.inputTokens}'
-              ' · 输出 ${t.estimated ? '≈' : ''}${t.outputTokens} token',
+              ' · 输出 ${t.estimated ? '≈' : ''}${t.outputTokens} token'
+              '${t.includesCodexConversation ? '\n$_codexCostNote' : ''}',
               overflow: TextOverflow.visible,
               softWrap: true,
             ),
@@ -102,7 +111,7 @@ class UsageScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Text(
                 '工具按正文生成、写作助手、生图等用途分类。工具与书籍均为累计统计；历史记录缺少用途时列为“未分类工具”，未记录书籍或全局工具的请求列为“未归属书籍”。\n\n'
-                '金额为美元。上游返回了成本就用上游的；没有时，OpenRouter、ElectronHub、Chutes 按 SillyTavern 的做法用模型列表单价乘 token 数；其余请求只记 token，算作“无价格”，不计入金额。上游没返回 token 数，或请求中途失败、取消时，token 按字数估算，标为“≈”。',
+                '金额为美元。优先使用上游返回的成本；没有时，OpenRouter、ElectronHub、Chutes 按 SillyTavern 的做法用模型列表单价乘 token 数。Codex 生图按已知模型的标准 API 单价估算对话费用，标为“≈”，未含生图工具费，也不代表订阅实际扣费；未知模型或用量不完整时仍显示“无价格”。其余没有价格的请求不计入金额。文本请求缺少 token 数或输出后中断时，token 按字数估算并标为“≈”。',
                 style: theme.typography.body.sm.copyWith(
                   color: theme.colors.mutedForeground,
                 ),

@@ -27,7 +27,8 @@ enum _UsageMetric {
         ? day.costEstimated
         : this == tokens && day.estimated;
     return '${estimated ? '≈' : ''}${format(value(day))}'
-        '${this == cost && day.unpriced > 0 ? ' · ${day.unpriced} 次无价格' : ''}';
+        '${this == cost && day.unpriced > 0 ? ' · ${day.unpriced} 次无价格' : ''}'
+        '${this == cost && day.includesCodexConversation ? ' · $_codexCostNote' : ''}';
   }
 }
 

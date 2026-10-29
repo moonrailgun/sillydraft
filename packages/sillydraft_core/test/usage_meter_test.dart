@@ -330,6 +330,49 @@ void main() {
     expect(total.unpriced, 1);
   });
 
+  test('upstream image cost wins over a Codex conversation estimate', () async {
+    final tokens = {
+      'inputTokens': 10000,
+      'cachedInputTokens': 2000,
+      'outputTokens': 1000,
+    };
+    final usage = {
+      'model': 'gpt-6-astra',
+      'input_tokens': 10000,
+      'output_tokens': 1000,
+      'codex': {
+        'model_provider': 'openai',
+        'token_usage': [
+          {'last': tokens, 'total': tokens},
+        ],
+      },
+    };
+    for (final cost in [0.0, 0.25]) {
+      final written = repo.changes.first;
+      await UsageMeter(repo)
+          .image(
+            _Painter(
+              config: ModelConnection(
+                id: 'codex',
+                name: 'Codex',
+                baseUrl: '',
+                model: 'default',
+                protocol: ModelProtocol.codexCli,
+              ),
+              usage: {...usage, 'cost': cost},
+            ),
+          )
+          .generate(ImageRequest(prompt: '灯塔'));
+      await written;
+    }
+    final total = (await repo.usageByModel()).single;
+    expect(total.label, 'Codex · gpt-6-astra');
+    expect(total.requests, 2);
+    expect(total.cost, 0.25);
+    expect(total.costEstimated, isFalse);
+    expect(total.includesCodexConversation, isFalse);
+  });
+
   test('remote runner adapters can still confirm cancellation', () {
     final runner = ModelConnection(
       id: 'r',

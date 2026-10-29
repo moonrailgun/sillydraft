@@ -6,7 +6,7 @@ enum CostSource {
   /// ST's model-list prices for the source, times the tokens.
   stPricing,
 
-  /// Neither: the tokens are kept, the cost is not counted.
+  /// Other or unavailable; any estimate is described in the usage metadata.
   unknown,
 }
 
@@ -21,6 +21,7 @@ final class UsageTotal {
     required this.unpriced,
     required this.estimated,
     required this.costEstimated,
+    this.includesCodexConversation = false,
   });
   final String label;
   final int requests, inputTokens, outputTokens;
@@ -34,6 +35,9 @@ final class UsageTotal {
   /// Whether any token count in it is an estimate.
   final bool estimated;
 
-  /// Whether [cost] includes ST prices times estimated tokens.
+  /// Whether [cost] includes estimated tokens or an API-equivalent cost.
   final bool costEstimated;
+
+  /// Some image requests only include their conversation-model estimate.
+  final bool includesCodexConversation;
 }

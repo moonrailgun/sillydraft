@@ -8,6 +8,7 @@ extension UsageOperations on StoryRepository {
     required String kind,
     String? purpose,
     String? branchId,
+    String? model,
     String? executionId,
     int? inputTokens,
     int? outputTokens,
@@ -34,7 +35,7 @@ extension UsageOperations on StoryRepository {
           connection.id,
           connection.name,
           connection.protocol.name,
-          connection.model,
+          model ?? connection.model,
           kind,
           inputTokens,
           outputTokens,
@@ -105,6 +106,11 @@ extension UsageOperations on StoryRepository {
 
   static const _bookId = "json_extract(usage_json, '\$.sillydraft.bookId')";
 
+  // Keep the existing database's cost_source constraint; estimates carry scope in JSON.
+  static const _codexEstimate =
+      "cost_source = 'unknown' AND cost_usd IS NOT NULL "
+      "AND json_extract(usage_json, '\$.cost_estimate.scope') = 'conversation_only'";
+
   Future<List<UsageTotal>> _usageTotals(
     String label,
     String order, {
@@ -116,7 +122,9 @@ extension UsageOperations on StoryRepository {
       'COALESCE(SUM(output_tokens), 0) AS output, '
       'COALESCE(SUM(cost_usd), 0.0) AS cost, '
       'SUM(cost_usd IS NULL) AS unpriced, MAX(tokens_estimated) AS estimated, '
-      "MAX(tokens_estimated AND cost_source = 'stPricing') AS cost_estimated "
+      "MAX((tokens_estimated AND cost_source = 'stPricing') OR "
+      '($_codexEstimate)) AS cost_estimated, '
+      'MAX($_codexEstimate) AS codex_conversation '
       'FROM usage_records GROUP BY $groupBy ORDER BY $order',
     ))
       UsageTotal(
@@ -128,6 +136,7 @@ extension UsageOperations on StoryRepository {
         unpriced: r['unpriced'] as int,
         estimated: r['estimated'] == 1,
         costEstimated: r['cost_estimated'] == 1,
+        includesCodexConversation: r['codex_conversation'] == 1,
       ),
   ];
 }

@@ -268,7 +268,7 @@ HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读
 
 ## Codex 订阅生图连接
 
-这是 SillyDraft 的独立扩展，不对应 ST 预设行为。桌面 Codex 连接同时提供文本和插画能力；文本仍使用 `codex exec`，插画通过 `codex app-server --stdio` 的 `thread/start`、`turn/start` 和 `item/completed` 中的 `imageGeneration` 结果接入现有插画任务。协议依据 `codex-cli 0.163.0` 导出的实验性 JSON Schema（`app-server generate-json-schema --experimental`）以及 [Codex 生图说明](https://learn.chatgpt.com/docs/image-generation)。使用 CLI 自身登录状态，不读取或复制登录凭据。
+这是 SillyDraft 的独立扩展，不对应 ST 预设行为。桌面 Codex 连接同时提供文本和插画能力；文本仍使用 `codex exec`，插画通过 `codex app-server --stdio` 的 `thread/start`、`turn/start` 和 `item/completed` 中的 `imageGeneration` 结果接入现有插画任务。协议依据 `codex-cli 0.165.0` 导出的实验性 JSON Schema（`app-server generate-json-schema --experimental`）以及 [Codex 生图说明](https://learn.chatgpt.com/docs/image-generation)。使用 CLI 自身登录状态，不读取或复制登录凭据。
 
 支持单图生成及 PNG/JPEG/WebP 参考图；只接收协议返回的内联图片，不读取模型返回的任意文件路径。尺寸、质量、负面提示词作为提示要求传递，无法保证精确参数；其余参数报错，不冒充 Images API 兼容。生成使用临时会话、只读沙箱，禁用 shell、MCP、插件和 hooks；失败、取消、超时均不自动重试。没有实际生图结果时明确报错，文本连接测试不等于生图验证。协议回归见 `codex_image_test.dart`，设置与任务选用见 `local_subscription_test.dart`，测试不调用付费模型。
 
@@ -284,6 +284,19 @@ NovelAI 文生图对齐固定基线 [SillyTavern 1.19.0 的 NovelAI 图片接口
 
 ST 1.19.0 不记录实际花费，只在发送前给 OpenRouter、ElectronHub、Chutes 显示“最大提示成本”：用模型列表单价乘最大输出与（最大上下文 − 最大输出）（[`calculateOpenRouterCost` 等](https://github.com/SillyTavern/SillyTavern/blob/06bde939fb1e9c4c8d8641d810f0a916b5bce127/public/scripts/openai.js#L1803-L1947)）。单价来自各来源的 `/models`：OpenRouter 的 `pricing.prompt` / `pricing.completion` 按每 token，ElectronHub 的 `pricing.input` / `pricing.output` 与 Chutes 的 `pricing.prompt` / `pricing.completion` 按每百万 token。
 
-SillyDraft 每次请求结束记一笔（`usage_meter.dart`），设置 → 用量与成本汇总。取值顺序：响应里的 `usage.cost`（OpenRouter 约定；`is_byok` 时加上 `cost_details.upstream_inference_cost`）或 Claude Code 的 `total_cost_usd`；没有时，连接主机是上述三个来源之一，就按 ST 的字段与单位取单价，乘这次的实际 token 数，而不是 ST 的上限；其余记为“无价格”，只记 token，不计入金额。成本在记账时冻结，单价之后变化不重算。
+SillyDraft 在请求成功后记一笔（`usage_meter.dart`），设置 → 用量与成本汇总。取值顺序：响应里的 `usage.cost`（OpenRouter 约定；`is_byok` 时加上 `cost_details.upstream_inference_cost`）或 Claude Code 的 `total_cost_usd`；没有时，文本连接主机是上述三个来源之一，就按 ST 的字段与单位取单价，乘这次的实际 token 数，而不是 ST 的上限；Codex 生图采用下述对话模型估算；其余记为“无价格”，只记 token，不计入金额。成本在记账时冻结，单价之后变化不重算，历史无价格记录也不补算。
 
-缺口：其他来源（OpenAI、Claude、DeepSeek、自定义网关、远程执行器背后的上游、Codex、NovelAI、ComfyUI）没有单价，除非上游自己返回成本；不发 `stream_options.include_usage`（ST 也不发），上游没返回 token 数或请求中途失败、取消时用 `estimateTokens` 估算，不是模型 tokenizer；与 ST 一样不计缓存折扣、推理、按次和图片费用；只有美元。
+Codex 生图估算是 SillyDraft 的独立扩展。协议核对 `codex-cli 0.165.0` 的实验性 Schema 和 [App Server 说明](https://learn.chatgpt.com/docs/app-server)：从 `thread/start` 根响应保存实际 `model`、`modelProvider`、`serviceTier`；从 `thread/tokenUsage/updated` 保存累计用量与每次调用的 `last`，保留缓存读写和推理字段。累计数用于统计，按每次调用计价；重复累计通知不重复收费，`total` 增量与 `last` 不一致、数据缺失或非法、非 OpenAI 提供方、未知精确模型 ID、发生 `model/rerouted` 时不估价。推理 token 已含在输出中，不另加一次。`imageGeneration` 没有提供图片工具的用量或费用，不能据此还原完整图片成本。
+
+以下为 2026-10-29 核对的标准 API 单价，单位美元 / 百万 token，来源为 [OpenAI 定价](https://developers.openai.com/api/docs/pricing)、各模型页及[提示缓存说明](https://developers.openai.com/api/docs/guides/prompt-caching)：
+
+| 精确模型 ID | 普通输入 | 缓存读取 | 缓存写入（30 分钟参考） | 输出 |
+|---|---:|---:|---:|---:|
+| [gpt-6-astra](https://developers.openai.com/api/docs/models/gpt-6-astra) | 10 | 1 | 12.5 | 50 |
+| [gpt-6.1-sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 2 | 0.1 | 2.5 | 10 |
+| [gpt-6.1-terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra) | 1 | 0.05 | 1.25 | 5 |
+| [gpt-6-luna](https://developers.openai.com/api/docs/models/gpt-6-luna) | 0.1 | 0.01 | 0.125 | 0.5 |
+
+单次模型调用输入超过 272,000 token 时，普通输入与缓存读写单价乘 2，输出乘 1.5；不能用整次会话累计输入触发加价。普通输入为总输入减去缓存读取和写入。Codex 未提供缓存保留时长，因此写入采用 30 分钟参考价格；始终按标准 API 价折算，不还原其他服务档位、订阅额度或实际账单。原始用量、实际模型、服务档位、单价版本、各项单价与 `conversation_only` 范围一起存入现有 `usage_json`，无需迁移数据库。累计、本月、分组与每日成本均显示“≈”及“Codex 对话模型估算，未含生图工具费”。回归见 `codex_image_test.dart`、`usage_meter_test.dart`、`usage_store_test.dart` 和根目录的 `test/usage_screen_test.dart`，仅使用本地假协议，不调用付费模型。
+
+缺口：其他来源（OpenAI、Claude、DeepSeek、自定义网关、远程执行器背后的上游、Codex 文本、NovelAI、ComfyUI）没有单价，除非上游自己返回成本；不发 `stream_options.include_usage`（ST 也不发）。文本请求缺少 token 数或已有输出后中断时用 `estimateTokens` 估算，不是模型 tokenizer；失败、取消的生图不记账。ST 文本单价路径不另外处理缓存折扣或推理价格；没有图片工具和按次费用估算；只有美元。

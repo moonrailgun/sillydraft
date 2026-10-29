@@ -8,6 +8,7 @@ import '../model/usage.dart';
 import '../st/import_types.dart' show CompatibilityDiagnostic;
 import '../st/world_book_engine.dart' show estimateTokens;
 import '../storage/story_repository.dart';
+import 'codex_pricing.dart';
 import 'image_provider.dart';
 import 'provider.dart';
 import 'remote_provider.dart' show RemoteJobControl;
@@ -139,7 +140,7 @@ double? upstreamCost(Map<String, dynamic> usage) {
 }
 
 /// Records every request made through the providers it wraps: the cost the
-/// upstream reported, else ST's list price times the tokens, else none.
+/// upstream reported, else ST's text prices or Codex image conversation estimate.
 final class UsageMeter {
   UsageMeter(this._repository, {this._price});
   final StoryRepository _repository;
@@ -176,6 +177,15 @@ final class UsageMeter {
       final output = counted.output ?? guess?.output;
       var cost = upstreamCost(usage);
       var source = cost == null ? CostSource.unknown : CostSource.upstream;
+      final codexImage =
+          kind == 'image' && connection.protocol == ModelProtocol.codexCli;
+      if (cost == null && codexImage) {
+        final pricing = codexConversationEstimate(usage);
+        if (pricing != null) {
+          cost = pricing['cost_usd'] as double;
+          usage = {...usage, 'cost_estimate': pricing};
+        }
+      }
       if (cost == null && kind == 'text' && input != null && output != null) {
         ModelPrice? price;
         try {
@@ -190,6 +200,9 @@ final class UsageMeter {
       }
       await _repository.recordUsage(
         connection: connection,
+        model: codexImage && usage['model'] is String
+            ? usage['model'] as String
+            : null,
         kind: kind,
         purpose: purpose,
         branchId: branchId,

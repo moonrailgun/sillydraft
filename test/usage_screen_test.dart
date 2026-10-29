@@ -298,6 +298,108 @@ void main() {
     }
   });
 
+  testWidgets('Codex estimates disclose their scope in every cost view', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = StoryRepository.memory();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await repo.close();
+    });
+    final connection = ModelConnection(
+      id: 'codex',
+      name: 'Codex',
+      baseUrl: '',
+      model: 'gpt-6-astra',
+      protocol: ModelProtocol.codexCli,
+    );
+    final usage = await tester.runAsync(() async {
+      await repo.recordUsage(
+        connection: connection,
+        kind: 'image',
+        inputTokens: 30000,
+        outputTokens: 3000,
+        costUsd: 0.297,
+        source: CostSource.unknown,
+        usage: {
+          'cost_estimate': {'scope': 'conversation_only'},
+        },
+      );
+      await repo.recordUsage(
+        connection: connection.withModel('unknown'),
+        kind: 'image',
+        source: CostSource.unknown,
+      );
+      return (
+        months: await repo.usageByMonth(),
+        models: await repo.usageByModel(),
+        tools: await repo.usageByTool(),
+        books: await repo.usageByBook(),
+        days: await repo.usageByDay(),
+      );
+    });
+    const scope = 'Codex 对话模型估算，未含生图工具费';
+    final summary = usageSummary(usage!.months);
+    expect(summary.title, '累计 ≈\$0.2970 · 本月 ≈\$0.2970');
+    expect(summary.note, contains(scope));
+    expect(summary.note, contains('另有 1 次请求没有价格'));
+    for (final brightness in Brightness.values) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [usageProvider.overrideWith((_) async => usage)],
+          child: testHost(
+            Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(1.5)),
+                child: const UsageScreen(),
+              ),
+            ),
+            brightness: brightness,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('今日 · ≈\$0.2970 · 1 次无价格 · $scope'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('按连接与模型'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      final modelRow = find.ancestor(
+        of: find.text('Codex · gpt-6-astra'),
+        matching: find.byType(FTile),
+      );
+      expect(
+        find.descendant(of: modelRow, matching: find.text('≈\$0.2970')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('1 次 · 输入 30000 · 输出 3000 token\n$scope'),
+        findsOneWidget,
+      );
+      for (final paragraph in tester.renderObjectList<RenderParagraph>(
+        find.descendant(
+          of: find.textContaining(scope),
+          matching: find.byType(RichText),
+        ),
+      )) {
+        expect(paragraph.didExceedMaxLines, isFalse);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets(
     'daily chart fills gaps and distinguishes unknown and zero costs',
     (tester) async {
