@@ -1,0 +1,235 @@
+<style>
+  #sd-task-preview { width: 100%; }
+  #sd-task-preview .sd-demo-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 100px 16px 0; }
+  #sd-task-preview .sd-app {
+    --sd-bg: light-dark(#ffffff, #0b0b0b);
+    --sd-panel: light-dark(#f7f7f7, #171717);
+    --sd-text: light-dark(#181818, #f2f2f2);
+    --sd-muted: light-dark(#606060, #aaa);
+    --sd-line: light-dark(#e3e3e3, #303030);
+    --sd-button: light-dark(#181818, #f2f2f2);
+    --sd-button-text: light-dark(#fff, #181818);
+    --sd-warning: light-dark(#8a5100, #edbe76);
+    --sd-error: light-dark(#b52828, #ff9e9e);
+    color: var(--sd-text); background: var(--sd-bg);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    border: 1px solid var(--sd-line); border-radius: 12px; overflow: clip;
+  }
+  #sd-task-preview .sd-app * { box-sizing: border-box; }
+  #sd-task-preview .sd-titlebar { display: flex; justify-content: center; align-items: center; padding: 12px 16px; background: var(--sd-panel); border-bottom: 1px solid var(--sd-line); color: var(--sd-muted); font-size: 12px; }
+  #sd-task-preview .sd-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; }
+  #sd-task-preview .sd-nav strong { font-size: 17px; font-weight: 600; }
+  #sd-task-preview .sd-content { max-width: 840px; margin: auto; padding: 16px 24px 32px; }
+  #sd-task-preview .sd-context { color: var(--sd-muted); font-size: 12px; margin-bottom: 8px; }
+  #sd-task-preview .sd-request { margin: 0 0 20px; font-size: 20px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+  #sd-task-preview .sd-status { padding: 16px; border: 1px solid var(--sd-line); border-radius: 10px; background: var(--sd-panel); }
+  #sd-task-preview .sd-status-title { display: flex; gap: 9px; align-items: center; font-size: 16px; font-weight: 600; }
+  #sd-task-preview .sd-status p { margin: 8px 0 16px; }
+  #sd-task-preview .sd-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #sd-task-preview .sd-btn { border: 1px solid var(--sd-line); border-radius: 7px; background: var(--sd-bg); color: var(--sd-text); padding: 8px 13px; min-height: 40px; font: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; white-space: normal; }
+  #sd-task-preview .sd-btn.sd-primary { background: var(--sd-button); color: var(--sd-button-text); border-color: var(--sd-button); }
+  #sd-task-preview .sd-btn.sd-quiet { border-color: transparent; background: transparent; color: var(--sd-muted); }
+  #sd-task-preview .sd-btn:hover { filter: brightness(.93); }
+  #sd-task-preview .sd-meta { margin-top: 12px; font-size: 12px; color: var(--sd-muted); }
+  #sd-task-preview .sd-section { margin-top: 24px; }
+  #sd-task-preview .sd-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  #sd-task-preview .sd-heading h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  #sd-task-preview .sd-heading span { color: var(--sd-muted); font-size: 12px; }
+  #sd-task-preview .sd-events { list-style: none; margin: 0; padding: 0; }
+  #sd-task-preview .sd-events li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; align-items: start; }
+  #sd-task-preview .sd-events small { color: var(--sd-muted); font-size: 12px; }
+  #sd-task-preview .sd-symbol { text-align: center; }
+  #sd-task-preview .sd-current { font-weight: 600; }
+  #sd-task-preview .sd-note { color: var(--sd-muted); }
+  #sd-task-preview .sd-warning { color: var(--sd-warning); }
+  #sd-task-preview .sd-error { color: var(--sd-error); }
+  #sd-task-preview .sd-output { padding: 16px; background: var(--sd-panel); border-radius: 8px; white-space: pre-wrap; }
+  #sd-task-preview .sd-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--sd-line); border-radius: 8px; margin-top: 12px; }
+  #sd-task-preview .sd-result p { margin: 4px 0 0; font-size: 12px; color: var(--sd-muted); }
+  #sd-task-preview .sd-diagnostics { margin-top: 24px; border-top: 1px solid var(--sd-line); }
+  #sd-task-preview .sd-diagnostics summary { padding: 14px 0; color: var(--sd-muted); }
+  #sd-task-preview .sd-diagnostics details details { padding-left: 16px; }
+  #sd-task-preview .sd-diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; margin: 0 0 16px; background: var(--sd-panel); font: inherit; }
+  #sd-task-preview .sd-destination { margin: 12px 0 0; }
+  #sd-task-preview .sd-nav .sd-btn { min-width: 40px; }
+  #sd-task-preview [hidden] { display: none !important; }
+  @media (max-width: 560px) {
+    #sd-task-preview .sd-content { padding: 12px 16px 24px; }
+    #sd-task-preview .sd-nav { padding: 12px 16px; }
+    #sd-task-preview .sd-request { font-size: 18px; }
+    #sd-task-preview .sd-events li { gap: 8px; }
+    #sd-task-preview .sd-result { align-items: flex-start; flex-direction: column; gap: 12px; }
+    #sd-task-preview .sd-demo-controls { margin-right: 80px; }
+  }
+  @media (pointer: coarse) { #sd-task-preview .sd-btn { min-height: 44px; } }
+</style>
+<div id="sd-task-preview">
+  <div class="sd-demo-controls">
+    <label class="form-label" for="sd-demo-state">状态示意</label>
+    <select class="form-select" id="sd-demo-state">
+      <option value="running">正在生成</option>
+      <option value="confirmation">等待确认</option>
+      <option value="completed">全部完成</option>
+      <option value="failed">部分失败</option>
+      <option value="conflict">正文未写入</option>
+    </select>
+  </div>
+  <section class="sd-app" aria-label="SillyDraft 任务详情设计示意">
+    <div class="sd-titlebar">SillyDraft</div>
+    <header class="sd-nav">
+      <button class="sd-btn sd-quiet cursor-interaction" data-destination="返回进入任务前的页面" aria-label="返回" type="button"><i data-lucide="arrow-left" aria-hidden="true"></i></button>
+      <strong>任务详情</strong>
+      <span class="sd-note">任务</span>
+    </header>
+    <main class="sd-content">
+      <div class="sd-context">雾港来信 / 主线 / 第 12 章 · 编辑会话</div>
+      <h2 class="sd-request">续写第 12 章，再配一张雨夜车站的插画</h2>
+      <section class="sd-status" aria-live="polite" aria-atomic="true">
+        <div class="sd-status-title"><span id="sd-status-symbol" aria-hidden="true">◌</span><span id="sd-status-title">正在生成正文</span></div>
+        <p id="sd-status-description">正文正在返回。完成后会继续准备插画。</p>
+        <div class="sd-actions" id="sd-actions"></div>
+        <div class="sd-meta" id="sd-status-meta"></div>
+      </section>
+      <section class="sd-section" aria-label="执行过程">
+        <div class="sd-heading"><h3>当前进展</h3><span>本次请求</span></div>
+        <ol class="sd-events" id="sd-events"></ol>
+      </section>
+      <section class="sd-section" id="sd-output-section">
+        <div class="sd-heading"><h3>正在生成的正文</h3><span>尚未写入章节</span></div>
+        <div class="sd-output">雨水顺着站台的铁皮檐落下。林晚握紧那封没有署名的信，在最后一班列车停稳前，终于看见了站在灯下的人。</div>
+      </section>
+      <section class="sd-section" id="sd-results-section" hidden>
+        <div class="sd-heading"><h3>本次产物</h3><span id="sd-result-count"></span></div>
+        <div id="sd-results"></div>
+      </section>
+      <div class="sd-diagnostics">
+        <details>
+          <summary class="cursor-interaction">诊断信息</summary>
+          <details><summary class="cursor-interaction">模型输出与工具记录</summary><pre id="sd-diagnostic-output">正文生成中，最终编辑回复尚未返回。</pre></details>
+          <details><summary class="cursor-interaction">本次输入快照</summary><pre>请求：续写第 12 章，再配一张雨夜车站的插画
+版本依据、提示词与模型参数在此展开查看。</pre></details>
+        </details>
+      </div>
+    </main>
+  </section>
+  <p class="sd-destination text-small" role="status" id="sd-destination" hidden></p>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('sd-task-preview');
+  const select = root.querySelector('#sd-demo-state');
+  const states = {
+    running: {
+      title: '正在生成正文', symbol: '◌', tone: '',
+      description: '正文正在返回。完成后会继续准备插画。',
+      meta: '已运行 42 秒 · 可以离开此页，请保持应用运行',
+      actions: [['回到创作会话', '打开原会话，定位发起本次任务的消息', true], ['取消生成', '先确认取消；已经保存的产物会保留', false]],
+      events: [['✓', '读取章节与人物资料', '已完成'], ['◌', '续写第 12 章', '进行中']],
+      results: [], output: true, diagnostic: '正文生成中，最终编辑回复尚未返回。'
+    },
+    confirmation: {
+      title: '等待你确认插画', symbol: '!', tone: 'sd-warning',
+      description: '第 12 章已写入。请确认插画方案，确认后才会发起生图请求。',
+      meta: '当前暂停在确认环节',
+      actions: [['前往确认插画', '打开原会话并定位现有的插画确认卡，查看方案和参考图', true], ['取消后续生成', '先确认取消；已写入的正文会保留', false]],
+      events: [['✓', '读取章节与人物资料', '已完成'], ['✓', '续写并保存第 12 章', '已完成'], ['!', '准备雨夜车站插画', '等待确认']],
+      results: [['第 12 章 · 雨夜来信', '正文已写入 · 可以直接阅读或编辑', '打开章节', '打开第 12 章，展示当前正式正文']],
+      diagnostic: '编辑已准备插画方案，正在等待作者确认。'
+    },
+    completed: {
+      title: '本次任务已完成', symbol: '✓', tone: '',
+      description: '第 12 章已写入，雨夜车站插画已保存。',
+      meta: '总用时 2 分 18 秒',
+      actions: [['打开第 12 章', '打开第 12 章，展示当前正式正文', true], ['回到创作会话', '打开原会话，查看本次编辑回复并继续交流', false]],
+      events: [['✓', '读取章节与人物资料', '已完成'], ['✓', '续写并保存第 12 章', '已完成'], ['✓', '生成并保存插画', '已完成']],
+      results: [['第 12 章 · 雨夜来信', '正文已写入', '打开章节', '打开第 12 章，展示当前正式正文'], ['雨夜车站插画', '图片已保存 · 尚未插入正文', '查看插画', '打开插画详情，预览图片并选择使用方式']],
+      diagnostic: '编辑回复：正文和插画均已完成。\n工具记录可逐项展开，原始结果保留用于排查。'
+    },
+    failed: {
+      title: '插画未完成', symbol: '!', tone: 'sd-error',
+      description: '生图服务返回错误。第 12 章已经保存，可以先继续阅读。',
+      meta: '已完成的正文会保留',
+      actions: [['查看插画任务', '打开失败的插画子任务，显示具体错误与恢复操作；重新生成会发起新请求', true], ['打开第 12 章', '打开已保存的第 12 章', false]],
+      events: [['✓', '读取章节与人物资料', '已完成'], ['✓', '续写并保存第 12 章', '已完成'], ['!', '生成雨夜车站插画', '失败']],
+      results: [['第 12 章 · 雨夜来信', '正文已写入 · 不受后续生图失败影响', '打开章节', '打开已保存的第 12 章']],
+      diagnostic: '插画任务失败：生图服务未返回完整图片。\n这里保留服务返回的具体错误；不会自动重试可能已计费的请求。'
+    },
+    conflict: {
+      title: '正文未写入，需要你处理', symbol: '!', tone: 'sd-warning',
+      description: '生成期间正文或变量已变化。生成结果已保留，请查看后决定如何处理。',
+      meta: '当前正式正文保持原样',
+      actions: [['处理未写入的正文', '打开现有的未写入正文处理页，核对版本差异并决定采纳或放弃', true], ['回到创作会话', '打开原会话，查看本次任务上下文', false]],
+      events: [['✓', '读取章节与人物资料', '已完成'], ['✓', '生成第 12 章正文', '已完成'], ['!', '写入章节', '版本已变化']],
+      results: [['第 12 章 · 生成结果', '内容已保留，尚未成为正式正文', '查看并处理', '打开现有的未写入正文处理页']],
+      diagnostic: '采纳前的版本检查未通过；保留生成结果，等待作者处理。'
+    }
+  };
+  function button(label, destination, primary) {
+    const element = document.createElement('button');
+    element.type = 'button';
+    element.className = 'sd-btn cursor-interaction' + (primary ? ' sd-primary' : '');
+    element.textContent = label;
+    element.dataset.destination = destination;
+    return element;
+  }
+  function render(value) {
+    const key = Object.hasOwn(states, value) ? value : 'running';
+    const state = states[key];
+    select.value = key;
+    root.querySelector('#sd-status-title').textContent = state.title;
+    const symbol = root.querySelector('#sd-status-symbol');
+    symbol.textContent = state.symbol;
+    symbol.className = state.tone;
+    root.querySelector('#sd-status-description').textContent = state.description;
+    root.querySelector('#sd-status-meta').textContent = state.meta;
+    root.querySelector('#sd-actions').replaceChildren(...state.actions.map(action => button(...action)));
+    root.querySelector('#sd-events').replaceChildren(...state.events.map(([mark, label, status]) => {
+      const item = document.createElement('li');
+      const icon = document.createElement('span');
+      icon.className = 'sd-symbol' + (mark === '!' ? ' ' + state.tone : '');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = mark;
+      const text = document.createElement('span');
+      text.textContent = label;
+      if (status !== '已完成') text.className = 'sd-current';
+      const detail = document.createElement('small');
+      detail.textContent = status;
+      item.append(icon, text, detail);
+      return item;
+    }));
+    root.querySelector('#sd-output-section').hidden = !state.output;
+    root.querySelector('#sd-results-section').hidden = !state.results.length;
+    root.querySelector('#sd-result-count').textContent = state.results.length + ' 项';
+    root.querySelector('#sd-results').replaceChildren(...state.results.map(([title, subtitle, label, destination]) => {
+      const item = document.createElement('div');
+      item.className = 'sd-result';
+      const content = document.createElement('div');
+      const heading = document.createElement('strong');
+      heading.textContent = title;
+      const description = document.createElement('p');
+      description.textContent = subtitle;
+      content.append(heading, description);
+      item.append(content, button(label, destination, false));
+      return item;
+    }));
+    root.querySelector('#sd-diagnostic-output').textContent = state.diagnostic;
+    root.querySelector('#sd-destination').hidden = true;
+  }
+  render(window.openai?.widgetState?.modelContent?.taskState);
+  select.addEventListener('change', () => {
+    render(select.value);
+    window.openai?.setWidgetState?.({modelContent: {taskState: select.value}, privateContent: null}).catch(() => {});
+  });
+  window.addEventListener('openai:set_globals', event => {
+    const saved = event.detail?.globals?.widgetState;
+    if (saved) render(saved.modelContent?.taskState);
+  });
+  root.addEventListener('click', event => {
+    const action = event.target.closest('button[data-destination]');
+    if (!action || !root.contains(action)) return;
+    const destination = root.querySelector('#sd-destination');
+    destination.textContent = '操作示意：' + action.dataset.destination + '。';
+    destination.hidden = false;
+  });
+})();
+</script>
