@@ -14,6 +14,9 @@ const _toolNames = {
   'list_chapters',
   'read_chapter',
   'propose_chapter',
+  'create_chapter',
+  'rename_chapter',
+  'delete_chapter',
   'activate_skill',
   'read_skill_file',
 };
@@ -113,7 +116,11 @@ body''', directory: 'plot');
       final used = RegExp(r'\b([a-z]+_[a-z_]+)\b')
           .allMatches(s.body)
           .map((m) => m.group(1)!)
-          .where((w) => w.startsWith(RegExp(r'list|read|propose|activate')));
+          .where(
+            (w) => w.startsWith(
+              RegExp(r'list|read|propose|activate|create|rename|delete'),
+            ),
+          );
       expect(_toolNames.containsAll(used), isTrue, reason: '${s.name}: $used');
       for (final path in RegExp(
         r'references/[\w.-]+',

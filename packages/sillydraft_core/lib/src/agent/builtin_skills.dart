@@ -170,7 +170,7 @@ metadata:
 
 ## 输出
 - 当前局面摘要和三个方案；
-- 作者选定后，可以用 propose_chapter 为下一个章节生成正文（instructions 写入所选节拍），或用 propose_lore 记录计划（certainty 为 plan）。
+- 作者选定后，先用 create_chapter 新建章节，再用 propose_chapter 指定返回的章节 ID 写入正文（instructions 写入所选节拍；多章须逐章等待写入成功再继续），或用 propose_lore 记录计划（certainty 为 plan）。
 ''',
     <String, String>{},
   ),

@@ -1,5 +1,55 @@
 part of 'task_runner.dart';
 
+const _chapterSelector = {
+  'chapterId': {'type': 'string', 'description': '目标章节 ID；与 chapterName 二选一。'},
+  'chapterName': {
+    'type': 'string',
+    'description': '精确章节名称或完整标题；同名时请改用 chapterId。',
+  },
+};
+
+Map<String, dynamic> _resolveChapter(
+  Map<String, dynamic> args,
+  List<Map<String, dynamic>> chapters,
+) {
+  final id = args['chapterId'], name = args['chapterName'];
+  if ((id == null) == (name == null) ||
+      (id != null && (id is! String || id.trim().isEmpty)) ||
+      (name != null && (name is! String || name.trim().isEmpty))) {
+    throw const FormatException('chapterId 和 chapterName 必须且只能指定一个');
+  }
+  final matches = chapters
+      .where(
+        (c) => id != null
+            ? c['id'] == id
+            : c['name'] == (name as String).trim() || c['title'] == name.trim(),
+      )
+      .toList();
+  if (matches.isEmpty) {
+    return {
+      'error': '当前参考范围内找不到目标章节，请先用 list_chapters 确认。',
+      'code': 'out_of_scope',
+      'retryable': false,
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      'error': '章节名称不唯一，请使用 chapterId 指定目标。',
+      'code': 'ambiguous_chapter',
+      'chapters': [
+        for (final c in matches) {'id': c['id'], 'title': c['title']},
+      ],
+    };
+  }
+  return matches.single;
+}
+
+const _chapterSourceChanged = {
+  'error': '正文、章节名称或顺序已变化，本轮不能继续修改，请作者发起新一轮请求。',
+  'code': 'source_changed',
+  'retryable': false,
+};
+
 const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
@@ -81,13 +131,10 @@ const _editingTools = <Map<String, dynamic>>[
     'type': 'function',
     'function': {
       'name': 'read_chapter',
-      'description': '读取当前分支指定章节的正文',
+      'description': '按 ID 或名称读取当前参考范围内的章节正文。',
       'parameters': {
         'type': 'object',
-        'properties': {
-          'chapterId': {'type': 'string'},
-        },
-        'required': ['chapterId'],
+        'properties': _chapterSelector,
         'additionalProperties': false,
       },
     },
@@ -142,14 +189,57 @@ const _editingTools = <Map<String, dynamic>>[
   {
     'type': 'function',
     'function': {
-      'name': 'propose_chapter',
-      'description':
-          '用独立写作模型生成或改写正文，写完直接写入该章节，作者可从版本历史恢复。'
-          '正文或故事变量在生成期间有变化时不写入，留给作者处理。每轮对话最多写入一次。',
+      'name': 'create_chapter',
+      'description': '在当前分支末尾新建独立空章节，返回章节 ID。不生成正文，不复用已有空章；历史参考范围须先切到末尾。',
       'parameters': {
         'type': 'object',
         'properties': {
-          'chapterId': {'type': 'string'},
+          'name': {'type': 'string', 'description': '章节名称，不含章号。'},
+        },
+        'required': ['name'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'rename_chapter',
+      'description': '按 ID 或名称重命名可见章节，保留正文与章号。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          ..._chapterSelector,
+          'name': {'type': 'string', 'description': '新的章节名称，不含章号。'},
+        },
+        'required': ['name'],
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'delete_chapter',
+      'description': '仅在作者明确要求删除时调用。按 ID 或名称删除当前分支中的可见章节及其书签、候选等关联数据；其他分支不受影响。',
+      'parameters': {
+        'type': 'object',
+        'properties': _chapterSelector,
+        'additionalProperties': false,
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'propose_chapter',
+      'description':
+          '用独立写作模型生成或改写正文，写完直接写入该章节，作者可从版本历史恢复。'
+          '按 ID 或名称选择可见章节。每次只生成一章；可连续调用，须等待 accepted=true 再继续。正文或故事变量在生成期间有变化时不写入。',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          ..._chapterSelector,
           'instructions': {
             'type': 'string',
             'description': '交给独立写作模型的完整要求。追加时只生成后续正文；替换时输出修改后的完整章节，明确应保留的故事和应移除的模板，不省略未要求改动的内容。',
@@ -159,7 +249,7 @@ const _editingTools = <Map<String, dynamic>>[
             'description': 'true：保留整章原文并在末尾追加新正文。false：用生成结果替换整章。仅启动模板的开篇、重写或清理模板用 false；保留已有故事的续写用 true。先读取章节再选择。',
           },
         },
-        'required': ['chapterId', 'instructions', 'append'],
+        'required': ['instructions', 'append'],
         'additionalProperties': false,
       },
     },
@@ -265,7 +355,14 @@ extension _AgentExecution on TaskRunner {
       for (final chapter in input['chapterSnapshot'] as List? ?? [])
         Map<String, dynamic>.from(chapter as Map),
     ];
-    const writingTools = {'propose_chapter', 'propose_lore', 'insert_images'};
+    const writingTools = {
+      'propose_chapter',
+      'propose_lore',
+      'insert_images',
+      'create_chapter',
+      'rename_chapter',
+      'delete_chapter',
+    };
     final canBatchImages =
         illustrationBatch ||
         (!illustrationOnly &&
@@ -289,8 +386,8 @@ extension _AgentExecution on TaskRunner {
               .whereType<String>(),
         ),
     ];
-    String? writtenRevisionId;
     var canWrite = !illustrationOnly;
+    final writtenChapters = <String, String>{};
     await _toolLoop(
       task,
       provider,
@@ -312,12 +409,11 @@ extension _AgentExecution on TaskRunner {
               'retryable': false,
             };
           }
-          if (writtenRevisionId != null) {
+          if (!canWrite) {
             return {
-              'error': '本轮正文已经写入，请向作者报告结果；继续写入或提出资料建议需要作者发起新一轮请求。',
-              'code': 'already_written',
+              'error': '本轮写作已停止，请作者处理未写入的正文或版本变化后重新发起请求。',
+              'code': 'writing_stopped',
               'retryable': false,
-              'revisionId': writtenRevisionId,
             };
           }
         }
@@ -329,9 +425,16 @@ extension _AgentExecution on TaskRunner {
           canWrite,
         );
         if (call.name == 'propose_chapter' && result['accepted'] == true) {
-          writtenRevisionId = result['revisionId'] as String;
+          writtenChapters[result['chapterId'] as String] =
+              result['revisionId'] as String;
+          await repository.updateTask(
+            task.id,
+            status: TaskStatus.running,
+            result: {'writtenChapters': writtenChapters},
+          );
         }
-        if (writtenRevisionId != null || result['code'] == 'source_changed') {
+        if (result['code'] == 'source_changed' ||
+            (call.name == 'propose_chapter' && result['accepted'] == false)) {
           canWrite = false;
           tools.removeWhere(
             (tool) => writingTools.contains(tool['function']['name']),
@@ -562,6 +665,8 @@ extension _AgentExecution on TaskRunner {
           result = await execute(call);
         } on GenerationCancelled {
           rethrow;
+        } on FormatException catch (error) {
+          result = {'error': error.message, 'code': 'invalid_arguments'};
         } catch (_) {
           result = {'error': '工具参数无效、目标不属于当前分支或操作未完成，请检查后再试。'};
         }
@@ -716,20 +821,21 @@ extension _AgentExecution on TaskRunner {
           'directed': args['directed'] ?? true,
         });
       }
-      if (!await repository.taskSourcesCurrent(task.id)) {
-        return {
-          'error': '正文已变化，本轮不能继续写入或提出资料建议，请作者发起新一轮请求。',
-          'code': 'source_changed',
-          'retryable': false,
-        };
+      if (!await repository.agentChaptersCurrent(task, chapters)) {
+        return _chapterSourceChanged;
       }
       cancel.check();
       final proposal = await repository.createTask(
         branchId: task.branchId,
         kind: TaskKind.analysis,
         input: {
-          'sourceRevisions': task.input['sourceRevisions'],
-          'throughChapterId': task.input['throughChapterId'],
+          'sourceRevisions': [
+            for (final c in chapters)
+              {'chapterId': c['id'], 'revisionId': c['revisionId']},
+          ],
+          'throughChapterId': await repository.conversationChapter(
+            task.input['conversationId'] as String,
+          ),
           'parentTaskId': task.id,
           'conversationId': task.input['conversationId'],
           'origin': 'editorSuggestion',
@@ -1031,19 +1137,19 @@ extension _AgentExecution on TaskRunner {
             {
               'id': chapter['id'],
               'title': chapter['title'],
+              'name': chapter['name'],
               'revisionId': chapter['revisionId'],
-              'canEdit':
-                  canWrite && chapter['id'] == task.input['editChapterId'],
+              'canEdit': canWrite,
             },
         ],
       };
     }
     if (call.name == 'read_chapter') {
-      if (args.keys.any((k) => k != 'chapterId') ||
-          args['chapterId'] is! String) {
+      if (args.keys.any((k) => !['chapterId', 'chapterName'].contains(k))) {
         throw const FormatException('参数无效');
       }
-      final chapter = chapters.firstWhere((s) => s['id'] == args['chapterId']);
+      final chapter = _resolveChapter(args, chapters);
+      if (chapter.containsKey('error')) return chapter;
       return {
         'chapterId': chapter['id'],
         'revisionId': chapter['revisionId'],
@@ -1088,102 +1194,163 @@ extension _AgentExecution on TaskRunner {
         if (total > matches.length) 'truncated': true,
       };
     }
+    if ([
+      'create_chapter',
+      'rename_chapter',
+      'delete_chapter',
+    ].contains(call.name)) {
+      final create = call.name == 'create_chapter';
+      final delete = call.name == 'delete_chapter';
+      if (args.keys.any(
+            (k) => ![
+              if (!create) ...['chapterId', 'chapterName'],
+              if (!delete) 'name',
+            ].contains(k),
+          ) ||
+          (!delete &&
+              (args['name'] is! String ||
+                  (args['name'] as String).trim().isEmpty))) {
+        throw const FormatException('章节参数无效');
+      }
+      final target = create ? null : _resolveChapter(args, chapters);
+      if (target?.containsKey('error') == true) return target!;
+      cancel.check();
+      final updated = await repository.manageAgentChapter(
+        task: task,
+        expectedChapters: chapters,
+        operation: call.name,
+        chapterId: target?['id'] as String?,
+        name: args['name'] as String?,
+      );
+      if (updated == null) return _chapterSourceChanged;
+      chapters
+        ..clear()
+        ..addAll([
+          for (final c in updated)
+            {
+              'id': c.id,
+              'title': c.title,
+              'name': c.name,
+              'revisionId': c.revisionId,
+              'text': c.content.text,
+            },
+        ]);
+      if (delete) return {'chapterId': target!['id'], 'deleted': true};
+      final chapter = create
+          ? chapters.last
+          : chapters.firstWhere((c) => c['id'] == target!['id']);
+      return {
+        'chapterId': chapter['id'],
+        'title': chapter['title'],
+        'name': chapter['name'],
+        'revisionId': chapter['revisionId'],
+      };
+    }
     if (call.name == 'propose_chapter') {
       if (args.keys.any(
-            (k) => !['chapterId', 'instructions', 'append'].contains(k),
+            (k) => ![
+              'chapterId',
+              'chapterName',
+              'instructions',
+              'append',
+            ].contains(k),
           ) ||
-          args['chapterId'] is! String ||
           args['instructions'] is! String ||
+          (args['instructions'] as String).trim().isEmpty ||
           args['append'] is! bool) {
         throw const FormatException('参数无效');
       }
-      if (args['chapterId'] != task.input['editChapterId']) {
-        return {
-          'error': '目标不属于当前编辑位置，只能修改 list_chapters 中标有 canEdit 的章节。',
-          'code': 'out_of_scope',
-          'retryable': false,
-        };
+      final target = _resolveChapter(args, chapters);
+      if (target.containsKey('error')) return target;
+      if (!await repository.agentChaptersCurrent(task, chapters)) {
+        return _chapterSourceChanged;
       }
-      if (!await repository.taskSourcesCurrent(task.id)) {
-        return {
-          'error': '正文已变化，本轮不能继续写入或提出资料建议，请作者发起新一轮请求。',
-          'code': 'source_changed',
-          'retryable': false,
-        };
-      }
+      final chapterId = target['id'] as String;
       final input = task.input;
       final service = WritingService(repository: repository, runner: this);
       final context = input['writingContext'] as Map<String, dynamic>? ?? {};
-      final child = await service.generate(
-        branchId: task.branchId,
-        chapterId: args['chapterId'] as String,
-        connection: ModelConnection.fromJson(
-          jsonObject(input['writingConnection'], 'writingConnection'),
-        ),
-        brief: args['instructions'] as String,
-        append: args['append'] as bool,
-        userName: context['userName'] as String? ?? '我',
-        persona: context['persona'] as String? ?? '',
-        selectedOrderId: context['selectedOrderId'] as int?,
-        worldBooks: [
-          for (final book in (context['worldBooks'] as List? ?? []))
-            ScopedWorldBook(
-              WorldBook.fromJson(jsonObject(book['data'], '世界书')),
-              branchId: book['branchId'] as String?,
-              availableFromPosition: book['availableFromPosition'] as int? ?? 0,
-            ),
-        ],
-        globalRegex: (context['globalRegex'] as List? ?? [])
-            .cast<Map<String, dynamic>>(),
-        preset: input['writingPreset'] is Map<String, dynamic>
-            ? PresetImporter().decode(
-                input['writingPreset'] as Map<String, dynamic>,
-              )
-            : null,
-        card: input['card'] is Map<String, dynamic>
-            ? CardImporter().decode(
-                Uint8List.fromList(utf8.encode(jsonEncode(input['card']))),
-                'card.json',
-              )
-            : null,
-        autoAccept: true,
-      );
-      final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
       try {
-        final result = await wait(child.id);
-        cancel.check();
-        final proposalId = result.result['proposalId'];
-        final proposal = proposalId is String
-            ? await repository.getProposal(proposalId)
-            : null;
-        final accepted = proposal?.status == ProposalStatus.accepted;
-        final revisionId = accepted ? proposal!.acceptedRevisionId : null;
-        if (revisionId != null) {
-          final revision = await repository.getRevision(revisionId);
-          final chapter = chapters.firstWhere(
-            (c) => c['id'] == args['chapterId'],
-          );
-          // Only overlay our accepted revision; keep the frozen conflict checks.
-          chapter.addAll({
-            'revisionId': revisionId,
-            'text': revision.content.text,
-          });
+        final child = await service.generate(
+          branchId: task.branchId,
+          chapterId: chapterId,
+          expectedRevisionId:
+              chapters.firstWhere((c) => c['id'] == chapterId)['revisionId']
+                  as String,
+          connection: ModelConnection.fromJson(
+            jsonObject(input['writingConnection'], 'writingConnection'),
+          ),
+          brief:
+              '${args['instructions']}\n只输出目标章节《${target['title']}》的正文，不包含其他章节。',
+          append: args['append'] as bool,
+          userName: context['userName'] as String? ?? '我',
+          persona: context['persona'] as String? ?? '',
+          selectedOrderId: context['selectedOrderId'] as int?,
+          worldBooks: [
+            for (final book in (context['worldBooks'] as List? ?? []))
+              ScopedWorldBook(
+                WorldBook.fromJson(jsonObject(book['data'], '世界书')),
+                branchId: book['branchId'] as String?,
+                availableFromPosition:
+                    book['availableFromPosition'] as int? ?? 0,
+              ),
+          ],
+          globalRegex: (context['globalRegex'] as List? ?? [])
+              .cast<Map<String, dynamic>>(),
+          preset: input['writingPreset'] is Map<String, dynamic>
+              ? PresetImporter().decode(
+                  input['writingPreset'] as Map<String, dynamic>,
+                )
+              : null,
+          card: input['card'] is Map<String, dynamic>
+              ? CardImporter().decode(
+                  Uint8List.fromList(utf8.encode(jsonEncode(input['card']))),
+                  'card.json',
+                )
+              : null,
+          autoAccept: true,
+        );
+        final remove = cancel.onCancel(() => unawaited(this.cancel(child.id)));
+        try {
+          final result = await wait(child.id);
+          cancel.check();
+          final proposalId = result.result['proposalId'];
+          final proposal = proposalId is String
+              ? await repository.getProposal(proposalId)
+              : null;
+          final accepted = proposal?.status == ProposalStatus.accepted;
+          final revisionId = accepted ? proposal!.acceptedRevisionId : null;
+          if (revisionId != null) {
+            final revision = await repository.getRevision(revisionId);
+            final chapter = chapters.firstWhere((c) => c['id'] == chapterId);
+            // Only overlay our accepted revision; never adopt concurrent edits.
+            chapter.addAll({
+              'revisionId': revisionId,
+              'text': revision.content.text,
+            });
+          }
+          return {
+            'taskId': child.id,
+            'chapterId': chapterId,
+            'status': result.status.name,
+            ...result.result,
+            if (result.error.isNotEmpty) 'error': result.error,
+            'accepted': accepted,
+            'revisionId': ?revisionId,
+            // Entries the world info budget left out, for the author to hear.
+            for (final d
+                in (child.input['compiled'] as Map)['diagnostics'] as List)
+              if (d['code'] == 'world_book_budget_summary')
+                'worldBookBudget': d['message'],
+          };
+        } finally {
+          remove();
         }
-        return {
-          'taskId': child.id,
-          'status': result.status.name,
-          ...result.result,
-          if (result.error.isNotEmpty) 'error': result.error,
-          'accepted': accepted,
-          'revisionId': ?revisionId,
-          // Entries the world info budget left out, for the author to hear.
-          for (final d
-              in (child.input['compiled'] as Map)['diagnostics'] as List)
-            if (d['code'] == 'world_book_budget_summary')
-              'worldBookBudget': d['message'],
-        };
-      } finally {
-        remove();
+      } on GenerationCancelled {
+        rethrow;
+      } on RevisionConflict {
+        return _chapterSourceChanged;
+      } catch (error) {
+        return {'error': error.toString(), 'accepted': false};
       }
     }
     throw const FormatException('未授权的工具');

@@ -213,12 +213,18 @@ extension ManuscriptOperations on StoryRepository {
   Future<void> deleteChapter({
     required String branchId,
     required String chapterId,
+  }) => _deleteChapter(branchId: branchId, chapterId: chapterId);
+
+  Future<void> _deleteChapter({
+    required String branchId,
+    required String chapterId,
+    String? ignoreTaskId,
   }) => _write(() async {
     await getChapter(branchId: branchId, chapterId: chapterId);
     if ((await activeChapterTasks(
       branchId: branchId,
       chapterId: chapterId,
-    )).isNotEmpty) {
+    )).any((task) => task.id != ignoreTaskId)) {
       throw StateError('这一章还有正在进行的任务，请先停止。');
     }
     final story = await getStory(branchId);

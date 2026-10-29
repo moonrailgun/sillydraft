@@ -295,7 +295,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
         illustrationAnchor: request?.illustrationAnchor,
         replaceMessageId: request?.replace,
       );
-      unawaited(_sidecarAfterRound(services, task).catchError((Object _) {}));
+      holdForSidecar(task.branchId, sidecarAfterAgent(services, task));
       if (mounted && typed && _editing == editing) {
         // Preparing a turn can take time; retain anything typed meanwhile.
         if (_input.text == text) _input.clear();
@@ -452,7 +452,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
     try {
       final services = ref.read(servicesProvider);
       final retry = await services.runner.resume(task.id);
-      unawaited(_sidecarAfterRound(services, retry).catchError((Object _) {}));
+      holdForSidecar(retry.branchId, sidecarAfterAgent(services, retry));
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -722,6 +722,14 @@ class _AgentState extends ConsumerState<AgentPanel> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(conversationsProvider(widget.branchId), (_, next) {
+      final selected = next.value
+          ?.where((c) => c['id'] == _conversation)
+          .firstOrNull;
+      if (selected != null && selected['through_chapter_id'] != _chapter) {
+        setState(() => _chapter = selected['through_chapter_id'] as String?);
+      }
+    });
     final tasks = ref.watch(tasksProvider(widget.branchId)).value ?? [];
     final pending =
         ref.watch(pendingReviewCountProvider(widget.branchId)).value ?? 0;
@@ -2160,22 +2168,4 @@ String imageEngineLabel(ModelConnection connection, {String? workflow}) {
     if (file.isNotEmpty) file,
     ?connection.sentModel,
   ].join(' · ');
-}
-
-/// Starts the sidecar on the chapter the assistant wrote in [task] once the
-/// round ends, as a chapter written from the reader starts it.
-Future<void> _sidecarAfterRound(
-  AppServices services,
-  GenerationTask task,
-) async {
-  final done = await services.runner.wait(task.id);
-  final id = done.input['editChapterId'], repo = services.repository;
-  if (id is! String) return;
-  final chapter = await repo.getChapter(branchId: done.branchId, chapterId: id);
-  final sources = done.input['sourceRevisions'] as List? ?? const [];
-  if (sources.any((s) => s['revisionId'] == chapter.revisionId) ||
-      (await repo.getRevision(chapter.revisionId)).sourceProposalId == null) {
-    return;
-  }
-  startSidecarQuietly(services, branchId: done.branchId, chapterId: id);
 }

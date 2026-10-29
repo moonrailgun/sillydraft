@@ -6,7 +6,7 @@ import 'package:test/test.dart';
 import 'task_runner_test.dart' show ScriptProvider;
 
 void main() {
-  test('agent reads its accepted revision and refuses another write', () async {
+  test('agent reads its accepted snapshot and refuses a write after an external edit', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);
     final novel = await repo.createNovel(title: '写后读取');
@@ -102,11 +102,11 @@ void main() {
       results[2]['chapters'][0]['revisionId'],
       accepted.acceptedRevisionId,
     );
-    expect(results[2]['chapters'][0]['canEdit'], false);
+    expect(results[2]['chapters'][0]['canEdit'], true);
     expect(results[3]['total'], 1);
-    expect(results[4]['code'], 'already_written');
+    expect(results[4]['code'], 'source_changed');
     expect(results[4]['retryable'], false);
-    expect(offered[1], isNot(contains('propose_chapter')));
+    expect(offered[1], contains('propose_chapter'));
     expect(writes, 1);
     expect(
       (await repo.getChapter(

@@ -29,7 +29,7 @@ disable-model-invocation: true # 可选：只允许手动 /villain-voice 启用
 
 作者也可以在消息开头输入 `/技能名` 直接启用，输入 `/` 会提示可用技能。
 
-已加载的技能在本会话后续每一轮都会保留，且只发送一次；助手重复加载会被告知“已加载”。技能只改变做事方法，不扩大工具权限，也不能改变编辑规则（正文只能通过 propose_chapter 写入当前编辑位置的章节）。
+已加载的技能在本会话后续每一轮都会保留，且只发送一次；助手重复加载会被告知“已加载”。技能只改变做事方法，不扩大工具权限，也不能改变编辑规则（正文通过 propose_chapter 写入参考范围内指定的章节，章节管理也不能越过参考范围）。
 
 ## 管理
 
@@ -52,7 +52,7 @@ disable-model-invocation: true # 可选：只允许手动 /villain-voice 启用
 | `continuity-check` 设定与时间线连续性检查 | 时间、地点、物品、谁知道什么 |
 | `next-chapter-plan` 下一章规划 | 当前局面、三种方向、章节节拍 |
 
-内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。配置了生图模型时助手另有 `generate_image`，内置技能不依赖它。
+内置技能只使用助手已有的工具：`list_chapters`、`read_chapter`、`create_chapter`、`rename_chapter`、`delete_chapter`、`propose_chapter`、`list_lore`、`read_lore`、`propose_lore`。配置了生图模型时助手另有 `generate_image`，内置技能不依赖它。
 
 ## 注意
 

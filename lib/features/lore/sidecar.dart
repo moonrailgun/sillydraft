@@ -76,6 +76,28 @@ Future<void> sidecarAfterWrite(
   }
 }
 
+/// Organizes the accepted chapters from this round, skipping later edits and
+/// deletions. Repeated writes to one chapter use only its final revision.
+Future<void> sidecarAfterAgent(
+  AppServices services,
+  GenerationTask task,
+) async {
+  final done = await services.runner.wait(task.id);
+  final written = done.result['writtenChapters'] as Map? ?? const {};
+  if (written.isEmpty) return;
+  final story = await services.repository.getStory(done.branchId);
+  for (final chapter in story.chapters) {
+    if (written[chapter.id] != chapter.revisionId) continue;
+    final run = await startSidecar(
+      services,
+      branchId: done.branchId,
+      chapterId: chapter.id,
+    );
+    // Later chapters should see the notes saved for earlier ones.
+    if (run != null) await services.runner.wait(run.id);
+  }
+}
+
 /// Background steps per branch that may yet start a sidecar task.
 final _starting = <String, Set<Future<void>>>{};
 

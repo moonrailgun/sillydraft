@@ -146,6 +146,44 @@ Future<List<GenerationTask>> _tasks(_Desk d, TaskKind kind) async => [
 ];
 
 void main() {
+  testWidgets('an assistant round organizes each surviving accepted revision', (
+    tester,
+  ) async {
+    final d = await _desk(tester);
+    final repo = d.services.repository;
+    final next = await repo.createChapter(branchId: d.branchId, name: '归途');
+    final edited = await repo.createChapter(branchId: d.branchId, name: '改稿');
+    final deleted = await repo.createChapter(branchId: d.branchId, name: '删除');
+    final task = await repo.createTask(
+      branchId: d.branchId,
+      kind: TaskKind.agent,
+      input: {'editChapterId': edited.id},
+    );
+    await repo.updateTask(
+      task.id,
+      status: TaskStatus.completed,
+      result: {
+        'writtenChapters': {
+          for (final c in [d.first, next, edited, deleted]) c.id: c.revisionId,
+        },
+      },
+    );
+    await repo.saveChapter(
+      branchId: d.branchId,
+      chapterId: edited.id,
+      expectedRevisionId: edited.revisionId,
+      content: ManuscriptContent.plainText('作者后续修改'),
+    );
+    await repo.deleteChapter(branchId: d.branchId, chapterId: deleted.id);
+    await sidecarAfterAgent(d.services, task);
+    await _settle(tester);
+    final runs = await _tasks(d, TaskKind.sidecar);
+    expect(
+      runs.map((t) => t.chapterId),
+      unorderedEquals([d.first.id, next.id]),
+    );
+  });
+
   testWidgets('a written chapter starts the sidecar on its text', (
     tester,
   ) async {
