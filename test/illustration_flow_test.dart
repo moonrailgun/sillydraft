@@ -32,6 +32,15 @@ class _Planner implements ModelProvider {
       yield const GenerationFinished('stop');
       return;
     }
+    if (request.executionId?.startsWith('image-prompt-') == true) {
+      yield TextDelta(
+        '${request.messages.first['content']}'.contains('内容分类器')
+            ? 'false'
+            : '${request.messages.last['content']}',
+      );
+      yield const GenerationFinished('stop');
+      return;
+    }
     expect(request.messages.toString(), contains('不会被生图任务改动的正文'));
     expect(request.messages.toString(), contains('雾中的港口，水彩'));
     yield ToolCallReady('image', 'generate_image', {

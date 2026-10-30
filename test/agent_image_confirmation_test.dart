@@ -59,6 +59,13 @@ void main() {
           final prompt =
               'Create a cinematic illustration in an old bookshop. ' * 30;
           final preview = {
+            'connection': ModelConnection(
+              id: 'normal',
+              name: '普通引擎',
+              baseUrl: 'http://localhost:1',
+              model: 'normal-image',
+            ).raw,
+            'nsfw': false,
             'name': '第七章·密信显字',
             'prompt': prompt,
             'negativePrompt': 'blurred text',
@@ -74,7 +81,22 @@ void main() {
                   'prompt': 'A detailed reference of the $kind. ' * 20,
                 },
             ],
-            if (batch) 'images': [preview, preview] else ...preview,
+            if (batch)
+              'images': [
+                preview,
+                {
+                  ...preview,
+                  'connection': ModelConnection(
+                    id: 'nsfw',
+                    name: '成人引擎',
+                    baseUrl: 'http://localhost:1',
+                    model: 'nsfw-image',
+                  ).raw,
+                  'nsfw': true,
+                },
+              ]
+            else
+              ...preview,
           };
           await repo.updateTask(
             task.id,
@@ -93,7 +115,18 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.text(prompt).hitTestable(), findsNothing);
-          expect(find.text('测试引擎 · fixture').hitTestable(), findsOneWidget);
+          expect(
+            find
+                .text('${batch ? '1. ' : ''}普通 · 普通引擎 · normal-image')
+                .hitTestable(),
+            findsOneWidget,
+          );
+          if (batch) {
+            expect(
+              find.text('2. NSFW · 成人引擎 · nsfw-image').hitTestable(),
+              findsOneWidget,
+            );
+          }
           expect(
             find.textContaining('先生成 2 张参考图').hitTestable(),
             findsOneWidget,

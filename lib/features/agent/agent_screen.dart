@@ -320,6 +320,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
             : ModelConnection.fromJson(
                 request!.manualImage!['connection'] as Map<String, dynamic>,
               ),
+        imagePromptConnection:
+            await services.connectionFor('analysis') ?? connection,
+        nsfwImageConnection: await services.connectionFor('imageNsfw'),
         manualImage: request?.manualImage,
         attachChapterId: request?.chapterId,
         illustrationOnly: request?.illustrationOnly ?? false,
@@ -612,6 +615,20 @@ class _AgentState extends ConsumerState<AgentPanel> {
     final engine = ModelConnection.fromJson(
       (task.input['image'] as Map)['connection'] as Map<String, dynamic>,
     );
+    String engineLabel(Map preview) {
+      final selected = preview['connection'] is Map
+          ? ModelConnection.fromJson(
+              (preview['connection'] as Map).cast<String, dynamic>(),
+            )
+          : engine;
+      final classification = switch (preview['nsfw']) {
+        true => 'NSFW · ',
+        false => '普通 · ',
+        _ => '',
+      };
+      return '$classification${imageEngineLabel(selected)}';
+    }
+
     final label = theme.typography.body.xs.copyWith(
       color: theme.colors.mutedForeground,
       fontWeight: FontWeight.w600,
@@ -655,14 +672,41 @@ class _AgentState extends ConsumerState<AgentPanel> {
             const SizedBox(height: 12),
             Text('生图引擎', style: label),
             const SizedBox(height: 4),
-            Text(imageEngineLabel(engine)),
+            for (final (index, preview) in previews.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '${batch ? '${index + 1}. ' : ''}${engineLabel(preview)}',
+                ),
+              ),
             if (batch) const Text('确认后按顺序逐张生成；取消或失败会停止后续图片。'),
             if (pending['newReferences'] case final List refs
                 when refs.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('先生成 ${refs.length} 张参考图，再生成插图；参考图会额外消耗生图额度，并保存到人物／地点资料。'),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => answer(false),
+                  child: const Text('取消'),
+                ),
+                FButton(
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => answer(true),
+                  child: const Text('确认生成'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             FAccordion(
               key: ValueKey('image-confirmation-${pending['id']}'),
               children: [
@@ -679,13 +723,13 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             style: label,
                           ),
                           const SizedBox(height: 4),
+                          if (ref['connection'] != null)
+                            Text(engineLabel(ref as Map)),
                           SelectableText('${ref['prompt']}'),
                         ],
                       const SizedBox(height: 8),
                       Text(
-                        referenceLimit(engine) == 0
-                            ? '此引擎使用参考图的固定外观描述。'
-                            : '按引擎容量优先使用人物参考图，再使用上一张同场景图片和地点参考图；其余参考保留文字描述。',
+                        '按各图所选引擎的容量优先使用人物参考图，再使用上一张同场景图片和地点参考图；不支持图片参考时使用固定外观描述。',
                       ),
                       for (final (index, preview) in previews.indexed) ...[
                         if (batch)
@@ -739,27 +783,6 @@ class _AgentState extends ConsumerState<AgentPanel> {
                       ],
                     ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: () => answer(false),
-                  child: const Text('取消'),
-                ),
-                FButton(
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: () => answer(true),
-                  child: const Text('确认生成'),
                 ),
               ],
             ),

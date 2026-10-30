@@ -28,6 +28,15 @@ class _ReplyProvider implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
+    if (request.executionId?.startsWith('image-prompt-') == true) {
+      yield TextDelta(
+        '${request.messages.first['content']}'.contains('内容分类器')
+            ? 'false'
+            : '${request.messages.last['content']}',
+      );
+      yield const GenerationFinished('stop');
+      return;
+    }
     if (script.isNotEmpty) {
       yield* Stream.fromIterable(script.removeAt(0));
       return;
@@ -641,7 +650,7 @@ void main() {
     );
     await settle();
     expect(inCard(find.textContaining('雨夜渡口')).hitTestable(), findsNothing);
-    expect(inCard(find.text('文本与生图 · m')), findsOneWidget);
+    expect(inCard(find.text('普通 · 文本与生图 · m')), findsOneWidget);
     expect(inCard(find.text('取消')).hitTestable(), findsOneWidget);
     expect(inCard(find.text('确认生成')).hitTestable(), findsOneWidget);
     expect(await drawings(), 0);

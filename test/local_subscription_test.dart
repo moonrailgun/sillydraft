@@ -47,7 +47,8 @@ void main() {
     expect(saved.supportsText, isTrue);
     expect(saved.supportsImages, isTrue);
     expect((await services.connectionFor('image'))?.id, saved.id);
-    expect(find.text('插画生成'), findsOneWidget);
+    expect(find.text('普通生图引擎'), findsOneWidget);
+    expect(find.text('NSFW 生图引擎'), findsOneWidget);
     final provider = await services.imageProvider(saved);
     provider.close();
 
@@ -98,7 +99,8 @@ void main() {
     // Usable for the editing assistant (tools are emulated), never for images.
     expect((await services.connectionFor('editor'))?.id, saved.id);
     expect(await services.connectionFor('image'), isNull);
-    expect(find.text('插画生成'), findsNothing);
+    expect(find.text('普通生图引擎'), findsNothing);
+    expect(find.text('NSFW 生图引擎'), findsNothing);
     expect(find.text('编辑 Agent'), findsOneWidget);
   });
 

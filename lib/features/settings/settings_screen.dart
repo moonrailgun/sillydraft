@@ -277,7 +277,8 @@ class SettingsScreen extends ConsumerWidget {
                         'writing': '正文写作',
                         'editor': '编辑 Agent',
                         'analysis': '资料整理',
-                        'image': '插画生成',
+                        'image': '普通生图引擎',
+                        'imageNsfw': 'NSFW 生图引擎',
                       }.entries)
                         if (connections.any(
                           (c) => connectionServes(c, role.key),
@@ -295,6 +296,10 @@ class SettingsScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
+                      const Text(
+                        '生图前使用资料整理模型判断画面是否为 NSFW，再按所选引擎编写提示词。'
+                        '请为 NSFW 选择支持此类内容的引擎；未指定时遇到 NSFW 会停止生成。',
+                      ),
                       const SizedBox(height: 12),
                       Text('旁路整理', style: heading),
                       const SizedBox(height: 8),
@@ -460,7 +465,9 @@ class SettingsScreen extends ConsumerWidget {
       label: label,
       connections: connections,
       value: chosen,
-      hint: '未指定（使用 ${fallback.name} · ${fallback.model}）',
+      hint: role == 'imageNsfw'
+          ? '未指定（NSFW 画面将停止生成）'
+          : '未指定（使用 ${fallback.name} · ${fallback.model}）',
       onChange: (value) => ref.read(repositoryProvider).setSetting(
         'modelRoles',
         {...roles, role: value.id, '${role}Model': value.model},
