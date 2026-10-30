@@ -156,6 +156,16 @@ final class StoryRepository {
     ChapterNumerals chapterNumerals = ChapterNumerals.chinese,
   }) => _write(() async {
     _validateTitle(title);
+    final presetId = (await getSetting('writingDefaults'))?['presetId'];
+    final profile = <String, dynamic>{'presetId': ?presetId};
+    if (presetId != null) {
+      try {
+        if (presetId is! String) throw const FormatException('预设标识无效');
+        await writingPreset(profile);
+      } on Exception catch (e) {
+        throw FormatException('默认预设不可用，请在设置中重新选择：$e');
+      }
+    }
     final id = _id();
     final branchId = _id();
     final now = _now();
@@ -182,6 +192,7 @@ final class StoryRepository {
       'INSERT INTO branches (id, novel_id, name, created_at) VALUES (?, ?, ?, ?)',
       [branchId, id, '主线', now],
     );
+    if (profile.isNotEmpty) await setSetting('writing/$branchId', profile);
     return getNovel(id);
   });
 

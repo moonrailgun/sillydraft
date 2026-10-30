@@ -35,6 +35,7 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
   /// The connection writing uses: the opening's macros read its model and
   /// token limits, as the new story's would.
   ModelConnection? _connection;
+  ImportedPreset? _preset;
 
   /// Card rules and metadata the HTML preview reads.
   DisplayContext _display = DisplayContext.empty;
@@ -91,6 +92,11 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
       if (!mounted) return;
       _persona = await ref.read(repositoryProvider).personaFor({});
       if (!mounted) return;
+      final repo = ref.read(repositoryProvider);
+      _preset = await repo.writingPreset(
+        await repo.getSetting('writingDefaults') ?? {},
+      );
+      if (!mounted) return;
       try {
         _connection = await ref.read(servicesProvider).connectionFor('writing');
       } catch (_) {
@@ -114,6 +120,8 @@ class _CardStartState extends ConsumerState<CardStartScreen> {
     userName: _persona.name,
     persona: _persona.prompt,
     greetingIndex: _greeting,
+    preset: _preset,
+    rules: DisplayContext.regexRulesOf(_preset?.raw['extensions']),
     connection: _connection,
   );
 

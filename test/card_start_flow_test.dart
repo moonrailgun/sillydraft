@@ -24,6 +24,16 @@ void main() {
       addTearDown(services.close);
       final repo = services.repository;
       await repo.storeResource(
+        id: 'preset',
+        kind: ResourceKind.preset,
+        name: '默认预设',
+        filename: 'preset.json',
+        sourceHash: 'preset',
+        encryptedSource: [],
+        data: {'temperature': 0.7, 'openai_max_tokens': 321},
+      );
+      await repo.setSetting('writingDefaults', {'presetId': 'preset'});
+      await repo.storeResource(
         id: 'card',
         kind: ResourceKind.character,
         name: '苏雾',
@@ -37,7 +47,7 @@ void main() {
             'description': '守塔人',
             'scenario': '雾港',
             'first_mes': '{{user}}听见钟声',
-            'alternate_greetings': ['{{char}}给{{user}}一封信'],
+            'alternate_greetings': ['{{char}}给{{user}}一封信：{{maxResponse}}'],
           },
         },
       );
@@ -69,12 +79,16 @@ void main() {
           .last
           .controller
           .text;
-      expect(opening, '苏雾给林舟一封信');
+      expect(opening, '苏雾给林舟一封信：321');
       await tester.ensureVisible(find.text('创建小说与初始资料'));
       await tester.tap(find.text('创建小说与初始资料'));
       await tester.pumpAndSettle();
       final novel = (await repo.listNovels()).single;
       expect((await repo.getStory(novel.activeBranchId)).text.trim(), opening);
+      expect(
+        (await repo.getSetting('writing/${novel.activeBranchId}'))!['presetId'],
+        'preset',
+      );
       expect(
         (await repo.getSetting(
           'writing/${novel.activeBranchId}',

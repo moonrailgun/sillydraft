@@ -56,13 +56,18 @@ extension CardStartOperations on StoryRepository {
     if (greetingIndex < 0 || greetingIndex >= card.greetings.length) {
       throw const FormatException('备用开场不存在');
     }
-    // The new branch has no writing preset yet; writing would use the
-    // default one with this connection.
+    final novel = await createNovel(
+      title: title,
+      synopsis: card.scenario,
+      pointOfView: pointOfView,
+    );
+    final profile = await getSetting('writing/${novel.activeBranchId}') ?? {};
     final macros = DisplayContext.fromCard(
       card.raw,
       userName: persona.name,
       persona: persona.prompt,
       greetingIndex: greetingIndex,
+      preset: await writingPreset(profile),
       connection: await _writingConnection(),
     ).greetingMacros(clock: openingClock ?? DateTime.now());
     final rendered = macros.render(card.greetings[greetingIndex]);
@@ -73,16 +78,12 @@ extension CardStartOperations on StoryRepository {
         '开场包含暂不支持的宏，请先编辑开场：${macros.diagnostics.map((d) => d.message).join('；')}',
       );
     }
-    final novel = await createNovel(
-      title: title,
-      synopsis: card.scenario,
-      pointOfView: pointOfView,
-    );
     final chapter = await createChapter(
       branchId: novel.activeBranchId,
       content: ManuscriptContent.plainText(opening),
     );
     await setSetting('writing/${novel.activeBranchId}', {
+      ...profile,
       'cardId': resourceId,
       'personaId': personaId,
       'greetingIndex': greetingIndex,

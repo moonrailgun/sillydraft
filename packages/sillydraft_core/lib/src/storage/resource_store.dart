@@ -68,10 +68,13 @@ extension ResourceOperations on StoryRepository {
         );
       });
 
-  /// Refused while a work's writing profile or lore names the resource: its
+  /// Refused while defaults, a writing profile or lore name the resource: its
   /// backup would no longer restore. Later edit versions inherit its parent.
   Future<void> deleteResource(String id) => _write(() async {
     final resource = await getResource(id);
+    if ((await getSetting('writingDefaults'))?['presetId'] == id) {
+      throw const FormatException('此资源正在用作默认预设，请先在设置中更换或清除默认预设');
+    }
     // Resource ids are UUIDs, so a substring match finds every JSON reference.
     final novels = await _rows(
       '''SELECT DISTINCT b.novel_id FROM branches b
