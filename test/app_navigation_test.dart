@@ -4,6 +4,7 @@ import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/app/desktop_commands.dart';
 import 'package:sillydraft/app/services.dart';
+import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 void main() {
@@ -50,7 +51,7 @@ void main() {
         await tester.enterText(find.byType(EditableText), '角色');
         await tester.tap(find.text('ST 预设'));
         await select('设置', 2);
-        expect(find.text('添加连接'), findsOneWidget);
+        expect(find.byType(SettingsScreen), findsOneWidget);
         await select('资源', 1);
         expect(
           tester
@@ -151,7 +152,7 @@ void main() {
     expect(Navigator.of(tester.element(find.byKey(sections))).canPop(), isTrue);
     commands.invoke(AppCommand.settings);
     await tester.pumpAndSettle();
-    expect(find.text('添加连接'), findsOneWidget);
+    expect(find.byType(SettingsScreen), findsOneWidget);
     expect(find.byType(AppSidebar), findsNothing);
     await tester.tap(find.byType(AppBackButton));
     await tester.pumpAndSettle();

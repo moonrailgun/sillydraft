@@ -15,6 +15,7 @@ import '../remote/share_screen.dart';
 import '../skills/skills_screen.dart';
 import '../update/update_prompt.dart';
 import 'comfy_workflow_editor.dart';
+import 'default_preset_setting.dart';
 import 'model_select.dart';
 import 'usage_screen.dart';
 import 'world_info_budget.dart';
@@ -143,6 +144,8 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+              const DefaultPresetSetting(),
               const SizedBox(height: 24),
               Text('本章亮点生图', style: heading),
               const SizedBox(height: 8),
