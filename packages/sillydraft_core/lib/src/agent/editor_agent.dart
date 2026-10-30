@@ -55,6 +55,11 @@ final class EditorAgent {
     /// image tools are not offered.
     ModelConnection? imageConnection,
 
+    /// New image requests classify and format with this text model. Absent
+    /// in older frozen tasks, which retain their original engine and prompt.
+    ModelConnection? imagePromptConnection,
+    ModelConnection? nsfwImageConnection,
+
     /// A chapter sent along with [message] as its context, e.g. the one a
     /// selection was made in. It stays with the message for later turns.
     String? attachChapterId,
@@ -146,6 +151,8 @@ final class EditorAgent {
           'skills': [for (final skill in skills) skill.raw],
           'focusChapterId': focusChapterId,
           'imageConnection': ?imageConnection?.raw,
+          'imagePromptConnection': ?imagePromptConnection?.raw,
+          'nsfwImageConnection': ?nsfwImageConnection?.raw,
           'attachChapterId': attachChapterId,
           if (illustrationOnly) 'illustrationOnly': true,
           if (illustrationBatch) 'illustrationBatch': true,
@@ -176,6 +183,11 @@ final class EditorAgent {
         ? null
         : ModelConnection.fromJson(
             jsonObject(pending['imageConnection'], 'imageConnection'),
+          );
+    final nsfwImageConnection = pending['nsfwImageConnection'] == null
+        ? null
+        : ModelConnection.fromJson(
+            jsonObject(pending['nsfwImageConnection'], 'nsfwImageConnection'),
           );
     final writingPreset = pending['writingPreset'] == null
         ? null
@@ -313,6 +325,7 @@ final class EditorAgent {
             imageDefaults!,
             batch: illustrationBatch,
             canBatch: !illustrationOnly && focus != null,
+            route: pending['imagePromptConnection'] != null,
           );
     final purpose = illustrationBatch
         ? '\n本轮任务是从附带的当前章节提取不同的视觉亮点。'
@@ -562,6 +575,13 @@ final class EditorAgent {
         'image': {
           'connection': imageConnection.raw,
           'defaults': imageDefaults,
+          'promptConnection': ?pending['imagePromptConnection'],
+          'nsfwConnection': ?nsfwImageConnection?.raw,
+          if (nsfwImageConnection != null)
+            'nsfwDefaults': await IllustrationService(
+              repository: repository,
+              runner: runner,
+            ).savedDefaults(nsfwImageConnection),
           'visualContextVersion': 1,
           'scenes': savedScenes,
           'manual': ?manualImage,
@@ -645,6 +665,7 @@ String imageInstructions(
   Map<String, dynamic> defaults, {
   bool batch = false,
   bool canBatch = false,
+  bool route = false,
 }) =>
     '\n生图工具：${batch ? 'generate_images' : 'generate_image'}。作者要求生图、画图或生成插图时，按需读取资料，写好图片名称和完整绘画提示词后，必须在本轮立即调用该工具。'
     '工具调用会由应用展示确认卡片；只有作者在卡片上确认后才会调用生图引擎，图片会存入作品资产库。'
@@ -652,6 +673,5 @@ String imageInstructions(
     '作者仅要求编写或修改提示词、讨论画面，且未要求实际生图时，不调用生图工具。'
     '${canBatch ? '本轮还提供 generate_images，可一次提交当前章节 1–6 张插图的 name、prompt 和唯一原文 quote，避免逐张确认。' : ''}'
     '生图工具返回 invalid_arguments 时尚未调用生图引擎，可按错误修正参数后重新提交确认；作者取消或生图失败后不要自动重试。'
-    '生图引擎：${connection.protocol.name}，模型：${connection.model}，'
-    '作者保存的默认设置：${jsonEncode(defaults)}。'
-    '$scenePromptInstructions${imagePromptFormat(connection)}';
+    '$scenePromptInstructions'
+    '${route ? 'prompt 先用自然语言准确描述待画的画面，不套用引擎标签或权重语法。工具会逐张判断 NSFW，选择对应引擎后生成最终提示词供作者确认。' : '生图引擎：${connection.protocol.name}，模型：${connection.model}，作者保存的默认设置：${jsonEncode(defaults)}。${imagePromptFormat(connection)}'}';

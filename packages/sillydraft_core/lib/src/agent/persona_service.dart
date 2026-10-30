@@ -37,6 +37,14 @@ final class PersonaService {
   final StoryRepository repository;
   final TaskControl runner;
 
+  static String imageDescription(Persona draft) {
+    if (draft.appearance.trim().isEmpty && draft.outfit.trim().isEmpty) {
+      throw const FormatException('请先填写外貌或默认服饰');
+    }
+    return '单人全身参考图，纯色背景，自然站姿，双手和鞋子在画面内，无文字、水印或多视图。'
+        '\n外貌：${draft.appearance}\n服饰：${draft.outfit}';
+  }
+
   /// Appearance and outfit from the first four reference images, and a
   /// description when [draft] has none.
   Future<Persona> describeImages(
@@ -117,6 +125,8 @@ final class PersonaService {
     ModelConnection painter,
     String prompt, {
     GenerationCancellation? cancellation,
+    ModelConnection? promptConnection,
+    ModelConnection? nsfwConnection,
   }) async {
     final factory = runner.imageProviderFactory, library = runner.assetLibrary;
     if (factory == null || library == null) {
@@ -126,12 +136,24 @@ final class PersonaService {
       repository: repository,
       runner: runner,
     );
+    if (promptConnection != null) {
+      final routed = await illustrations.routePrompt(
+        textConnection: promptConnection,
+        connection: painter,
+        nsfwConnection: nsfwConnection,
+        description: prompt,
+        cancellation: cancellation,
+      );
+      painter = routed.connection;
+      prompt = routed.prompt;
+    }
     final frozen = await illustrations.withLatestWorkflow(painter);
     final request = IllustrationService.requestFrom(
       frozen,
       prompt,
       await illustrations.savedDefaults(painter),
     );
+    cancellation?.check();
     final provider = await factory(frozen);
     try {
       final output = await provider.generate(

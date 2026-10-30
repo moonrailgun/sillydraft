@@ -300,3 +300,7 @@ Codex 生图估算是 SillyDraft 的独立扩展。协议核对 `codex-cli 0.165
 单次模型调用输入超过 272,000 token 时，普通输入与缓存读写单价乘 2，输出乘 1.5；不能用整次会话累计输入触发加价。普通输入为总输入减去缓存读取和写入。Codex 未提供缓存保留时长，因此写入采用 30 分钟参考价格；始终按标准 API 价折算，不还原其他服务档位、订阅额度或实际账单。原始用量、实际模型、服务档位、单价版本、各项单价与 `conversation_only` 范围一起存入现有 `usage_json`，无需迁移数据库。累计、本月、分组与每日成本均显示“≈”及“Codex 对话模型估算，未含生图工具费”。回归见 `codex_image_test.dart`、`usage_meter_test.dart`、`usage_store_test.dart` 和根目录的 `test/usage_screen_test.dart`，仅使用本地假协议，不调用付费模型。
 
 缺口：其他来源（OpenAI、Claude、DeepSeek、自定义网关、远程执行器背后的上游、Codex 文本、NovelAI、ComfyUI）没有单价，除非上游自己返回成本；不发 `stream_options.include_usage`（ST 也不发）。文本请求缺少 token 数或已有输出后中断时用 `estimateTokens` 估算，不是模型 tokenizer；失败、取消的生图不记账。ST 文本单价路径不另外处理缓存折扣或推理价格；没有图片工具和按次费用估算；只有美元。
+
+### 生图内容分流
+
+普通／NSFW 生图分流是 SillyDraft 的独立功能，不属于 ST 预设语义。内置分类提示词由资料整理模型执行，仅接受 `true` 或 `false`，选择作者配置的对应引擎后再编写该引擎的提示词。批量插图和新增参考图逐张判断；未配置 NSFW 引擎或分类输出无效时停止生图。该判断依赖文本模型，不代表对实际图片或提供商内容政策的认证。

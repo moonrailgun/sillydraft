@@ -75,6 +75,7 @@ extension _IllustrationExecution on TaskRunner {
           if (used != null && used.filename.isNotEmpty)
             'workflow': used.filename,
           'connectionId': connection.id,
+          'nsfw': ?task.input['nsfw'],
           'parameters': request.parameters,
           'references': input['references'],
           'visualReferences': ?input['visualReferences'],

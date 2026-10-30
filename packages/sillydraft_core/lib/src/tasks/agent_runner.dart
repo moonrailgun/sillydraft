@@ -291,11 +291,12 @@ const _editingTools = <Map<String, dynamic>>[
 /// NovelAI always takes a negative prompt; another engine only when the
 /// author already sends one, which shows the endpoint accepts it.
 bool _takesNegative(Map<String, dynamic> image) =>
-    (image['connection'] as Map)['protocol'] == ModelProtocol.novelAI.name ||
-    ((image['defaults'] as Map?)?['parameters'] as Map?)?.containsKey(
-          'negative_prompt',
-        ) ==
-        true;
+    image['promptConnection'] == null &&
+    ((image['connection'] as Map)['protocol'] == ModelProtocol.novelAI.name ||
+        ((image['defaults'] as Map?)?['parameters'] as Map?)?.containsKey(
+              'negative_prompt',
+            ) ==
+            true);
 
 Map<String, dynamic> _imageTool(
   Map<String, dynamic> image, {
@@ -306,7 +307,12 @@ Map<String, dynamic> _imageTool(
   final parameters = {
     'type': 'object',
     'properties': {
-      'prompt': {'type': 'string', 'description': '提交给生图引擎的提示词'},
+      'prompt': {
+        'type': 'string',
+        'description': image['promptConnection'] == null
+            ? '提交给生图引擎的提示词'
+            : '待画画面的自然语言描述，工具会先分流再编写引擎提示词',
+      },
       if (_takesNegative(image))
         'negative_prompt': {
           'type': 'string',
@@ -808,7 +814,9 @@ extension _AgentExecution on TaskRunner {
           }
           // A submitted image request may already be billed; never retry it
           // automatically or let a later prose reply conceal its failure.
-          if (result['taskId'] != null || result['submitted'] == true) {
+          if (result['taskId'] != null ||
+              result['submitted'] == true ||
+              result['code'] == 'image_routing_failed') {
             throw ProviderException(
               'image_failed',
               result['error'] as String? ?? '生图服务未返回完整图片，请检查生图任务后重试。',
@@ -1093,7 +1101,7 @@ extension _AgentExecution on TaskRunner {
         };
       }
       final service = IllustrationService(repository: repository, runner: this);
-      final connection = ModelConnection.fromJson(
+      final defaultConnection = ModelConnection.fromJson(
         jsonObject(image['connection'], 'image.connection'),
       );
       final chapterId = image['chapterId'] as String?;
@@ -1115,6 +1123,8 @@ extension _AgentExecution on TaskRunner {
       };
       final manual = (image['manual'] as Map?)?.cast<String, dynamic>();
       final requests = <ImageRequest>[];
+      final engines = <ModelConnection>[];
+      final defaults = <Map<String, dynamic>>[];
       final previews = <Map<String, dynamic>>[];
       for (final item in items) {
         if (item is! Map<String, dynamic>) throw const FormatException('参数无效');
@@ -1199,15 +1209,56 @@ extension _AgentExecution on TaskRunner {
         ];
         if (scene != null) validateSceneReferences(scene, refs);
         plans.add(refs);
-        final saved = (image['defaults'] as Map? ?? {}).cast<String, dynamic>();
-        final request = IllustrationService.requestFrom(connection, prompt, {
-          ...saved,
-          if (negative != null)
-            'parameters': {
-              ...?saved['parameters'] as Map?,
-              'negative_prompt': negative,
-            },
-        });
+        var connection = defaultConnection;
+        var routedPrompt = prompt;
+        bool? nsfw;
+        if (image['promptConnection'] case final Map<String, dynamic> text) {
+          try {
+            final routed = await service.routePrompt(
+              textConnection: ModelConnection.fromJson(text),
+              connection: connection,
+              nsfwConnection: image['nsfwConnection'] == null
+                  ? null
+                  : ModelConnection.fromJson(
+                      jsonObject(image['nsfwConnection'], 'nsfwConnection'),
+                    ),
+              description: prompt,
+              context: {
+                'scene': ?scene,
+                'subjects': [for (final ref in refs) ref.preview],
+              },
+              references: refs.isNotEmpty || previousScene != null,
+              branchId: task.branchId,
+              cancellation: cancel,
+            );
+            connection = routed.connection;
+            routedPrompt = routed.prompt;
+            nsfw = routed.nsfw;
+          } on GenerationCancelled {
+            rethrow;
+          } on FormatException catch (error) {
+            return {'code': 'image_routing_failed', 'error': error.message};
+          } on ProviderException catch (error) {
+            return {'code': 'image_routing_failed', 'error': error.message};
+          }
+        }
+        engines.add(connection);
+        final saved =
+            (image[nsfw == true ? 'nsfwDefaults' : 'defaults'] as Map? ?? {})
+                .cast<String, dynamic>();
+        defaults.add(saved);
+        final request = IllustrationService.requestFrom(
+          connection,
+          routedPrompt,
+          {
+            ...saved,
+            if (negative != null)
+              'parameters': {
+                ...?saved['parameters'] as Map?,
+                'negative_prompt': negative,
+              },
+          },
+        );
 
         requests.add(request);
         final labels = <String, String>{};
@@ -1242,6 +1293,8 @@ extension _AgentExecution on TaskRunner {
         // Validate the expanded request before any reference generation is approved.
         ImageRequest.fromJson({...request.raw, 'prompt': previewPrompt});
         previews.add({
+          'connection': connection.raw,
+          'nsfw': ?nsfw,
           'name': manual?['name'] ?? name,
           'prompt': previewPrompt,
           'scene': ?scene,
@@ -1253,6 +1306,45 @@ extension _AgentExecution on TaskRunner {
             ...referenceIds,
           }.toList(),
         });
+      }
+      final referenceRequests =
+          <
+            VisualReference,
+            ({ModelConnection connection, ImageRequest request, bool nsfw})
+          >{};
+      if (image['promptConnection'] case final Map<String, dynamic> text) {
+        try {
+          for (final ref in shared.values.where((ref) => ref.assetId == null)) {
+            final routed = await service.routePrompt(
+              textConnection: ModelConnection.fromJson(text),
+              connection: defaultConnection,
+              nsfwConnection: image['nsfwConnection'] == null
+                  ? null
+                  : ModelConnection.fromJson(
+                      jsonObject(image['nsfwConnection'], 'nsfwConnection'),
+                    ),
+              description: IllustrationService.referenceDescription(ref),
+              branchId: task.branchId,
+              cancellation: cancel,
+            );
+            referenceRequests[ref] = (
+              connection: routed.connection,
+              request: IllustrationService.requestFrom(
+                routed.connection,
+                routed.prompt,
+                (image[routed.nsfw ? 'nsfwDefaults' : 'defaults'] as Map? ?? {})
+                    .cast<String, dynamic>(),
+              ),
+              nsfw: routed.nsfw,
+            );
+          }
+        } on GenerationCancelled {
+          rethrow;
+        } on FormatException catch (error) {
+          return {'code': 'image_routing_failed', 'error': error.message};
+        } on ProviderException catch (error) {
+          return {'code': 'image_routing_failed', 'error': error.message};
+        }
       }
       final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
       final answer = Completer<bool>();
@@ -1270,7 +1362,15 @@ extension _AgentExecution on TaskRunner {
               'id': confirmationId,
               'newReferences': [
                 for (final ref in shared.values)
-                  if (ref.assetId == null) ref.preview,
+                  if (ref.assetId == null)
+                    {
+                      ...ref.preview,
+                      if (referenceRequests[ref] case final routed?) ...{
+                        'connection': routed.connection.raw,
+                        'prompt': routed.request.prompt,
+                        'nsfw': routed.nsfw,
+                      },
+                    },
               ],
               if (batch) 'images': previews else ...previews.single,
             },
@@ -1310,6 +1410,7 @@ extension _AgentExecution on TaskRunner {
       final results = <Map<String, dynamic>>[];
       for (var i = 0; i < requests.length; i++) {
         cancel.check();
+        final connection = engines[i];
         Map<String, dynamic> result;
         try {
           await checkChapter();
@@ -1317,10 +1418,11 @@ extension _AgentExecution on TaskRunner {
             await service.ensureReference(
               branchId: task.branchId,
               chapterId: referenceChapterId,
-              connection: connection,
+              connection: referenceRequests[ref]?.connection ?? connection,
               reference: ref,
-              defaults: (image['defaults'] as Map? ?? {})
-                  .cast<String, dynamic>(),
+              defaults: defaults[i],
+              request: referenceRequests[ref]?.request,
+              nsfw: referenceRequests[ref]?.nsfw,
               cancellation: cancel,
             );
           }
@@ -1331,6 +1433,7 @@ extension _AgentExecution on TaskRunner {
             connection: connection,
             name: previews[i]['name'] as String,
             request: requests[i],
+            nsfw: previews[i]['nsfw'] as bool?,
             chapterId: chapterId,
             visualReferences: plans[i],
             scene: scene,

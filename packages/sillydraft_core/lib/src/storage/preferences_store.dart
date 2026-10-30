@@ -50,6 +50,10 @@ extension PreferenceOperations on StoryRepository {
         .toList();
     if (all.isEmpty) return null;
     final roles = await getSetting('modelRoles');
+    // NSFW support must be assigned by the author, never inferred from order.
+    if (role == 'imageNsfw' && !all.any((c) => c.id == roles?[role])) {
+      return null;
+    }
     final connection =
         all.where((c) => c.id == roles?[role]).firstOrNull ?? all.first;
     final model = roles?['${role}Model'];
