@@ -31,6 +31,7 @@ class AssetImageView extends ConsumerWidget {
     required this.assetId,
     this.thumbnail = false,
     this.fit = BoxFit.contain,
+    this.alignment = Alignment.center,
     this.height,
     this.width,
     this.label = '小说插图',
@@ -38,6 +39,7 @@ class AssetImageView extends ConsumerWidget {
   final String assetId, label;
   final bool thumbnail;
   final BoxFit fit;
+  final Alignment alignment;
   final double? height, width;
   @override
   Widget build(BuildContext context, WidgetRef ref) => ref
@@ -50,6 +52,7 @@ class AssetImageView extends ConsumerWidget {
         data: (file) => Image.file(
           file,
           fit: fit,
+          alignment: alignment,
           height: height,
           width: width,
           cacheWidth: thumbnail ? 480 : 2048,

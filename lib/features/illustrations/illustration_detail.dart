@@ -14,6 +14,7 @@ import '../agent/agent_screen.dart' show imageEngineLabel;
 import '../agent/task_screen.dart' show taskProvider;
 import 'asset_image.dart';
 import 'illustration_request.dart';
+import 'illustration_relations.dart';
 
 final assetProvider = FutureProvider.family<StoryAsset, String>((ref, id) {
   ref.watch(repositoryChangesProvider);
@@ -242,6 +243,38 @@ class IllustrationDetail extends ConsumerWidget {
       ),
   ];
 
+  Widget _previewWithRelations(
+    BuildContext context,
+    WidgetRef ref,
+    Widget preview,
+  ) => LayoutBuilder(
+    builder: (context, constraints) => ListView(
+      children: [
+        SizedBox(height: constraints.maxHeight * .65, child: preview),
+        const SizedBox(height: 16),
+        if (ref
+                .watch(illustrationGraphProvider(branchId))
+                .value
+                ?.current(assetId)
+                .id
+            case final String latest when latest != assetId)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FButton(
+              variant: FButtonVariant.outline,
+              onPress: () => showIllustrationDetail(
+                context,
+                assetId: latest,
+                branchId: branchId,
+              ),
+              child: const Text('这是旧版本 · 查看最新图片'),
+            ),
+          ),
+        IllustrationRelations(branchId: branchId, assetId: assetId),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) => AsyncView(
     value: ref.watch(assetProvider(assetId)),
@@ -310,7 +343,7 @@ class IllustrationDetail extends ConsumerWidget {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: preview,
+                      child: _previewWithRelations(context, ref, preview),
                     ),
                   ),
                   DecoratedBox(
@@ -329,7 +362,7 @@ class IllustrationDetail extends ConsumerWidget {
                   ),
                 ],
               )
-            : Padding(padding: const EdgeInsets.all(12), child: preview),
+            : _previewWithRelations(context, ref, preview),
       );
     },
   );
