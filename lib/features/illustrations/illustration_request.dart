@@ -46,6 +46,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
   bool _busy = false, _loaded = false;
   bool _loadingDefaults = false;
   Object? _error;
+  final _routingCancellation = GenerationCancellation();
   bool get _comfy => _connection?.protocol == ModelProtocol.comfyUI;
   bool get _novelAI => _connection?.protocol == ModelProtocol.novelAI;
   bool get _codex => _connection?.protocol == ModelProtocol.codexCli;
@@ -107,6 +108,7 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
 
   @override
   void dispose() {
+    _routingCancellation.cancel();
     for (final c in [_name, _prompt, _parameters, _hosts]) {
       c.dispose();
     }
@@ -344,6 +346,11 @@ class _RequestState extends ConsumerState<IllustrationRequestScreen> {
       final task = await services.illustrations.generate(
         branchId: widget.branchId,
         connection: _connection!,
+        promptConnection:
+            await services.connectionFor('analysis') ??
+            (throw const FormatException('请先在设置中配置资料整理模型')),
+        nsfwConnection: await services.connectionFor('imageNsfw'),
+        cancellation: _routingCancellation,
         name: _name.text,
         request: request,
         chapterId: _chapterId,

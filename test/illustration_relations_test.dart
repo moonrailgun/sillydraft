@@ -15,6 +15,32 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/host.dart';
 
+class _Text implements ModelProvider {
+  _Text(this.config);
+  @override
+  final ModelConnection config;
+  @override
+  Stream<ProviderEvent> generate(
+    ProviderRequest request, {
+    GenerationCancellation? cancellation,
+  }) async* {
+    yield TextDelta(
+      '${request.messages.first['content']}'.contains('内容分类器')
+          ? 'false'
+          : '${request.messages.last['content']}',
+    );
+    yield const GenerationFinished('stop');
+  }
+
+  @override
+  Future<List<String>> listModels() async => [config.model];
+  @override
+  List<CompatibilityDiagnostic> validateParameters(ProviderRequest request) =>
+      [];
+  @override
+  void close() {}
+}
+
 class _Images implements ImageProvider {
   _Images(this.config, this.bytes, this.onGenerate);
   @override
@@ -80,6 +106,7 @@ void main() {
             repository: StoryRepository.memory(),
             secrets: MemorySecrets(),
             dataDirectory: dir,
+            modelProviderFactory: (c) async => _Text(c),
             imageProviderFactory: (c) async =>
                 _Images(c, bytes, (request) async {
                   calls++;
@@ -98,6 +125,15 @@ void main() {
             kind: ModelKind.image,
           );
           await services.saveConnection(connection);
+          await services.saveConnection(
+            ModelConnection(
+              id: 'text',
+              name: '本地文本模型',
+              baseUrl: 'http://localhost:1',
+              model: 'text',
+              kind: ModelKind.text,
+            ),
+          );
           branch = (await services.repository.createNovel(title: '关系测试'))
               .activeBranchId;
           final task = await services.illustrations.generate(

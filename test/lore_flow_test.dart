@@ -39,6 +39,15 @@ class _Reply implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
+    if (request.executionId?.startsWith('image-prompt-') == true) {
+      yield TextDelta(
+        '${request.messages.first['content']}'.contains('内容分类器')
+            ? 'false'
+            : '${request.messages.last['content']}',
+      );
+      yield const GenerationFinished('stop');
+      return;
+    }
     yield TextDelta(text);
     yield const GenerationFinished('stop');
   }

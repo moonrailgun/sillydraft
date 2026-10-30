@@ -68,8 +68,10 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
   late String _status = widget.entry?.data['status'] as String? ?? 'active';
   late bool _directed = widget.entry?.data['directed'] != false;
   bool _busy = false, _rechecked = false;
+  final _routingCancellation = GenerationCancellation();
   @override
   void dispose() {
+    _routingCancellation.cancel();
     for (final c in [
       _name,
       _content,
@@ -192,21 +194,17 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     final services = ref.read(servicesProvider);
     final painter = await services.connectionFor('image');
     if (painter == null) throw const FormatException('请先在设置中配置插画模型');
+    final writer = await services.connectionFor('analysis');
+    if (writer == null) throw const FormatException('请先在设置中配置资料整理模型');
     var drafted = _referencePrompt.text.trim();
     if (drafted.isEmpty && _kind == LoreKind.character) {
-      final writer =
-          await services.connectionFor('analysis') ??
-          await services.connectionFor('writing');
-      if (writer == null) throw const FormatException('请填写固定外观描述，或配置资料整理模型');
-      drafted = await services.personas.imagePrompt(
-        writer,
+      drafted = PersonaService.imageDescription(
         Persona(
           id: '',
           name: _name.text,
           appearance: _appearance.text,
           outfit: _outfit.text,
         ),
-        painter,
       );
     } else if (drafted.isEmpty) {
       drafted = _content.text;
@@ -216,7 +214,7 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
       context,
       title: '参考图外观描述',
       initial: drafted,
-      label: '提示词',
+      label: '画面描述（确认后自动选择引擎并编写提示词）',
       maxLines: 6,
     );
     if (prompt == null) return const [];
@@ -224,6 +222,9 @@ class _LoreEditState extends ConsumerState<LoreEditScreen> {
     final task = await services.illustrations.generate(
       branchId: widget.branchId,
       connection: painter,
+      promptConnection: writer,
+      nsfwConnection: await services.connectionFor('imageNsfw'),
+      cancellation: _routingCancellation,
       name: '${_name.text.trim()} · 参考图',
       request: IllustrationService.requestFrom(
         painter,

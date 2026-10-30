@@ -178,20 +178,17 @@ class _PersonaEditorState extends ConsumerState<PersonaEditorScreen> {
 
   Future<void> _generateImage() => _run(() async {
     _checkRoom();
-    final personas = ref.read(servicesProvider).personas;
+    final services = ref.read(servicesProvider);
+    final personas = services.personas;
     final painter = await _connection('image');
-    final drafted = await personas.imagePrompt(
-      await _connection('analysis'),
-      _draft,
-      painter,
-      cancellation: _cancel,
-    );
+    final writer = await _connection('analysis');
+    final drafted = PersonaService.imageDescription(_draft);
     if (!mounted) return;
     final prompt = await askText(
       context,
-      title: '参考图提示词',
+      title: '参考图画面描述',
       initial: drafted,
-      label: '提示词',
+      label: '画面描述（确认后自动选择引擎并编写提示词）',
       maxLines: 6,
     );
     if (prompt == null) return;
@@ -199,6 +196,8 @@ class _PersonaEditorState extends ConsumerState<PersonaEditorScreen> {
       painter,
       prompt,
       cancellation: _cancel,
+      promptConnection: writer,
+      nsfwConnection: await services.connectionFor('imageNsfw'),
     );
     if (mounted) setState(() => _images = [..._images, image]);
   });

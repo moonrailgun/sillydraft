@@ -34,6 +34,13 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
   bool _busy = false, _cancelled = false, _failed = false;
   String? _taskId, _message, _activeId;
   Map<String, String> _remaining = {};
+  GenerationCancellation? _routingCancellation;
+
+  @override
+  void dispose() {
+    _routingCancellation?.cancel();
+    super.dispose();
+  }
 
   Future<void> _regenerate(
     List<String> ids, {
@@ -48,7 +55,12 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
       await services.flushDrafts();
       final graph = await services.repository.illustrationGraph(branchId);
       final assets = ids.map(graph.current).toList();
-      final connections = await services.connections();
+      final painter = await services.connectionFor('image');
+      final writer = await services.connectionFor('analysis');
+      final nsfwPainter = await services.connectionFor('imageNsfw');
+      if (painter == null || writer == null) {
+        throw const FormatException('请先在设置中配置普通生图引擎和资料整理模型');
+      }
       final engines = <String, ModelConnection>{};
       final prompts = <String, String>{}, parameters = <String, dynamic>{};
       for (final (index, asset) in assets.indexed) {
@@ -59,18 +71,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
         final original = saved is Map
             ? ModelConnection.fromJson(saved.cast<String, dynamic>())
             : null;
-        final connection = original == null
-            ? await services.connectionFor('image')
-            : connections
-                  .where(
-                    (c) =>
-                        c.id == original.id && c.protocol == original.protocol,
-                  )
-                  .firstOrNull;
-        if (connection == null) {
-          throw FormatException('${asset.name}：请先在设置中配置原生图引擎');
-        }
-        engines[asset.id] = connection;
+        engines[asset.id] = original ?? painter;
         prompts[asset.id] =
             (resume ? _remaining[ids[index]] : null) ??
             IllustrationService.sourcePrompt(
@@ -101,9 +102,11 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text('使用最新参考图依次生成。成功后替换当前分支正文里的对应图片；失败时保留旧图并停止。'),
+                    const SizedBox(height: 8),
+                    const Text('确认后重新判断 NSFW，按设置中的对应引擎编写提示词；切换引擎时使用该引擎的默认参数。'),
                     if (engineLabels.length == 1) ...[
                       const SizedBox(height: 8),
-                      Text('生图引擎：${engineLabels.single}', style: muted),
+                      Text('上次生图引擎：${engineLabels.single}', style: muted),
                     ],
                     const SizedBox(height: 16),
                     if (edit) ...[
@@ -153,7 +156,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
                                   [
                                     '参考：${graph.referenceIds(asset).map((id) => graph.assets[id]?.name ?? '图片已删除').join('、').emptyFallback('无')}',
                                     if (engineLabels.length > 1)
-                                      '生图引擎：${imageEngineLabel(engines[asset.id]!)}',
+                                      '上次生图引擎：${imageEngineLabel(engines[asset.id]!)}',
                                   ].join('\n'),
                                   style: muted,
                                 ),
@@ -165,7 +168,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
                       FAccordion(
                         children: [
                           FAccordionItem(
-                            title: const Text('提示词与参数'),
+                            title: const Text('上次提示词与参数'),
                             child: Text(
                               '${prompts[asset.id]}\n\n${const JsonEncoder.withIndent('  ').convert(parameters[asset.id])}',
                             ),
@@ -193,6 +196,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
       if (edit) prompts[assets.first.id] = editedPrompt.trim();
       if (!confirmed) return;
       _cancelled = false;
+      _routingCancellation = GenerationCancellation();
       _remaining = Map.of(prompts);
       for (final (index, asset) in assets.indexed) {
         if (_cancelled) break;
@@ -205,7 +209,10 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
         final task = await services.illustrations.regenerate(
           branchId: branchId,
           assetId: asset.id,
-          connection: engines[asset.id]!,
+          connection: painter,
+          promptConnection: writer,
+          nsfwConnection: nsfwPainter,
+          cancellation: _routingCancellation,
           prompt: prompts[asset.id],
         );
         _taskId = task.id;
@@ -239,6 +246,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
         });
       }
     } finally {
+      _routingCancellation = null;
       _taskId = _activeId = null;
       if (mounted) setState(() => _busy = false);
     }
@@ -350,6 +358,7 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
                       variant: FButtonVariant.outline,
                       onPress: () async {
                         _cancelled = true;
+                        _routingCancellation?.cancel();
                         if (_taskId case final id?) {
                           await ref.read(servicesProvider).runner.cancel(id);
                         }
