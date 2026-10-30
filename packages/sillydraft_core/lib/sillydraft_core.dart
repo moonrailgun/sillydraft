@@ -40,6 +40,7 @@ export 'src/model/bookmark.dart';
 export 'src/model/resource.dart';
 export 'src/model/lore.dart';
 export 'src/model/asset.dart';
+export 'src/model/illustration_graph.dart';
 export 'src/model/persona.dart';
 export 'src/assets/asset_library.dart';
 export 'src/providers/image_provider.dart';

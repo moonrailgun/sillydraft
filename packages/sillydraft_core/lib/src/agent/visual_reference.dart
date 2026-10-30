@@ -19,6 +19,7 @@ final class VisualReference {
     'name': name,
     'prompt': prompt,
     'loreId': ?entry?.id,
+    'defaultAssetId': ?(entry?.data['images'] as List?)?.firstOrNull,
     'assetId': ?assetId,
     'create': assetId == null,
   };

@@ -78,6 +78,8 @@ extension _IllustrationExecution on TaskRunner {
           'parameters': request.parameters,
           'references': input['references'],
           'visualReferences': ?input['visualReferences'],
+          'sourcePrompt': ?input['sourcePrompt'],
+          'previousSceneAssetId': ?input['previousSceneAssetId'],
           'scene': ?input['scene'],
           if (input['purpose'] == AssetPurpose.reference.name)
             'referencePrompt': request.prompt,

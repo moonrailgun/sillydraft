@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../model/asset.dart';
+import '../model/illustration_graph.dart';
 import '../model/lore.dart';
 import 'visual_reference.dart';
 export 'visual_reference.dart';
@@ -12,9 +13,172 @@ import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
 
 final class IllustrationService {
+  static const _characterFraming =
+      'Single character reference, full body, neutral pose, plain background, no text. ';
+  static const _locationFraming =
+      'Empty location reference, clear architecture and spatial layout, no people, no text. ';
   const IllustrationService({required this.repository, required this.runner});
   final StoryRepository repository;
   final TaskControl runner;
+
+  /// Remove only the context suffix we can reconstruct from the saved inputs.
+  static String sourcePrompt(StoryAsset asset, {bool tags = false}) {
+    if (asset.metadata['sourcePrompt'] case final String prompt) return prompt;
+    final prompt =
+        asset.metadata['prompt'] as String? ??
+        asset.metadata['referencePrompt'] as String? ??
+        '';
+    final visual = [
+      for (final r in IllustrationGraph.visualSnapshots(asset))
+        VisualReference(
+          kind: LoreKind.values.byName(r['kind'] as String),
+          name: r['name'] as String,
+          prompt: r['prompt'] as String,
+          assetId: r['assetId'] as String?,
+        ),
+    ];
+    final labels = [
+      for (final raw in asset.metadata['references'] as List? ?? [])
+        if (raw is Map)
+          () {
+            final ref = visual.where((r) => r.assetId == raw['id']).firstOrNull;
+            return ref == null
+                ? 'previous view of this scene'
+                : '${ref.kind.name} ${ref.name}';
+          }(),
+    ];
+    final suffix = visualPrompt(
+      '',
+      visual,
+      (asset.metadata['scene'] as Map?)?.cast<String, dynamic>(),
+      tags: tags,
+      imageLabels: labels,
+    );
+    return suffix.isNotEmpty && prompt.endsWith(suffix)
+        ? prompt.substring(0, prompt.length - suffix.length)
+        : prompt;
+  }
+
+  Future<GenerationTask> regenerate({
+    required String branchId,
+    required String assetId,
+    required ModelConnection connection,
+    String? prompt,
+  }) async {
+    final graph = await repository.illustrationGraph(branchId);
+    final asset = graph.current(assetId);
+    final previous = asset.taskId == null
+        ? null
+        : await repository.getTask(asset.taskId!);
+    final oldConnection = previous?.input['connection'];
+    final tags =
+        oldConnection is Map &&
+        ModelConnection.fromJson(oldConnection.cast<String, dynamic>())
+                .protocol ==
+            ModelProtocol.novelAI;
+    final source = (prompt ?? sourcePrompt(asset, tags: tags)).trim();
+    if (source.isEmpty) throw const FormatException('这张图片没有生成提示词，请先填写画面描述');
+    String? referencePrompt;
+    if (source != sourcePrompt(asset, tags: tags).trim() &&
+        (asset.metadata['referenceKind'] != null ||
+            graph.lore.any(
+              (e) => (e.data['images'] as List? ?? []).contains(asset.id),
+            ))) {
+      referencePrompt = source;
+      for (final framing in [_characterFraming, _locationFraming]) {
+        if (referencePrompt!.startsWith(framing)) {
+          referencePrompt = referencePrompt.substring(framing.length).trim();
+        }
+      }
+      if (referencePrompt!.isEmpty || referencePrompt.length > 4000) {
+        throw const FormatException('参考图的画面描述须为不超过 4000 字的文本');
+      }
+    }
+    final savedVisual = IllustrationGraph.visualSnapshots(asset);
+    final currentVisual = graph.visualReferences(asset);
+    for (var i = 0; i < savedVisual.length; i++) {
+      if (savedVisual[i]['assetId'] != null &&
+          currentVisual[i]['assetId'] == null) {
+        throw const FormatException('参考图已移除，请先补充参考图或重新规划这张插图');
+      }
+    }
+    for (final id in graph.referenceIds(asset)) {
+      if (!graph.assets.containsKey(id)) {
+        throw const FormatException('关联图片不存在，请先恢复参考图');
+      }
+    }
+    final visual = <VisualReference>[];
+    for (final raw in currentVisual) {
+      final entry = graph.lore.where((e) => e.id == raw['loreId']).firstOrNull;
+      if (raw['loreId'] != null && entry == null) {
+        throw const FormatException('参考资料已删除，请先恢复资料或重新规划这张插图');
+      }
+      visual.add(
+        VisualReference(
+          kind: LoreKind.values.byName(raw['kind'] as String),
+          name: raw['name'] as String,
+          prompt: raw['prompt'] as String,
+          assetId: raw['assetId'] as String?,
+          entry: entry,
+        ),
+      );
+    }
+    final stored = previous?.input['imageRequest'];
+    final request = stored is Map
+        ? ImageRequest.fromJson({
+            ...stored.cast<String, dynamic>(),
+            'prompt': source,
+          })
+        : requestFrom(connection, source, await savedDefaults(connection));
+    final previousScene =
+        asset.metadata['previousSceneAssetId'] as String? ??
+        (asset.metadata['references'] as List? ?? [])
+                .whereType<Map>()
+                .where(
+                  (r) =>
+                      !IllustrationGraph.visualSnapshots(asset)
+                          .any((v) => v['assetId'] == r['id']),
+                )
+                .firstOrNull?['id']
+            as String?;
+    final chapters = {
+      for (final chapter in graph.placements(asset.id))
+        chapter.id: chapter.revisionId,
+    };
+    final sourceChapter = graph.chapters
+        .where((c) => c.id == asset.sourceChapterId)
+        .firstOrNull;
+    if (sourceChapter != null) {
+      chapters[sourceChapter.id] = sourceChapter.revisionId;
+    }
+    return generate(
+      branchId: branchId,
+      connection: connection,
+      name: asset.name,
+      chapterId: sourceChapter?.id,
+      request: request,
+      purpose: asset.purpose,
+      referenceAssetIds: graph.referenceIds(asset),
+      visualReferences: visual,
+      scene: (asset.metadata['scene'] as Map?)?.cast<String, dynamic>(),
+      previousSceneAssetId: previousScene == null
+          ? null
+          : graph.current(previousScene).id,
+      illustrationAnchor: (asset.metadata['illustrationAnchor'] as Map?)
+          ?.cast<String, dynamic>(),
+      regeneration: {
+        'assetId': asset.id,
+        'referencePrompt': ?referencePrompt,
+        'referenceState': graph.referenceState(asset),
+        'chapters': chapters,
+        'lore': {
+          for (final e in graph.lore)
+            if ((e.data['images'] as List? ?? []).contains(asset.id))
+              e.id: e.revisionId,
+        },
+      },
+    );
+  }
 
   /// What the author last chose on the illustration page for [connection]:
   /// size, quality, extra parameters and download hosts.
@@ -197,8 +361,8 @@ final class IllustrationService {
     }
     if (reference.assetId == null) {
       final framing = reference.kind == LoreKind.character
-          ? 'Single character reference, full body, neutral pose, plain background, no text. '
-          : 'Empty location reference, clear architecture and spatial layout, no people, no text. ';
+          ? _characterFraming
+          : _locationFraming;
       final child = await generate(
         branchId: branchId,
         connection: connection,
@@ -375,6 +539,7 @@ final class IllustrationService {
     List<VisualReference> visualReferences = const [],
     Map<String, dynamic>? scene,
     String? previousSceneAssetId,
+    Map<String, dynamic>? regeneration,
   }) async {
     if (name.trim().isEmpty) throw const FormatException('请为图片命名');
     if (referenceAssetIds.length > 16) {
@@ -385,7 +550,9 @@ final class IllustrationService {
         ? null
         : await repository.getChapter(branchId: branchId, chapterId: chapterId);
     final visual = [...visualReferences];
-    await addAssetReferences(branchId, chapterId, visual, referenceAssetIds);
+    if (regeneration == null) {
+      await addAssetReferences(branchId, chapterId, visual, referenceAssetIds);
+    }
     if (scene != null) {
       scene = validateImageScene(scene);
       validateSceneReferences(scene, visual);
@@ -423,6 +590,7 @@ final class IllustrationService {
         );
       }
     }
+    final sourcePrompt = request.prompt;
     request = ImageRequest.fromJson({
       ...request.raw,
       'prompt': visualPrompt(
@@ -444,6 +612,9 @@ final class IllustrationService {
         'name': name.trim(),
         'purpose': purpose.name,
         'references': references,
+        'sourcePrompt': sourcePrompt,
+        'previousSceneAssetId': ?previousSceneAssetId,
+        'regeneration': ?regeneration,
         if (visual.isNotEmpty)
           'visualReferences': [for (final ref in visual) ref.preview],
         'scene': ?scene,

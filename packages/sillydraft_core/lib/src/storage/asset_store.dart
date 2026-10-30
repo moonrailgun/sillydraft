@@ -1,6 +1,16 @@
 part of 'story_repository.dart';
 
 extension AssetOperations on StoryRepository {
+  Future<IllustrationGraph> illustrationGraph(String branchId) async {
+    final story = await getStory(branchId);
+    return IllustrationGraph(
+      branchId: branchId,
+      assets: await listAssets(story.novel.id, includeArchived: true),
+      lore: await listLore(branchId),
+      chapters: story.chapters,
+    );
+  }
+
   /// Includes archived assets and assets used only by old manuscript revisions.
   Future<Set<String>> assetFileNames() async => {
     for (final row in await _rows(
@@ -122,6 +132,44 @@ extension AssetOperations on StoryRepository {
     }
     if (task.result['assetId'] case final String id) return getAsset(id);
     if (task.status != TaskStatus.running) return null;
+    final replacement = task.input['regeneration'] as Map?;
+    String? replacementError;
+    IllustrationGraph? graph;
+    if (replacement != null) {
+      graph = await illustrationGraph(task.branchId);
+      final old = graph.current(replacement['assetId'] as String);
+      if (old.id != replacement['assetId']) {
+        replacementError = '这张图片已被另一次重绘替换；新图已保留，请查看后手动使用。';
+      } else if (jsonEncode(graph.referenceState(old)) !=
+          jsonEncode(replacement['referenceState'])) {
+        replacementError = '参考图已变化；新图已保留，未替换正文或资料，请重新生成。';
+      } else if (graph.chapters.any(
+            (c) =>
+                (replacement['chapters'] as Map).containsKey(c.id) &&
+                replacement['chapters'][c.id] != c.revisionId,
+          ) ||
+          (replacement['chapters'] as Map).keys.any(
+            (id) => !graph!.chapters.any((c) => c.id == id),
+          ) ||
+          graph
+              .placements(old.id)
+              .any(
+                (c) => !(replacement['chapters'] as Map).containsKey(c.id),
+              )) {
+        replacementError = '正文已变化；新图已保留，未替换正文或资料。';
+      } else if ((replacement['lore'] as Map).entries.any(
+            (e) => !graph!.lore.any(
+              (l) => l.id == e.key && l.revisionId == e.value,
+            ),
+          ) ||
+          graph.lore.any(
+            (e) =>
+                (e.data['images'] as List? ?? []).contains(old.id) &&
+                !(replacement['lore'] as Map).containsKey(e.id),
+          )) {
+        replacementError = '参考资料已变化；新图已保留，未替换正文或资料。';
+      }
+    }
     final asset = await storeAsset(
       branchId: task.branchId,
       name: task.input['name'] as String,
@@ -130,12 +178,75 @@ extension AssetOperations on StoryRepository {
       sourceChapterId: task.chapterId,
       sourceRevisionId: task.baseRevisionId,
       taskId: taskId,
-      metadata: metadata,
+      metadata: {
+        ...metadata,
+        if (replacement != null) 'regenerationOf': replacement['assetId'],
+        if (replacement != null && replacementError == null)
+          'replacesAssetId': replacement['assetId'],
+        if (replacement != null) ...{
+          for (final key in ['referenceKind', 'referencePrompt'])
+            if (graph!.assets[replacement['assetId']]!.metadata.containsKey(
+              key,
+            ))
+              key: graph.assets[replacement['assetId']]!.metadata[key],
+          if (replacement['referencePrompt'] case final String prompt)
+            'referencePrompt': prompt,
+        },
+      },
     );
+    if (replacement != null && replacementError == null) {
+      final oldId = replacement['assetId'] as String;
+      for (final chapter in graph!.placements(oldId)) {
+        await _saveChapter(
+          branchId: task.branchId,
+          chapterId: chapter.id,
+          expectedRevisionId: chapter.revisionId,
+          reason: 'replace_illustration',
+          content: ManuscriptContent.fromDelta([
+            for (final op in chapter.content.delta)
+              if (op['insert'] is Map &&
+                  (op['insert'] as Map)['image'] == 'asset:$oldId')
+                {
+                  ...op,
+                  'insert': {'image': 'asset:${asset.id}'},
+                }
+              else
+                op,
+          ]),
+        );
+      }
+      for (final entry in graph.lore.where(
+        (e) => (e.data['images'] as List? ?? []).contains(oldId),
+      )) {
+        await saveLoreEntry(
+          branchId: task.branchId,
+          id: entry.id,
+          expectedRevisionId: entry.revisionId,
+          kind: entry.kind,
+          name: entry.name,
+          content: entry.content,
+          certainty: entry.certainty,
+          provenance: entry.provenance,
+          data: {
+            ...entry.data,
+            if (replacement['referencePrompt'] case final String prompt)
+              'referencePrompt': prompt,
+            'images': [
+              for (final id in entry.data['images'] as List)
+                id == oldId ? asset.id : id,
+            ],
+          },
+        );
+      }
+    }
     await updateTask(
       taskId,
       status: TaskStatus.completed,
-      result: {'assetId': asset.id, 'stage': 'completed'},
+      result: {
+        'assetId': asset.id,
+        'stage': 'completed',
+        'replacementError': ?replacementError,
+      },
     );
     return asset;
   });

@@ -16,6 +16,7 @@ import '../model/bookmark.dart';
 import '../model/resource.dart';
 import '../model/lore.dart';
 import '../model/asset.dart';
+import '../model/illustration_graph.dart';
 import '../model/persona.dart';
 import '../model/usage.dart';
 import '../model/display_context.dart';
