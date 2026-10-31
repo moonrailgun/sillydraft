@@ -474,7 +474,10 @@ abstract final class HtmlBlocks {
         : '';
     final styles = frontend && libraries
         ? frontendStyles
-              .map((url) => '<link rel="stylesheet" href="${_attribute(url)}">')
+              .map(
+                (url) =>
+                    '<link data-sillydraft-host rel="stylesheet" href="${_attribute(url)}">',
+              )
               .join('\n')
         : '';
     return '''<!DOCTYPE html>
@@ -482,8 +485,8 @@ abstract final class HtmlBlocks {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${_attribute(policy(block.kind, nonce))}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
+<meta data-sillydraft-host name="viewport" content="width=device-width, initial-scale=1.0">
+<style data-sillydraft-host>
 *,*::before,*::after{box-sizing:border-box;}
 html,body{margin:0!important;padding:0;overflow:hidden!important;max-width:100%!important;}
 html{--TH-viewport-height:${viewportHeight.round()}px;}

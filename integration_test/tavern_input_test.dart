@@ -42,14 +42,16 @@ void main() {
     Future<void> waitFor(bool Function() condition) async {
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       while (!condition() && DateTime.now().isBefore(deadline)) {
-        await tester.pump(const Duration(milliseconds: 50));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       }
       expect(condition(), isTrue);
     }
 
-    Future<Object> js(String expression) =>
-        controller.runJavaScriptReturningResult(expression);
-    Future<void> settle() => tester.pump(const Duration(milliseconds: 150));
+    Future<Object> js(String expression) => controller
+        .runJavaScriptReturningResult(expression)
+        .timeout(const Duration(seconds: 5));
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 150));
     Future<void> reply(bool ok) async {
       await controller.runJavaScript(
         '__sdResolve(${requests.last['id']}, $ok, ${jsonEncode(ok ? null : '请先配置写作模型')})',
@@ -58,6 +60,7 @@ void main() {
     }
 
     await controller.loadHtmlString('''<!doctype html><html><head>
+      <style data-sillydraft-host>body{color:rgb(1,2,3)}</style>
       <script>window.__SD_STATE = {api:true}; $tavernRuntimeJs</script>
       </head><body><p id="story">原有正文</p></body></html>''');
     await waitFor(() => loaded);
@@ -110,6 +113,50 @@ void main() {
     );
     await settle();
     expect(requests, hasLength(3));
+
+    // Compressed community openings replace the document before using the composer.
+    await controller.runJavaScript(
+      "input.value = '等待保存'; __sdSetViewport(654)",
+    );
+    await waitFor(() => requests.length == 4);
+    await controller.runJavaScript('''
+      document.open();
+      document.write('<!doctype html><html><head></head><body>新开场</body></html>');
+      document.close();
+      document.close();
+    ''');
+    await settle();
+    expect(await js('!!parent.document.getElementById("send_textarea")'), true);
+    expect(
+      await js('document.querySelectorAll("[data-sillydraft-host]").length'),
+      1,
+    );
+    expect(await js('getComputedStyle(document.body).color'), 'rgb(1, 2, 3)');
+    expect(
+      await js(
+        'document.documentElement.style.getPropertyValue("--TH-viewport-height")',
+      ),
+      '654px',
+    );
+    await reply(true);
+    expect(
+      await js('parent.document.getElementById("send_textarea").value'),
+      '',
+    );
+    await controller.runJavaScript('''
+      const restored = parent.document.getElementById('send_textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(restored, '使用自定义开局');
+      restored.dispatchEvent(new Event('input'));
+      restored.dispatchEvent(new Event('change'));
+      parent.document.getElementById('send_but').click();
+    ''');
+    await waitFor(() => requests.length == 5);
+    expect(requests.last['args'], ['使用自定义开局']);
+    await reply(true);
+    expect(
+      await js('parent.document.getElementById("send_textarea").value'),
+      '',
+    );
 
     loaded = false;
     await controller.loadHtmlString('''<!doctype html><html><head>

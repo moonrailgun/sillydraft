@@ -43,7 +43,7 @@ const tavernRuntimeJs = r'''
   }
 
   // Native WebViews do not chain wheel scrolling into the Flutter reader.
-  window.addEventListener('wheel', function (event) {
+  function forwardWheel(event) {
     if (!window.SillyDraftScroll || event.ctrlKey || !event.deltaY) return;
     var path = event.composedPath();
     for (var i = 0; i < path.length; i++) {
@@ -62,7 +62,7 @@ const tavernRuntimeJs = r'''
     setTimeout(function () {
       if (!event.defaultPrevented) window.SillyDraftScroll.postMessage(String(delta));
     }, 0);
-  }, { capture: true, passive: true });
+  }
 
   // ---------------------------------------------------------------- height
   // Follow `body.scrollHeight` in both directions, like 酒馆助手's
@@ -153,46 +153,81 @@ const tavernRuntimeJs = r'''
     setTimeout(run, 60);
   }
   function changed() { epoch++; postHeight(); }
+  var viewportHeight;
   window.__sdSetViewport = function (px) {
+    viewportHeight = px;
     try { document.documentElement.style.setProperty('--TH-viewport-height', px + 'px'); } catch (_) {}
     changed();
   };
   window.__sdMeasure = function () { lastHeight = -1; changed(); };
   window.__sdContentHeight = function () { return contentBottom(); };
+  var resizeObserver, mutationObserver, heightTicker;
   function observe() {
     if (!document.body) return;
+    if (resizeObserver) resizeObserver.disconnect();
+    if (mutationObserver) mutationObserver.disconnect();
+    clearInterval(heightTicker);
     changed();
     if (typeof ResizeObserver === 'function') {
-      var observer = new ResizeObserver(function () { postHeight(); });
-      observer.observe(document.body);
-      for (var i = 0; i < document.body.children.length; i++) observer.observe(document.body.children[i]);
+      resizeObserver = new ResizeObserver(function () { postHeight(); });
+      resizeObserver.observe(document.body);
+      for (var i = 0; i < document.body.children.length; i++) resizeObserver.observe(document.body.children[i]);
     }
     if (typeof MutationObserver === 'function') {
-      new MutationObserver(function () { changed(); }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+      mutationObserver = new MutationObserver(function () { changed(); });
+      mutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
     }
     // Fonts, images and scripted layout settle at their own pace; keep
     // checking, often at first and then slowly.
     var started = Date.now();
-    var ticker = setInterval(function () {
+    heightTicker = setInterval(function () {
       postHeight();
       if (Date.now() - started > 15000) {
-        clearInterval(ticker);
-        setInterval(postHeight, 2000);
+        clearInterval(heightTicker);
+        heightTicker = setInterval(postHeight, 2000);
       }
     }, 400);
     window.addEventListener('transitionend', changed, true);
     window.addEventListener('animationend', changed, true);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe);
-  else observe();
-  window.addEventListener('load', function () { lastHeight = -1; changed(); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { lastHeight = -1; changed(); });
-  window.addEventListener('error', function (e) {
-    quietly(call('log', ['error', String(e && e.message)]));
-  });
-  window.addEventListener('unhandledrejection', function (e) {
-    quietly(call('log', ['error', String(e && e.reason)]));
-  });
+  function loaded() { lastHeight = -1; changed(); }
+  function reportError(e) { quietly(call('log', ['error', String(e && e.message)])); }
+  function reportRejection(e) { quietly(call('log', ['error', String(e && e.reason)])); }
+  function bindDocument() {
+    window.addEventListener('wheel', forwardWheel, { capture: true, passive: true });
+    window.addEventListener('load', loaded);
+    window.addEventListener('error', reportError);
+    window.addEventListener('unhandledrejection', reportRejection);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe, { once: true });
+    else observe();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(loaded);
+    if (api && composer) restoreComposer();
+  }
+  bindDocument();
+  // document.open removes the DOM and its listeners, but keeps globals and pending calls.
+  var hostNodes = [], rewriteRoot, originalOpen = document.open, originalClose = document.close;
+  document.open = function () {
+    if (arguments.length < 3 && !rewriteRoot) {
+      rewriteRoot = document.documentElement;
+      hostNodes = Array.from(document.querySelectorAll('[data-sillydraft-host]')).map(function (node) { return node.cloneNode(true); });
+    }
+    return originalOpen.apply(this, arguments);
+  };
+  document.close = function () {
+    var result = originalClose.apply(this, arguments);
+    var rewritten = rewriteRoot && document.documentElement !== rewriteRoot;
+    rewriteRoot = null;
+    if (rewritten) {
+      var fragment = document.createDocumentFragment();
+      hostNodes.forEach(function (node) { fragment.appendChild(node); });
+      document.head.prepend(fragment);
+      if (viewportHeight !== undefined) window.__sdSetViewport(viewportHeight);
+      bindDocument();
+      if (window.__sdStartTailwind) window.__sdStartTailwind();
+    }
+    hostNodes = [];
+    return result;
+  };
 
   if (!api) return;
 
@@ -230,9 +265,15 @@ const tavernRuntimeJs = r'''
     get: function () { return inputValue.get.call(this); },
     set: function (value) { inputValue.set.call(this, value); submitInput(); },
   });
-  input.addEventListener('input', submitInput);
-  input.addEventListener('change', submitInput);
-  send.addEventListener('click', submitInput);
+  function restoreComposer() {
+    if (!composer.isConnected) document.documentElement.appendChild(composer);
+    input.addEventListener('input', submitInput);
+    input.addEventListener('change', submitInput);
+    send.addEventListener('click', submitInput);
+    document.addEventListener('DOMContentLoaded', renderStarted);
+    window.addEventListener('load', renderEnded);
+  }
+  restoreComposer();
 
   // ---------------------------------------------------------------- helpers
   function clone(value) { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); }
@@ -712,7 +753,7 @@ const tavernRuntimeJs = r'''
     quietly(call('log', ['error', parts.join(' ')]));
     try { originalError.apply(console, arguments); } catch (_) {}
   };
-  document.addEventListener('DOMContentLoaded', function () { dispatch(iframe_events.MESSAGE_IFRAME_RENDER_STARTED, [S.iframe_name]); });
-  window.addEventListener('load', function () { dispatch(iframe_events.MESSAGE_IFRAME_RENDER_ENDED, [S.iframe_name]); });
+  function renderStarted() { dispatch(iframe_events.MESSAGE_IFRAME_RENDER_STARTED, [S.iframe_name]); }
+  function renderEnded() { dispatch(iframe_events.MESSAGE_IFRAME_RENDER_ENDED, [S.iframe_name]); }
 })();
 ''';
