@@ -46,6 +46,94 @@ ImportedPreset _chatPreset() => PresetImporter().decode({
 });
 
 void main() {
+  for (final usePreset in [false, true]) {
+    test(
+      'focused chapter context is current and scoped; preset: $usePreset',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final novel = await repo.createNovel(title: '章节选项');
+        final chapter = await repo.createChapter(
+          branchId: novel.activeBranchId,
+          title: '第一章 渡口',
+          content: ManuscriptContent.plainText('[8. 帮队长搬运器材。]'),
+        );
+        final later = await repo.createChapter(
+          branchId: novel.activeBranchId,
+          content: ManuscriptContent.plainText('尚未读到的结局'),
+        );
+        final conversation = await repo.createConversation(
+          branchId: novel.activeBranchId,
+          throughChapterId: chapter.id,
+        );
+        final requests = <ProviderRequest>[];
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+            requests.add(request);
+            yield const TextDelta('收到');
+            yield const GenerationFinished('stop');
+          }),
+        );
+        addTearDown(runner.close);
+        final agent = EditorAgent(repository: repo, runner: runner);
+        Future<void> send(String focus) async {
+          final task = await agent.send(
+            conversationId: conversation,
+            connection: ModelConnection(
+              id: 't',
+              name: 't',
+              baseUrl: 'http://localhost:1',
+              model: 't',
+            ),
+            message: '8',
+            focusChapterId: focus,
+            chatPreset: usePreset ? _chatPreset() : null,
+          );
+          expect((await runner.wait(task.id)).status, TaskStatus.completed);
+        }
+
+        await send(chapter.id);
+        final firstUser = requests.single.messages.lastWhere(
+          (m) => m['role'] == 'user',
+        );
+        expect(firstUser['content'], contains('[8. 帮队长搬运器材。]'));
+        expect(firstUser['content'], endsWith('\n\n8'));
+        expect(
+          jsonEncode(requests.single.messages),
+          isNot(contains('尚未读到的结局')),
+        );
+
+        await repo.saveChapter(
+          branchId: novel.activeBranchId,
+          chapterId: chapter.id,
+          expectedRevisionId: chapter.revisionId,
+          content: ManuscriptContent.plainText('[8. 留在渡口等候。]'),
+        );
+        await send(chapter.id);
+        final users = requests.last.messages
+            .where((m) => m['role'] == 'user')
+            .toList();
+        expect(users.first['content'], '8');
+        expect(users.last['content'], contains('[8. 留在渡口等候。]'));
+        expect(jsonEncode(requests.last.messages), isNot(contains('帮队长搬运器材')));
+        final history = (await repo.getAgentMessages(conversation))
+            .where((m) => m.role == 'user');
+        expect(history.map((m) => m.content), ['8', '8']);
+        expect(history.every((m) => !m.raw.containsKey('attachment')), isTrue);
+
+        await send(later.id);
+        expect(jsonEncode(requests.last.messages), isNot(contains('尚未读到的结局')));
+        expect(
+          requests.last.messages.lastWhere(
+            (m) => m['role'] == 'user',
+          )['content'],
+          '8',
+        );
+      },
+    );
+  }
+
   for (final invalid in [false, true]) {
     test(
       'assistant preset markers do not block; preparation failure: $invalid',
