@@ -72,6 +72,12 @@ void main() {
       while (!condition() && DateTime.now().isBefore(deadline)) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+      if (!condition()) {
+        debugPrint('[diag] locale: ${tester.platformDispatcher.locales}');
+        debugPrint('[diag] HTML supported: $htmlBlocksSupported');
+        debugPrint('[diag] dart: ${HtmlBlockViewState.debugLog.join(' || ')}');
+        debugDumpApp();
+      }
       expect(condition(), isTrue);
     }
 
@@ -254,6 +260,12 @@ void main() {
       final deadline = DateTime.now().add(timeout);
       while (!condition() && DateTime.now().isBefore(deadline)) {
         await tester.pump(const Duration(milliseconds: 100));
+      }
+      if (!condition()) {
+        debugPrint('[diag] locale: ${tester.platformDispatcher.locales}');
+        debugPrint('[diag] HTML supported: $htmlBlocksSupported');
+        debugPrint('[diag] dart: ${HtmlBlockViewState.debugLog.join(' || ')}');
+        debugDumpApp();
       }
       expect(condition(), isTrue);
     }
