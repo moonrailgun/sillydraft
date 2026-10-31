@@ -1,6 +1,6 @@
 # HTML 界面渲染验证（酒馆助手兼容）
 
-对照对象：[JS-Slash-Runner（酒馆助手）](https://github.com/N0VI028/JS-Slash-Runner/tree/a0f3a180344cff38a4b3e75041d5a94380b877d6) 提交 `a0f3a180344cff38a4b3e75041d5a94380b877d6`（2026-10-13；本页编写和最后更新时 `main` 都在这个提交）的 `src/panel/render/iframe.ts`、`src/iframe/adjust_iframe_height.js`、`src/iframe/predefine.js`、`src/util/is_frontend.ts`、`src/function/chat_message.ts` 以及 `@types/function/*.d.ts` 的接口声明。本页记录 SillyDraft 内置实现与其对应关系、沙箱边界和已验证范围；未列出的接口视为不支持。
+对照对象：[JS-Slash-Runner（酒馆助手）](https://github.com/N0VI028/JS-Slash-Runner/tree/a0f3a180344cff38a4b3e75041d5a94380b877d6) 固定提交 `a0f3a180344cff38a4b3e75041d5a94380b877d6` 的 `src/panel/render/iframe.ts`、`src/iframe/adjust_iframe_height.js`、`src/iframe/predefine.js`、`src/iframe/third_party_message.html`、`src/third_party_object.ts`、`package.json`、`src/util/is_frontend.ts`、`src/function/chat_message.ts` 以及 `@types/function/*.d.ts` 的接口声明。本页记录 SillyDraft 内置实现与其对应关系、沙箱边界和已验证范围；未列出的接口视为不支持。
 
 ## 渲染规则
 
@@ -9,11 +9,30 @@
 | 消息中的 `<pre>` 代码块，内容含 `html>`、`<head>` 或 `<body` 时替换为 iframe | `HtmlBlocks.find`：围栏代码块（任意语言）内容含同样标记，或语言标为 `html`/`htm`/`xhtml`，成为“前端块”；与 showdown 相同，以围栏开头的行即闭合围栏，同一行余下的文字（如正则替换后紧跟的 `<game>`）仍是正文；未闭合围栏延伸到正文末尾 |
 | 其余 HTML 由 ST 的 markdown + DOMPurify 显示 | 行首的块级标签（`div`、`details`、`table`、`style`、`span` 等）到匹配闭合标签成为“片段块”，相邻片段合并；用 `package:html` 解析后删除 `script`/`iframe`/`object`/`embed`/`link`/`meta`/`base`、`on*` 属性、`srcdoc` 和 `javascript:`/非图片 `data:` 地址 |
 | ST 默认不编码标签（`encode_tags` 关闭），DOMPurify 删除未知元素、保留其文字 | 正文中的标签和注释（`<game>`、`</game>`、`<!-- -->`）隐藏，文字照常显示；代码中的标签、`<主角>`、`a < b` 这类非标签保留。行内 `<b>`/`<i>` 只隐藏、不加粗斜体，`<br>` 不换行 |
-| `srcdoc` 包裹：重置样式、`--TH-viewport-height`、`min-height: …vh` 改写、预加载 jQuery/lodash/Font Awesome/Vue/jQuery UI/Tailwind | `HtmlBlocks.document`：同样的重置样式和视口变量，`min-height` 改写逻辑逐条移植；预加载 lodash、jQuery 和 Font Awesome（jsdelivr 镜像），不预加载 Vue、jQuery UI、Tailwind |
+| `srcdoc` 包裹：重置样式、`--TH-viewport-height`、`min-height: …vh` 改写、预加载公共依赖 | `HtmlBlocks.document`：同样的重置样式和视口变量，`min-height` 改写逻辑逐条移植；公共依赖见下表。`document.open/write/close` 替换页面后恢复宿主样式、视口变量、输入框、事件和高度观察，保留未完成的桥接请求 |
 | `ResizeObserver` 测量 `body.scrollHeight` 设置 iframe 高度 | 页面内按 `body.scrollHeight` 增长或收缩（与酒馆助手一致，普通折叠和收缩动画持续跟随实际高度）；仅当内容高度受框架约束时，每次 DOM 变化后允许收缩一次到可见内容底边（按 overflow 裁剪、忽略 fixed 层），避免 `body{height:100%}` 把框架锁在动画瞬间的高度，也避免视口比例面板反复缩小；`ResizeObserver`/`MutationObserver`/过渡结束/定时复测触发，经 `SillyDraftHeight` 通道回传（24–20000px） |
 | 渲染深度、折叠代码块、流式渲染设置 | 不提供；设置中只有整体开关“渲染正文中的 HTML 界面”，阅读器可切换“显示原正文” |
 
 ## 接口对应
+
+### 公共依赖
+
+前端块在卡片脚本执行前获得以下依赖。普通 HTML 片段和 `libraries: false` 的文档不加载它们。
+
+| 全局对象／样式 | 版本与加载方式 |
+| --- | --- |
+| `_`、`$` / `jQuery`、Font Awesome | jsdelivr，分别固定大版本 4、3、6，沿用酒馆助手约定 |
+| jQuery UI / Touch Punch | 1.14.2 / 0.2.3，jsdelivr；Touch Punch 只在检测到触摸时启用 |
+| `Vue` / `VueRouter` | 3.5.43 / 5.4.0，jsdelivr，global production 构建 |
+| `showdown` | 2.1.0，jsdelivr |
+| `z` / `YAML` | 完整 Zod 4.4.3（含 `z.z`）/ YAML 2.9.1，随应用打包 |
+| Tailwind | 官方 `@tailwindcss/browser` 4.1.12，随应用打包，DOM 重写后重新观察动态类名 |
+
+Vue 使用酒馆助手相同的 runtime-only 构建，供已编译组件使用，不提供浏览器内模板编译器；三个 `__VUE_*` 标志按 `predefine.js` 设置。酒馆助手的 Vue / VueRouter CDN 地址未锁版本，这里按固定提交 `package.json` 的版本范围下限锁定。原生 WebView 没有 ST 父页面，父页面提供的 Zod / YAML 直接内置注入；Zod 错误仍为默认英文，不随宿主语言切换。CDN 依赖需要联网。
+
+生成文件在 `packages/sillydraft_core/lib/src/html/vendor/`。在核心包目录运行 `node tool/bundle_frontend_libraries.mjs`，按固定版本下载、打包并保留许可；普通 Flutter 构建不需要 npm。
+
+### 消息与宿主接口
 
 每一章是一条消息（`message_id` 为章节序号，角色为 `assistant`），第一章的 `swipes` 是角色卡各开场经宏替换后的文本，`swipe_id` 来自作品的开场选择。
 
@@ -76,6 +95,7 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 | `packages/sillydraft_core/test/tavern_bridge_test.dart` | 显示上下文缓存、无任务章节的显示正则、消息快照与开场切换、变量往返、新建章节、拒绝删除、Slash 管道、桥接消息校验、预览后端、变量编解码 |
 | `test/html_block_flow_test.dart` | 阅读文档偏移、无网页视图时的源码回退、阅读器中切换开场/设置变量/发出写作要求、角色卡开始页预览与创建后写入变量、设置开关 |
 | `integration_test/html_render_test.dart`（macOS） | 真实 WKWebView：页面按视口自测高度、接口存在、按钮经桥接切换开场、第二个界面读取角色卡并写入变量、`/sys … \| /cut 0 \| /trigger` 打开整章改写请求 |
+| `integration_test/html_libraries_test.dart`（macOS） | 真实 WKWebView：Zod 校验、YAML 往返、showdown、Vue / VueRouter、jQuery UI / Touch Punch、Tailwind 初始及动态样式、按钮与原生桥接往返；另测 `document.open/write/close` 后的相同行为。通道回复使用本地测试桩，不调用模型 |
 | `integration_test/tavern_input_test.dart`（macOS） | 真实 WKWebView：输入赋值 / 事件 / 发送合并、失败重试、片段隔离，整页重写后恢复宿主样式 / 输入监听并完成原有待确认请求 |
 | `integration_test/html_height_test.dart`（macOS） | 真实 WKWebView：`details` 和带过渡动画的 `max-height` 面板各反复展开、收起两轮，外层高度从 660px 回到 60px |
 

@@ -207,7 +207,7 @@ SillyDraft 分别保存模型原始结果与候选正文。提示词专用正则
 
 阅读设置中的「隐藏 HTML」与「隐藏插图」是独立的小说阅读投影开关，默认关闭并分别记住选择。隐藏 HTML 沿用 `HtmlBlocks.find` 的识别范围，隐藏 HTML 代码块和块级 HTML 片段，不创建对应网页视图或显示源码；隐藏插图仅影响正文中的图片嵌入，不处理 HTML 内的图片。正文格式及书签、搜索的原文偏移映射保留。当前章节与续写预览均应用这两项设置，不修改存储、导出或模型上下文。本章有被隐藏的插图时，阅读器顶栏显示提示并提供「显示插图」入口；插入图片后也会更新提示，恢复图片不会改变 HTML 的隐藏设置。这不是 ST 的新增语义；未被现有解析器识别为 HTML 块的内容仍按普通正文处理。对应 `html_block_flow_test.dart`、`reader_features_test.dart`。
 
-卡片用 `document.open/write/close` 重建页面后，恢复宿主样式、输入框、事件、高度观察，保留未完成的桥接请求。
+HTML 前端块按酒馆助手固定提交 `a0f3a180344cff38a4b3e75041d5a94380b877d6` 的公共依赖约定预载 lodash、jQuery、jQuery UI / Touch Punch、Font Awesome、showdown、Vue 3.5.43（runtime-only）、VueRouter 5.4.0、Zod 4.4.3、YAML 2.9.1 和 Tailwind 4.1.12，在卡片脚本前可用。Zod、YAML、Tailwind 随应用内置，其余沿用 CDN 加载；普通片段不获得这些依赖。卡片用 `document.open/write/close` 重建页面后，恢复宿主样式、输入框、事件、高度观察和 Tailwind 动态样式，保留未完成的桥接请求。
 
 HTML 高度沿用酒馆助手 `src/iframe/adjust_iframe_height.js` 的 `body.scrollHeight` 测量：普通内容展开和收起都同步调整，`details` 的隐藏子元素不再撑住空白；收缩动画持续跟随实际内容高度。只有 `body { height: 100% }` 等受框架高度约束的布局保留每次 DOM 变化后一次的可见底边收缩，避免视口比例面板反复缩小。
 

@@ -1,4 +1,7 @@
 import 'package:sillydraft_core/sillydraft_core.dart';
+import 'package:sillydraft_core/src/html/vendor/tailwind.dart';
+import 'package:sillydraft_core/src/html/vendor/yaml.dart';
+import 'package:sillydraft_core/src/html/vendor/zod.dart';
 import 'package:test/test.dart';
 
 const _page = '''<html>
@@ -15,6 +18,8 @@ const _page = '''<html>
 </script>
 </body>
 </html>''';
+
+const _bundles = [frontendZodJs, frontendYamlJs, frontendTailwindJs];
 
 void main() {
   group('HtmlBlocks.find', () {
@@ -181,6 +186,16 @@ void main() {
         expect(doc, contains(r'<\/script><script>alert(1)<\/script>'));
         expect(doc, contains('lodash'));
         expect(doc, contains('jquery'));
+        for (final url in HtmlBlocks.frontendScripts) {
+          expect(doc, contains(url));
+          expect(doc.indexOf(url), lessThan(doc.indexOf('<body>')));
+        }
+        var previous = doc.indexOf(HtmlBlocks.frontendScripts.last);
+        for (final bundle in _bundles) {
+          expect(doc.indexOf(bundle), greaterThan(previous));
+          expect(doc.indexOf(bundle), lessThan(doc.indexOf('<body>')));
+          previous = doc.indexOf(bundle);
+        }
         expect(doc, contains('min-height: var(--TH-viewport-height)'));
         expect(doc, contains('<body>\n<html>'));
         expect(doc, contains('window.SillyDraftBridge.postMessage'));
@@ -205,11 +220,37 @@ void main() {
       expect(doc, isNot(contains('bad()')));
       expect(doc, isNot(contains('onclick')));
       expect(doc, isNot(contains('lodash')));
+      for (final bundle in _bundles) {
+        expect(doc, isNot(contains(bundle)));
+      }
+      for (final url in HtmlBlocks.frontendScripts) {
+        expect(doc, isNot(contains(url)));
+      }
       expect(doc, contains('<script nonce="n0nce">'));
+    });
+
+    test('libraries can be disabled without removing the bridge', () {
+      final doc = HtmlBlocks.document(
+        block: block(HtmlBlockKind.frontend, _page),
+        runtime: tavernRuntimeJs,
+        state: const {},
+        nonce: 'test',
+        libraries: false,
+      );
+      expect(doc, contains(tavernRuntimeJs));
+      for (final bundle in _bundles) {
+        expect(doc, isNot(contains(bundle)));
+      }
+      for (final url in HtmlBlocks.frontendScripts) {
+        expect(doc, isNot(contains(url)));
+      }
     });
 
     test('runtime script never closes itself early', () {
       expect(tavernRuntimeJs.toLowerCase(), isNot(contains('</script')));
+      for (final bundle in _bundles) {
+        expect(bundle.toLowerCase(), isNot(contains('</script')));
+      }
     });
   });
 }

@@ -4,6 +4,10 @@ import 'dart:math';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
+import 'vendor/zod.dart';
+import 'vendor/yaml.dart';
+import 'vendor/tailwind.dart';
+
 /// How a block of HTML found in manuscript text is shown.
 ///
 /// [frontend] is a fenced code block holding a page or app, the kind
@@ -422,15 +426,20 @@ abstract final class HtmlBlocks {
     return text.contains('.') ? text.replaceFirst(RegExp(r'\.?0+$'), '') : text;
   }
 
-  /// Third-party libraries 酒馆助手 preloads for front-end blocks. Pages
-  /// written for it expect `$` and `_` to exist and Font Awesome icons to
-  /// show. Vue, jQuery UI and Tailwind are not preloaded.
+  /// 酒馆助手 a0f3a180: src/iframe/third_party_message.html and predefine.js.
+  /// Vue uses the runtime-only global build, for compiled community pages.
   static const frontendScripts = [
     'https://testingcf.jsdelivr.net/npm/lodash@4/lodash.min.js',
     'https://testingcf.jsdelivr.net/npm/jquery@3/dist/jquery.min.js',
+    'https://testingcf.jsdelivr.net/npm/jquery-ui@1.14.2/dist/jquery-ui.min.js',
+    'https://testingcf.jsdelivr.net/npm/jquery-ui-touch-punch@0.2.3/jquery.ui.touch-punch.min.js',
+    'https://testingcf.jsdelivr.net/npm/showdown@2.1.0/dist/showdown.min.js',
+    'https://testingcf.jsdelivr.net/npm/vue@3.5.43/dist/vue.runtime.global.prod.js',
+    'https://testingcf.jsdelivr.net/npm/vue-router@5.4.0/dist/vue-router.global.prod.js',
   ];
   static const frontendStyles = [
     'https://testingcf.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css',
+    'https://testingcf.jsdelivr.net/npm/jquery-ui@1.14.2/themes/base/all.css',
   ];
 
   /// The content-security policy of a block. Only TLS network access, no
@@ -468,9 +477,17 @@ abstract final class HtmlBlocks {
         .replaceAll('</', r'<\/')
         .replaceAll('<!--', r'<\!--');
     final scripts = frontend && libraries
-        ? frontendScripts
-              .map((url) => '<script src="${_attribute(url)}"></script>')
-              .join('\n')
+        ? [
+            for (final url in frontendScripts)
+              '<script src="${_attribute(url)}"></script>',
+            // 酒馆助手 copies its parent's real Zod namespace into each iframe.
+            '<script nonce="$nonce">$frontendZodJs\n'
+                '$frontendYamlJs\n$frontendTailwindJs\n'
+                'window.__VUE_PROD_DEVTOOLS__=true;'
+                'window.__VUE_OPTIONS_API__=true;'
+                'window.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false;'
+                '</script>',
+          ].join('\n')
         : '';
     final styles = frontend && libraries
         ? frontendStyles
