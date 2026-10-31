@@ -1,14 +1,15 @@
 // Rebuild in the core package: node tool/bundle_frontend_libraries.mjs.
-// Versions follow 酒馆助手 a0f3a180.
+// Versions follow 酒馆助手 a0f3a180 and ST-Prompt-Template d6f520d1.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, cp } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'sillydraft-libraries-')));
 const output = new URL('../lib/src/html/vendor/', import.meta.url);
+const reference = 'https://raw.githubusercontent.com/zonde306/ST-Prompt-Template/d6f520d149aba146305b0b781ddd691d449c28d2/';
 async function writeBundle(name, constant, script, notice) {
   assert(!script.includes("'''"), 'Dart raw string terminator in bundle');
   assert(!/<\/script/i.test(script), 'HTML script terminator in bundle');
@@ -22,7 +23,7 @@ try {
     'install', '--prefix', temporary, '--no-save', '--package-lock=false',
     '--ignore-scripts', '--no-audit', '--no-fund',
     'zod@4.4.3', 'yaml@2.9.1', '@tailwindcss/browser@4.1.12',
-    'esbuild@0.25.11',
+    'jsonrepair@3.13.1', 'syntax-error@1.4.0', 'esbuild@0.25.11',
   ], { stdio: 'inherit' });
   const require = createRequire(join(temporary, 'package.json'));
   const { build } = require('esbuild');
@@ -58,6 +59,41 @@ window.__sdStartTailwind = function(){
 };
 window.__sdStartTailwind();
 })();`, 'Official @tailwindcss/browser 4.1.12 (MIT).');
+
+  const source = join(temporary, 'prompt-template');
+  for (const path of ['src/3rdparty/ejs.js', 'src/function/variables.ts', 'src/function/json-patch.ts', 'src/utils/zodutl.ts', 'src/function/ejs.ts', 'LICENSE']) {
+    const response = await fetch(reference + path);
+    assert(response.ok, `Download ${path}: ${response.status}`);
+    const text = await response.text();
+    await mkdir(dirname(join(source, path)), { recursive: true });
+    await writeFile(join(source, path), text);
+  }
+  await cp(new URL('frontend/', import.meta.url), join(temporary, 'frontend'), { recursive: true });
+  const ejsSource = await readFile(join(source, 'src/function/ejs.ts'), 'utf8');
+  // Preserve the extension's syntax diagnostics verbatim; they only compile, never execute.
+  const lintStart = ejsSource.indexOf('const EJS_INCLUDE_REGEX');
+  const lintEnd = ejsSource.indexOf('let taskId = 0;');
+  assert(lintStart > 0 && lintEnd > lintStart);
+  await writeFile(join(source, 'syntax.ts'), "import ejs from './src/3rdparty/ejs.js';\nimport check from 'syntax-error';\n" + ejsSource.slice(lintStart, lintEnd));
+  const host = join(temporary, 'frontend/ejs_host.js');
+  const result = await build({ ...defaults,
+    entryPoints: [join(temporary, 'frontend/ejs_template.js')],
+    plugins: [{ name: 'sillydraft-host', setup(build) {
+      build.onResolve({ filter: /^(zod|.*\/(script\.js|lib\.js|extensions\.js|modules\/ui))$/ }, args => {
+        if (!args.importer.startsWith(source)) return;
+        return args.path === 'zod' ? { path: 'zod', namespace: 'host-global' } : { path: host };
+      });
+      build.onLoad({ filter: /.*/, namespace: 'host-global' }, () => ({ contents: 'export const z = window.z;' }));
+    } }],
+  });
+  const license = await readFile(join(source, 'LICENSE'), 'utf8');
+  await writeFile(new URL('EJS-TEMPLATE-LICENSE.txt', output), license);
+  // Legal comments from EJS, jsonrepair and syntax-error dependencies survive bundling.
+  await writeBundle('ejs_template', 'frontendEjsTemplateJs',
+    `/*! ST-Prompt-Template 1.17, d6f520d149aba146305b0b781ddd691d449c28d2 (AGPL-3.0).\n` +
+    `Source: https://github.com/zonde306/ST-Prompt-Template/tree/d6f520d149aba146305b0b781ddd691d449c28d2\n` +
+    `Host adapter: packages/sillydraft_core/tool/frontend/; license: EJS-TEMPLATE-LICENSE.txt\n*/\n${result.outputFiles[0].text}`,
+    'ST-Prompt-Template 1.17; source and build recipe in tool/bundle_frontend_libraries.mjs.');
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

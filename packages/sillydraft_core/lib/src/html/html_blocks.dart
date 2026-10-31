@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'vendor/zod.dart';
 import 'vendor/yaml.dart';
 import 'vendor/tailwind.dart';
+import 'vendor/ejs_template.dart';
 
 /// How a block of HTML found in manuscript text is shown.
 ///
@@ -482,7 +483,7 @@ abstract final class HtmlBlocks {
               '<script src="${_attribute(url)}"></script>',
             // 酒馆助手 copies its parent's real Zod namespace into each iframe.
             '<script nonce="$nonce">$frontendZodJs\n'
-                '$frontendYamlJs\n$frontendTailwindJs\n'
+                '$frontendYamlJs\n$frontendTailwindJs\n$frontendEjsTemplateJs\n'
                 'window.__VUE_PROD_DEVTOOLS__=true;'
                 'window.__VUE_OPTIONS_API__=true;'
                 'window.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false;'

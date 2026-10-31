@@ -551,7 +551,7 @@ const tavernRuntimeJs = r'''
     });
   }
   function eventWaitOnceOnButton(name) { return eventWaitOnce('button:' + name); }
-  window.__sdDispatch = function (event, args) { dispatch(event, Array.isArray(args) ? args : []); };
+  window.__sdDispatch = function (event, args) { return dispatch(event, Array.isArray(args) ? args : []); };
   var tavern_events = {
     APP_READY: 'app_ready', CHAT_CHANGED: 'chat_id_changed', MESSAGE_SWIPED: 'message_swiped',
     MESSAGE_SENT: 'message_sent', MESSAGE_RECEIVED: 'message_received', MESSAGE_EDITED: 'message_edited',
@@ -745,7 +745,9 @@ const tavernRuntimeJs = r'''
   window.SillyTavern = SillyTavern;
   window.toastr = toastr;
   window.Mvu = Mvu;
-  window.SillyDraft = { version: S.version || '', state: S };
+  window.SillyDraft = { version: S.version || '', state: S,
+    persistVariables: function (variables, option) { return call('replaceVariables', [clone(variables), normalizeOption(option)]); },
+  };
 
   var originalError = console.error;
   console.error = function () {

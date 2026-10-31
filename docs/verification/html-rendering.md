@@ -27,10 +27,21 @@
 | `showdown` | 2.1.0，jsdelivr |
 | `z` / `YAML` | 完整 Zod 4.4.3（含 `z.z`）/ YAML 2.9.1，随应用打包 |
 | Tailwind | 官方 `@tailwindcss/browser` 4.1.12，随应用打包，DOM 重写后重新观察动态类名 |
+| `EjsTemplate` | ST-Prompt-Template 1.17 的引擎及适配层，见下一节 |
 
-Vue 使用酒馆助手相同的 runtime-only 构建，供已编译组件使用，不提供浏览器内模板编译器；三个 `__VUE_*` 标志按 `predefine.js` 设置。酒馆助手的 Vue / VueRouter CDN 地址未锁版本，这里按固定提交 `package.json` 的版本范围下限锁定。原生 WebView 没有 ST 父页面，父页面提供的 Zod / YAML 直接内置注入；Zod 错误仍为默认英文，不随宿主语言切换。CDN 依赖需要联网。
+Vue 使用酒馆助手相同的 runtime-only 构建，供已编译组件使用，不提供浏览器内模板编译器；三个 `__VUE_*` 标志按 `predefine.js` 设置。酒馆助手的 Vue / VueRouter CDN 地址未锁版本，这里按固定提交 `package.json` 的版本范围下限锁定。原生 WebView 没有 ST 父页面，父页面提供的 Zod / YAML 直接内置注入；Zod 错误仍为默认英文，不随宿主语言切换。CDN 依赖需要联网；EjsTemplate 虽已打包，变量操作仍依赖 CDN lodash。
 
 生成文件在 `packages/sillydraft_core/lib/src/html/vendor/`。在核心包目录运行 `node tool/bundle_frontend_libraries.mjs`，按固定版本下载、打包并保留许可；普通 Flutter 构建不需要 npm。
+
+### 内置 EjsTemplate
+
+依据 [ST-Prompt-Template 1.17 / d6f520d149aba146305b0b781ddd691d449c28d2](https://github.com/zonde306/ST-Prompt-Template/tree/d6f520d149aba146305b0b781ddd691d449c28d2) 的 `src/modules/exports.ts`、`src/function/ejs.ts`、`src/function/variables.ts`、`src/function/json-patch.ts`。复用扩展修改过的 EJS 3.1.9 引擎、变量、JSON 和语法检查源码，宿主适配在 `tool/frontend/`；扩展 AGPL-3.0 许可随包保留为 `EJS-TEMPLATE-LICENSE.txt`。
+
+支持 `evalTemplate(code, context, options)`、`compileTemplate(code, {options, escaper, includer}, thisData)`、`prepareContext(env, end)`、`getSyntaxErrorInfo`、`allVariables`、`saveVariables`、`defines`、`initialVariables`、`parseJSON`、`jsonPatch` 及三个布尔设置 `autosave_enabled`、`with_context_disabled`、`debug_enabled`。EJS 支持异步、循环、自定义分隔符和多参数 `print`，`<%=` 沿用扩展的原样输出。上下文提供变量读写、增减、数组操作、Zod schema、`define`、嵌套模板和 `prompt_template_prepare` 事件。
+
+变量合并顺序为 global → initial → local/chat → message；持久化映射到现有宿主变量桥接，只保存变更的作用域，并等待宿主确认。默认 `autosave_enabled: false`，调用 `saveVariables(true)` 才强制保存，失败会拒绝且可重试。`defines`、initial 和设置只在当前 WebView 存活期间保留；消息只支持选中的 swipe，访问其他 swipe 报错。保留固定版本的变量语义，包括 `allVariables(-1)` 的继承顺序和删除简写的参数顺序；需要指定作用域删除时使用 `delvar(key, undefined, {scope})`。
+
+边界：这里只接入网页前端主动调用的 EJS，**模型提示词和世界书中的 EJS 不会自动执行**。未接入扩展的世界书扫描、quick reply、提示词注入、sandbox、faker 和完整 ST 环境；相关已声明宿主方法及不支持的 feature 设置明确抛错。模板在隔离 WebView 内编译，未使用扩展的 Worker，大模板可能阻塞该页面。`compileTemplate` 可提供自定义 includer，默认的世界书 include 不支持。`prepareContext` 的角色、预设、消息查询助手签名不同于酒馆助手接口，因此不拿同名全局函数冒充；页面仍可直接调用下表中支持的酒馆助手全局接口。
 
 ### 消息与宿主接口
 
@@ -96,12 +107,23 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 | `test/html_block_flow_test.dart` | 阅读文档偏移、无网页视图时的源码回退、阅读器中切换开场/设置变量/发出写作要求、角色卡开始页预览与创建后写入变量、设置开关 |
 | `integration_test/html_render_test.dart`（macOS） | 真实 WKWebView：页面按视口自测高度、接口存在、按钮经桥接切换开场、第二个界面读取角色卡并写入变量、`/sys … \| /cut 0 \| /trigger` 打开整章改写请求 |
 | `integration_test/html_libraries_test.dart`（macOS） | 真实 WKWebView：Zod 校验、YAML 往返、showdown、Vue / VueRouter、jQuery UI / Touch Punch、Tailwind 初始及动态样式、按钮与原生桥接往返；另测 `document.open/write/close` 后的相同行为。通道回复使用本地测试桩，不调用模型 |
+| `integration_test/ejs_template_test.dart`（macOS） | 真实 WKWebView：异步 EJS、print、原样输出、编译选项、语法诊断、上下文与事件、变量继承 / schema / JSON、保存回执 / 失败重试、整页重写；持久化回执使用本地测试桩 |
 | `integration_test/tavern_input_test.dart`（macOS） | 真实 WKWebView：输入赋值 / 事件 / 发送合并、失败重试、片段隔离，整页重写后恢复宿主样式 / 输入监听并完成原有待确认请求 |
 | `integration_test/html_height_test.dart`（macOS） | 真实 WKWebView：`details` 和带过渡动画的 `max-height` 面板各反复展开、收起两轮，外层高度从 660px 回到 60px |
 
 2026-10-13 结果：核心 143 项、界面 68 项通过；macOS 真实网页视图集成测试结果见下文“运行记录”。真实角色卡《道渊》v5.4.2 的开场为完整 HTML 页面（烟花画布、`min-height: 100vh`、`getChatMessages`/`setChatMessage`/`triggerSlash` 兜底），其备用开场经角色卡正则变成角色创建界面，提交时执行 `/sys … | /cut N | /trigger`；两种结构都在上述测试中以缩减样本覆盖。这是当时的验证范围：尚未内置 Zod 和 MVU 解析，未运行道渊工坊等社区脚本；当前已内置的能力见上表，不把当时结果当作当前整卡验证。
 
 ## 运行记录
+
+2026-10-31，macOS arm64，公共依赖、EJS 与整页重写验证：
+
+- 核心 HTML / 桥接测试 36 项、`html_block_flow_test.dart` 界面测试 11 项、原有 `html_render_test.dart` 原生回归 2 项通过；Flutter / 核心包静态分析及全仓库 Dart 格式检查通过。
+- `flutter test --no-pub integration_test/html_libraries_test.dart -d macos` 2 项通过：原始文档与异步 `document.open/write/close` 替换后的文档都能直接使用 Vue、VueRouter、Zod，按钮更新视图并完成原生桥接往返。桥接回复为本地测试桩。
+- `flutter test --no-pub integration_test/ejs_template_test.dart -d macos` 1 项通过：覆盖异步模板、编译与诊断、上下文事件、变量继承与 schema、保存回执 / 失败重试，以及整页重写后继续求值。变量保存回复为本地测试桩。
+- `flutter test --no-pub integration_test/tavern_input_test.dart -d macos` 1 项通过：整页重写恢复输入框及监听器，原有请求仍能收到回执，重复事件不会重复发送，失败后可重试；通道回复为本地测试桩。
+- `flutter test --no-pub integration_test/html_height_test.dart -d macos` 2 项通过：普通折叠及动画面板各展开、收起两轮，高度从 660px 回到 60px。
+- 使用本机《无限恐怖》V1030 的完整角色卡在临时作品库验证：压缩开场解码后的 Vue 页面显示“无限恐怖 · 开局设定”，正文可见，阅读器网页高度收敛到 359px，重写后的 `#send_textarea` 存在。点击“使用标准大纲开局”后，第一章从 `<SetupPlaceHolderImpl/>` 替换为长度 5,227 个字符的正文。通过真实阅读器及仓库写入路径，不调用模型；卡片内容未作为仓库测试夹具保留。
+- 该卡片仍报告世界书接口不可用；上述真实卡片结果仅覆盖开场显示和默认开局写入，不代表自定义开局或整张卡片的全部功能可用。未验证移动端；模型提示词和世界书中的 EJS 自动处理仍未接入。
 
 2026-10-13，macOS arm64（Flutter 3.47.7，Swift Package Manager 集成，未安装 CocoaPods）：
 

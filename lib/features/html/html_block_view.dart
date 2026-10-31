@@ -210,7 +210,7 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
         // Emitted by this page, whose own listeners already ran.
         if (source != null && identical(source, widget.bridge)) return;
         _run(
-          'window.__sdDispatch && window.__sdDispatch(${jsonEncode(event)}, ${jsonEncode(args)});',
+          'void (window.__sdDispatch && window.__sdDispatch(${jsonEncode(event)}, ${jsonEncode(args)}));',
         );
       });
       setState(() {

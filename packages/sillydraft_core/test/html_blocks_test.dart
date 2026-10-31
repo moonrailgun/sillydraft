@@ -1,4 +1,5 @@
 import 'package:sillydraft_core/sillydraft_core.dart';
+import 'package:sillydraft_core/src/html/vendor/ejs_template.dart';
 import 'package:sillydraft_core/src/html/vendor/tailwind.dart';
 import 'package:sillydraft_core/src/html/vendor/yaml.dart';
 import 'package:sillydraft_core/src/html/vendor/zod.dart';
@@ -19,7 +20,12 @@ const _page = '''<html>
 </body>
 </html>''';
 
-const _bundles = [frontendZodJs, frontendYamlJs, frontendTailwindJs];
+const _bundles = [
+  frontendZodJs,
+  frontendYamlJs,
+  frontendTailwindJs,
+  frontendEjsTemplateJs,
+];
 
 void main() {
   group('HtmlBlocks.find', () {
