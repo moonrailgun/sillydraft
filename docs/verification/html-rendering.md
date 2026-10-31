@@ -33,7 +33,7 @@
 | `getCharData` | 角色卡字段（不含 `tavern_helper` 和 `regex_scripts` 扩展） |
 | `SillyTavern.getContext()` | `chat`、`name1`、`name2`、`chatId`、`characters`、`eventSource`、`substituteParams`；`generate()` 提交输入框中的续写要求 |
 | `#send_textarea` / `#send_but` | 隐藏的兼容输入框与发送按钮；赋值、`input`/`change`、点击发送直接续写下一章，同轮事件合并，空白不触发 |
-| `Mvu` | 最小数据层：`getMvuData`/`replaceMvuData`/`getMvuVariable`/`setMvuVariable` 读写该章变量；不解析 `<UpdateVariable>`，`parseMessage` 原样返回旧数据 |
+| `Mvu` | `getMvuData`/`replaceMvuData`/`getMvuVariable`/`setMvuVariable` 读写变量；`parseMessage` 和 `reloadInitVar` 通过宿主调用内置 MVU 核心，范围见 [MVU 验证](mvu.md)；不是任意社区脚本执行环境 |
 | `generate`/`generateRaw`、世界书、预设、正则、音频、脚本库接口 | 不支持；`generate` 返回拒绝的 Promise，其他为未定义 |
 | 提示词中的 `{{get_message_variable::路径}}`、`{{get_chat_variable}}`、`{{get_global_variable}}`、`{{format_*_variable}}`、`{{format_*_variable_quoted}}`（酒馆助手的助手宏，MVU 卡片用它把状态写进提示词） | `MacroEngine` 内置：`message`/`chat` 读任务局部变量，`global` 读全局变量，`character`/`preset` 为空；忽略 `$` 开头的键；`format` 输出按行首缩进的 YAML |
 
@@ -78,7 +78,7 @@ Slash 命令（管道 `|`、`\|` 转义、引号内不拆分、`{{pipe}}`）：
 | `integration_test/html_render_test.dart`（macOS） | 真实 WKWebView：页面按视口自测高度、接口存在、按钮经桥接切换开场、第二个界面读取角色卡并写入变量、`/sys … \| /cut 0 \| /trigger` 打开整章改写请求 |
 | `integration_test/html_height_test.dart`（macOS） | 真实 WKWebView：`details` 和带过渡动画的 `max-height` 面板各反复展开、收起两轮，外层高度从 660px 回到 60px |
 
-2026-10-13 结果：核心 143 项、界面 68 项通过；macOS 真实网页视图集成测试结果见下文“运行记录”。真实角色卡《道渊》v5.4.2 的开场为完整 HTML 页面（烟花画布、`min-height: 100vh`、`getChatMessages`/`setChatMessage`/`triggerSlash` 兜底），其备用开场经角色卡正则变成角色创建界面，提交时执行 `/sys … | /cut N | /trigger`；两种结构都在上述测试中以缩减样本覆盖。该卡依赖的 MVU、ZOD、道渊工坊等酒馆助手脚本不运行，状态栏中依赖 `Mvu.parseMessage` 解析 `<UpdateVariable>` 的部分不会自动更新变量。
+2026-10-13 结果：核心 143 项、界面 68 项通过；macOS 真实网页视图集成测试结果见下文“运行记录”。真实角色卡《道渊》v5.4.2 的开场为完整 HTML 页面（烟花画布、`min-height: 100vh`、`getChatMessages`/`setChatMessage`/`triggerSlash` 兜底），其备用开场经角色卡正则变成角色创建界面，提交时执行 `/sys … | /cut N | /trigger`；两种结构都在上述测试中以缩减样本覆盖。这是当时的验证范围：尚未内置 Zod 和 MVU 解析，未运行道渊工坊等社区脚本；当前已内置的能力见上表，不把当时结果当作当前整卡验证。
 
 ## 运行记录
 
