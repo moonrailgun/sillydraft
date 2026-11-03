@@ -561,6 +561,8 @@ final class EditorAgent {
       };
     }
     return {
+      if (!runner.allowNsfwImages || input['allowNsfwImages'] == false)
+        'allowNsfwImages': false,
       'connection': connection.raw,
       'request': request.raw,
       'conversationId': conversationId,

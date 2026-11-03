@@ -58,6 +58,7 @@ gh secret set APP_STORE_CONNECT_ISSUER_ID --repo moonrailgun/sillydraft
 - **App Privacy 问卷**：小说内容、提示词、对话和参考图片可发往用户选择的模型服务；备份可发往用户选择的同步服务，HTML 页面可加载 HTTPS 资源。需按实际接收方和保留方式填报，不能仅因本地优先就直接选择“不收集数据”。`lib/app/services.dart` 当前将 API 密钥存于本机 `secrets.json`，不要在政策里声称所有密钥存于 Keychain。[Apple 隐私说明](https://developer.apple.com/app-store/app-privacy-details/)
 - **加密出口合规**：核心使用 AES-GCM 加密作品备份及资源，并使用网络加密。完成 Apple 加密问卷，确定适用声明和所需文件后再设置 `ITSAppUsesNonExemptEncryption`；不能仅以 HTTPS 为依据直接填写 `false`。[Apple 加密合规](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance/)
 - **隐私清单**：在最终签名 archive 中核对 Flutter/插件的 `PrivacyInfo.xcprivacy`、required-reason API 和 Xcode 隐私报告。本任务未替第三方 SDK 作隐私声明。
+- **iOS 插画限制已接入**：隐藏 NSFW 引擎选项，忽略已有 NSFW 角色配置，并在分类、任务执行和远程桌面调用处限制 NSFW/未分类生图；已标记 NSFW 的参考图不可用于生成。参考图、人设、重绘、助手批量生图和旧任务重试也受限，普通插画可继续。此流程依赖用户配置的分类模型，没有输出像素审查；不能因此直接勾选所有内容均无或声称保证过滤所有成人内容。实际分级仍按完整产品能力填写。
 - **年龄分级、内容与地区**：按实际 AI 生成能力、导入内容和 HTML 前端完成新年龄分级问卷；核对用户导入脚本的边界与审核指南 2.5.2。发布地区、价格、版权主体、欧盟交易者信息和中国大陆可用性/所需资质应按发布者的真实情况填写。纯加载工具的用途应写入审核说明，不能据此替所有用户资源作版权保证。
 - **审核可访问性**：无账号即可打开示例、阅读和编辑；AI 功能需一个审核期间可用、带限额的演示连接，或与 Apple 认可的完整演示方式配合。不要让审核员购买自己的模型额度，也不要把个人长期 API key 放入 App。示例不能冒充真实模型输出。
 - **权限与真机**：在 iPhone/iPad 验证导入导出、相机扫码拒绝/允许、局域网、前后台、阅读与编辑；上传/签名成功不能替代真机验收。

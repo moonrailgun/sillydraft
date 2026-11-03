@@ -128,6 +128,9 @@ final class PersonaService {
     ModelConnection? promptConnection,
     ModelConnection? nsfwConnection,
   }) async {
+    if (!runner.allowNsfwImages && promptConnection == null) {
+      throw const FormatException('此任务不允许跳过 NSFW 内容分类，请配置资料整理模型后重试');
+    }
     final factory = runner.imageProviderFactory, library = runner.assetLibrary;
     if (factory == null || library == null) {
       throw StateError('生图服务或本地图片目录尚未配置');

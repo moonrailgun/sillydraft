@@ -8,6 +8,58 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'support/host.dart';
 
 void main() {
+  testWidgets('iOS ignores a saved NSFW role and keeps ordinary images', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final services = AppServices(
+      repository: StoryRepository.memory(),
+      secrets: MemorySecrets(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await services.close();
+    });
+    final image = ModelConnection(
+      id: 'image',
+      name: '插画',
+      baseUrl: 'http://localhost:1',
+      model: 'image',
+      kind: ModelKind.image,
+    );
+    await services.saveConnection(image);
+    await services.repository.setSetting('modelRoles', {'imageNsfw': 'image'});
+    expect(await services.connectionFor('imageNsfw'), isNull);
+    expect((await services.connectionFor('image'))?.id, 'image');
+    expect(
+      (await services.repository.getSetting('modelRoles'))?['imageNsfw'],
+      'image',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [servicesProvider.overrideWithValue(services)],
+        child: testHost(const SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final ordinary = find.byKey(const Key('role-image'));
+    await tester.scrollUntilVisible(
+      ordinary,
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.byKey(const Key('role-imageNsfw')), findsNothing);
+    expect(find.textContaining('iOS 版不提供 NSFW'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
   for (final width in [390.0, 900.0]) {
     testWidgets(
       'image roles select engines and models independently at $width',

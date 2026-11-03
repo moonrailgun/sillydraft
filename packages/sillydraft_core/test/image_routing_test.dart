@@ -56,7 +56,142 @@ void main() {
     protocol: ModelProtocol.novelAI,
   );
 
-  for (final outcome in ['approve', 'reject', 'invalid', 'missing', 'cancel']) {
+  for (final classification in [true, null, false]) {
+    test(
+      'restricted frozen image task requires a safe classification: $classification',
+      () async {
+        final repo = StoryRepository.memory();
+        addTearDown(repo.close);
+        final dir = await Directory.systemTemp.createTemp('restricted-images-');
+        addTearDown(() => dir.delete(recursive: true));
+        final novel = await repo.createNovel(title: '限制');
+        var draws = 0;
+        final runner = TaskRunner(
+          repository: repo,
+          providerFactory: (_) async =>
+              throw StateError('No text call expected'),
+          assetLibrary: AssetLibrary(repository: repo, directory: dir),
+          imageProviderFactory: (c) async => _Images(c, (_) async {
+            draws++;
+            return GeneratedImage(bytes: testPicture());
+          }),
+        );
+        addTearDown(runner.close);
+        final task = await runner.start(
+          branchId: novel.activeBranchId,
+          kind: TaskKind.illustration,
+          input: {
+            'allowNsfwImages': false,
+            'nsfw': ?classification,
+            'connection': normal.raw,
+            'imageRequest': ImageRequest(prompt: 'scene').raw,
+            'name': '图片',
+            'purpose': 'illustration',
+            'references': <Object>[],
+          },
+        );
+        final done = await runner.wait(task.id);
+        expect(
+          done.status,
+          classification == false ? TaskStatus.completed : TaskStatus.failed,
+        );
+        expect(draws, classification == false ? 1 : 0);
+        if (classification != false) {
+          expect(done.error, contains('NSFW'));
+          final retried = await runner.resume(task.id);
+          expect((await runner.wait(retried.id)).status, TaskStatus.failed);
+          expect(draws, 0);
+        }
+      },
+    );
+  }
+
+  test(
+    'restricted task refuses a known NSFW reference before image submission',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final dir = await Directory.systemTemp.createTemp(
+        'restricted-reference-',
+      );
+      addTearDown(() => dir.delete(recursive: true));
+      final assets = AssetLibrary(repository: repo, directory: dir);
+      final novel = await repo.createNovel(title: '参考图');
+      final reference = await assets.importImage(
+        branchId: novel.activeBranchId,
+        name: '旧参考图',
+        bytes: testPicture(),
+        metadata: {'nsfw': true},
+      );
+      var draws = 0;
+      final runner = TaskRunner(
+        repository: repo,
+        allowNsfwImages: false,
+        providerFactory: (_) async => throw StateError('No text call expected'),
+        assetLibrary: assets,
+        imageProviderFactory: (c) async => _Images(c, (_) async {
+          draws++;
+          return GeneratedImage(bytes: testPicture());
+        }),
+      );
+      addTearDown(runner.close);
+      final task = await runner.start(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.illustration,
+        input: {
+          'allowNsfwImages': true,
+          'nsfw': false,
+          'connection': normal.raw,
+          'imageRequest': ImageRequest(prompt: 'ordinary scene').raw,
+          'name': '图片',
+          'purpose': 'illustration',
+          'references': [
+            {'id': reference.id, 'hash': reference.hash},
+          ],
+        },
+      );
+      final done = await runner.wait(task.id);
+      expect(done.status, TaskStatus.failed);
+      expect(done.error, contains('NSFW'));
+      expect(draws, 0);
+    },
+  );
+
+  test('restricted persona image cannot skip classification', () async {
+    final repo = StoryRepository.memory();
+    addTearDown(repo.close);
+    final dir = await Directory.systemTemp.createTemp('restricted-persona-');
+    addTearDown(() => dir.delete(recursive: true));
+    var draws = 0;
+    final runner = TaskRunner(
+      repository: repo,
+      allowNsfwImages: false,
+      providerFactory: (_) async => throw StateError('No text call expected'),
+      assetLibrary: AssetLibrary(repository: repo, directory: dir),
+      imageProviderFactory: (c) async => _Images(c, (_) async {
+        draws++;
+        return GeneratedImage(bytes: testPicture());
+      }),
+    );
+    addTearDown(runner.close);
+    await expectLater(
+      PersonaService(
+        repository: repo,
+        runner: runner,
+      ).generateImage(normal, 'scene'),
+      throwsFormatException,
+    );
+    expect(draws, 0);
+  });
+
+  for (final outcome in [
+    'approve',
+    'reject',
+    'invalid',
+    'missing',
+    'cancel',
+    'restricted',
+  ]) {
     test(
       'mixed batch routes each illustration and reference: $outcome',
       () async {
@@ -84,6 +219,7 @@ void main() {
         late String taskId;
         runner = TaskRunner(
           repository: repo,
+          allowNsfwImages: outcome != 'restricted',
           assetLibrary: AssetLibrary(repository: repo, directory: dir),
           imageProviderFactory: (c) async => _Images(c, (request) async {
             draws.add((engine: c.id, request: request));
@@ -209,9 +345,15 @@ void main() {
         } else {
           expect(draws, isEmpty);
           expect(await repo.listAssets(novel.id), isEmpty);
-          if (outcome == 'invalid' || outcome == 'missing') {
+          if (outcome == 'invalid' ||
+              outcome == 'missing' ||
+              outcome == 'restricted') {
             expect(done.status, TaskStatus.failed);
             expect(done.error, contains('NSFW'));
+            if (outcome == 'restricted') {
+              expect(done.input['allowNsfwImages'], false);
+              expect(formats, 1);
+            }
           }
           if (outcome == 'cancel') {
             expect(done.status, TaskStatus.cancelled);

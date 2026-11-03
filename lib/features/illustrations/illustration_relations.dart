@@ -103,7 +103,11 @@ class _IllustrationRelationsState extends ConsumerState<IllustrationRelations> {
                   children: [
                     const Text('使用最新参考图依次生成。成功后替换当前分支正文里的对应图片；失败时保留旧图并停止。'),
                     const SizedBox(height: 8),
-                    const Text('确认后重新判断 NSFW，按设置中的对应引擎编写提示词；切换引擎时使用该引擎的默认参数。'),
+                    Text(
+                      services.runner.allowNsfwImages
+                          ? '确认后重新判断 NSFW，按设置中的对应引擎编写提示词；切换引擎时使用该引擎的默认参数。'
+                          : '确认后重新检查画面描述；iOS 版不提供 NSFW 生图，分类未通过时停止。',
+                    ),
                     if (engineLabels.length == 1) ...[
                       const SizedBox(height: 8),
                       Text('上次生图引擎：${engineLabels.single}', style: muted),

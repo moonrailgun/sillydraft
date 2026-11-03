@@ -176,6 +176,7 @@ final class RemoteHost {
         await _json(request.response, 200, {
           'name': name,
           'appVersion': appVersion,
+          'imageContentPolicy': 1,
           'resourceKey': base64Encode(await library!.resourceKey()),
         });
       case ('GET', '/v1/db'):

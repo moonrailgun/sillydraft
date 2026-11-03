@@ -1100,7 +1100,11 @@ extension _AgentExecution on TaskRunner {
           'code': 'image_count_mismatch',
         };
       }
-      final service = IllustrationService(repository: repository, runner: this);
+      final service = IllustrationService(
+        repository: repository,
+        runner: this,
+        allowNsfwImages: task.input['allowNsfwImages'] != false,
+      );
       final defaultConnection = ModelConnection.fromJson(
         jsonObject(image['connection'], 'image.connection'),
       );

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -207,6 +208,7 @@ final class AppServices {
       repository: repository,
       providerFactory: modelProviderFactory ?? provider,
       imageProviderFactory: imageProviderFactory ?? imageProvider,
+      allowNsfwImages: defaultTargetPlatform != TargetPlatform.iOS,
       assetLibrary: assets,
     );
     library = ResourceLibrary(repository: repository, keyProvider: resourceKey);
@@ -234,6 +236,7 @@ final class AppServices {
       session,
       providerFactory: provider,
       imageProviderFactory: imageProvider,
+      allowNsfwImages: defaultTargetPlatform != TargetPlatform.iOS,
       assetLibrary: assets,
     );
     library = ResourceLibrary(
@@ -561,8 +564,10 @@ final class AppServices {
     await secrets.delete('endpoint/$id');
   }
 
-  Future<ModelConnection?> connectionFor(String role) =>
-      repository.connectionFor(role, localCli: remote == null);
+  Future<ModelConnection?> connectionFor(String role) async {
+    if (role == 'imageNsfw' && !runner.allowNsfwImages) return null;
+    return repository.connectionFor(role, localCli: remote == null);
+  }
 
   void registerDraft(Object owner, Future<void> Function() flush) =>
       _drafts[owner] = flush;

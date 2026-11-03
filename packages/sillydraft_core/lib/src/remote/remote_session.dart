@@ -19,8 +19,10 @@ final class RemoteHello {
   RemoteHello(Map<String, dynamic> json)
     : name = json['name'] as String,
       appVersion = json['appVersion'] as String,
+      imageContentPolicy = json['imageContentPolicy'] == 1,
       resourceKey = base64Decode(json['resourceKey'] as String);
   final String name, appVersion;
+  final bool imageContentPolicy;
   final List<int> resourceKey;
 }
 

@@ -21,7 +21,13 @@ final class IllustrationService {
       'Single character reference, full body, neutral pose, plain background, no text. ';
   static const _locationFraming =
       'Empty location reference, clear architecture and spatial layout, no people, no text. ';
-  const IllustrationService({required this.repository, required this.runner});
+  const IllustrationService({
+    required this.repository,
+    required this.runner,
+    this._allowNsfwImages = true,
+  });
+  final bool _allowNsfwImages;
+  bool get allowNsfwImages => _allowNsfwImages && runner.allowNsfwImages;
   final StoryRepository repository;
   final TaskControl runner;
 
@@ -74,6 +80,9 @@ final class IllustrationService {
       _ => throw const FormatException('NSFW 判断未返回 true 或 false，已停止生图，请重试'),
     };
     if (nsfw) {
+      if (!allowNsfwImages) {
+        throw const FormatException('此任务不允许 NSFW 生图，请修改画面描述');
+      }
       connection =
           nsfwConnection ??
           (throw const FormatException('画面判定为 NSFW，请先在设置中选择支持 NSFW 的生图引擎'));
@@ -697,6 +706,9 @@ final class IllustrationService {
       connection = routed.connection;
       nsfw = routed.nsfw;
     }
+    if (!allowNsfwImages && nsfw != false) {
+      throw const FormatException('此任务不允许 NSFW 或未通过内容分类的生图，请重新发起');
+    }
     connection = await withLatestWorkflow(
       connection,
       references:
@@ -717,6 +729,9 @@ final class IllustrationService {
     final imageLabels = <String>[];
     for (final id in ids) {
       final asset = await repository.getAsset(id);
+      if (!allowNsfwImages && asset.metadata['nsfw'] == true) {
+        throw const FormatException('此任务不允许使用 NSFW 图片作为参考图');
+      }
       if (asset.novelId != branch.novelId) {
         throw const FormatException('参考图不属于当前作品');
       }
@@ -748,6 +763,7 @@ final class IllustrationService {
       chapterId: chapter?.id,
       baseRevisionId: chapter?.revisionId,
       input: {
+        if (!allowNsfwImages) 'allowNsfwImages': false,
         'connection': connection.raw,
         'nsfw': ?nsfw,
         'imageRequest': request.raw,

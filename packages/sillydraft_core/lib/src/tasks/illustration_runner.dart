@@ -5,6 +5,14 @@ extension _IllustrationExecution on TaskRunner {
     GenerationTask task,
     GenerationCancellation cancel,
   ) async {
+    // Recheck frozen/retried tasks before opening any image provider.
+    if ((!allowNsfwImages || task.input['allowNsfwImages'] == false) &&
+        task.input['nsfw'] != false) {
+      throw const ProviderException(
+        'image_content_blocked',
+        '此任务不允许 NSFW 或未通过内容分类的生图，请重新发起',
+      );
+    }
     final factory = imageProviderFactory, library = assetLibrary;
     if (factory == null || library == null) {
       throw const ProviderException('image_unavailable', '生图服务或本地图片目录尚未配置');
@@ -26,6 +34,13 @@ extension _IllustrationExecution on TaskRunner {
     for (final raw in (input['references'] as List? ?? [])) {
       final ref = jsonObject(raw, 'reference'),
           asset = await repository.getAsset(ref['id'] as String);
+      if ((!allowNsfwImages || task.input['allowNsfwImages'] == false) &&
+          asset.metadata['nsfw'] == true) {
+        throw const ProviderException(
+          'image_content_blocked',
+          '此任务不允许使用 NSFW 图片作为参考图',
+        );
+      }
       if (asset.novelId != novel || asset.hash != ref['hash']) {
         throw const ProviderException('image_reference', '参考图片已改变或不属于当前作品');
       }

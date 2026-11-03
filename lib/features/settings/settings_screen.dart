@@ -45,7 +45,9 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final remote = ref.watch(servicesProvider).remote;
+    final services = ref.watch(servicesProvider);
+    final remote = services.remote;
+    final allowNsfwImages = services.runner.allowNsfwImages;
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
@@ -282,7 +284,7 @@ class SettingsScreen extends ConsumerWidget {
                         'editor': '编辑 Agent',
                         'analysis': '资料整理',
                         'image': '普通生图引擎',
-                        'imageNsfw': 'NSFW 生图引擎',
+                        if (allowNsfwImages) 'imageNsfw': 'NSFW 生图引擎',
                       }.entries)
                         if (connections.any(
                           (c) => connectionServes(c, role.key),
@@ -300,9 +302,11 @@ class SettingsScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
-                      const Text(
-                        '生图前使用资料整理模型判断画面是否为 NSFW，再按所选引擎编写提示词。'
-                        '请为 NSFW 选择支持此类内容的引擎；未指定时遇到 NSFW 会停止生成。',
+                      Text(
+                        allowNsfwImages
+                            ? '生图前使用资料整理模型判断画面是否为 NSFW，再按所选引擎编写提示词。'
+                                  '请为 NSFW 选择支持此类内容的引擎；未指定时遇到 NSFW 会停止生成。'
+                            : 'iOS 版不提供 NSFW 生图。生图前会检查画面描述，判为 NSFW 或无法完成分类时停止生成。',
                       ),
                       const SizedBox(height: 12),
                       Text('旁路整理', style: heading),

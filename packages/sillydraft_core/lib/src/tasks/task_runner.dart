@@ -76,6 +76,7 @@ final class _ProgressSaver {
 /// What services and screens need from task execution. [TaskRunner] runs
 /// tasks in this process; a remote library hands them to the desktop.
 abstract interface class TaskControl {
+  bool get allowNsfwImages;
   ProviderFactory get providerFactory;
   ImageProviderFactory? get imageProviderFactory;
   AssetLibrary? get assetLibrary;
@@ -108,8 +109,11 @@ final class TaskRunner implements TaskControl {
     required this.providerFactory,
     this.imageProviderFactory,
     this.assetLibrary,
+    this.allowNsfwImages = true,
   });
   final StoryRepository repository;
+  @override
+  final bool allowNsfwImages;
   @override
   final ProviderFactory providerFactory;
   @override
@@ -164,7 +168,7 @@ final class TaskRunner implements TaskControl {
     final task = await repository.createTask(
       branchId: branchId,
       kind: kind,
-      input: input,
+      input: {...input, if (!allowNsfwImages) 'allowNsfwImages': false},
       chapterId: chapterId,
       baseRevisionId: baseRevisionId,
       retryOf: retryOf,

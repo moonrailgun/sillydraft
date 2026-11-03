@@ -15,8 +15,11 @@ final class RemoteTaskControl implements TaskControl {
     required this.providerFactory,
     this.imageProviderFactory,
     this.assetLibrary,
+    this.allowNsfwImages = true,
   });
   final RemoteSession session;
+  @override
+  final bool allowNsfwImages;
   @override
   final ProviderFactory providerFactory;
   @override
@@ -39,13 +42,14 @@ final class RemoteTaskControl implements TaskControl {
     String? baseRevisionId,
     String? retryOf,
   }) async {
+    _checkImagePolicy(kind, input);
     final reply = await session.request(
       'POST',
       '/v1/tasks/start',
       json: {
         'branchId': branchId,
         'kind': kind.name,
-        'input': input,
+        'input': {...input, if (!allowNsfwImages) 'allowNsfwImages': false},
         'chapterId': ?chapterId,
         'baseRevisionId': ?baseRevisionId,
         'retryOf': ?retryOf,
@@ -102,39 +106,103 @@ final class RemoteTaskControl implements TaskControl {
     await session.request('POST', '/v1/tasks/$id/cancel', json: const {});
   }
 
-  @override
-  Future<GenerationTask> reconnectRemote(String id) async =>
-      _repository.getTask(
-        (await session.request(
-              'POST',
-              '/v1/tasks/$id/reconnect',
-              json: const {},
-            ))['id']
-            as String,
-      );
+  void _checkImagePolicy(TaskKind kind, Map<String, dynamic> input) {
+    final hasImages =
+        kind == TaskKind.illustration ||
+        (kind == TaskKind.agent &&
+            (input['image'] != null ||
+                (input['pendingAgent'] as Map?)?['imageConnection'] != null));
+    if (!allowNsfwImages && hasImages) _requireImagePolicy();
+  }
+
+  void _requireImagePolicy() {
+    if (!session.hello.imageContentPolicy) {
+      throw const FormatException('桌面版本尚不支持 iOS 生图内容限制，请先升级桌面');
+    }
+  }
 
   @override
-  Future<GenerationTask> resume(String id) async => _repository.getTask(
-    (await session.request(
-          'POST',
-          '/v1/tasks/$id/resume',
-          json: const {},
-        ))['id']
-        as String,
-  );
+  Future<GenerationTask> reconnectRemote(String id) async {
+    if (!allowNsfwImages) {
+      final task = await _repository.getTask(id);
+      _checkImagePolicy(task.kind, task.input);
+      if ((task.kind == TaskKind.illustration && task.input['nsfw'] != false) ||
+          (task.kind == TaskKind.agent &&
+              task.input['allowNsfwImages'] != false)) {
+        throw const FormatException('此任务未通过 iOS 生图内容限制，请重新发起');
+      }
+    }
+    return _repository.getTask(
+      (await session.request(
+            'POST',
+            '/v1/tasks/$id/reconnect',
+            json: const {},
+          ))['id']
+          as String,
+    );
+  }
+
+  @override
+  Future<GenerationTask> resume(String id) async {
+    if (!allowNsfwImages) {
+      final old = await _repository.getTask(id);
+      if (old.isActive || old.status == TaskStatus.completed) {
+        throw StateError('此任务无需重新生成');
+      }
+      return start(
+        branchId: old.branchId,
+        kind: old.kind,
+        input: old.input,
+        chapterId: old.chapterId,
+        baseRevisionId: old.baseRevisionId,
+        retryOf: old.id,
+      );
+    }
+    return _repository.getTask(
+      (await session.request(
+            'POST',
+            '/v1/tasks/$id/resume',
+            json: const {},
+          ))['id']
+          as String,
+    );
+  }
 
   @override
   Future<bool> respondToImageConfirmation(
     String taskId,
     String confirmationId, {
     required bool approved,
-  }) async =>
-      (await session.request(
-        'POST',
-        '/v1/tasks/$taskId/confirm',
-        json: {'confirmationId': confirmationId, 'approved': approved},
-      ))['accepted'] ==
-      true;
+  }) async {
+    if (approved && !allowNsfwImages) {
+      _requireImagePolicy();
+      final task = await _repository.getTask(taskId);
+      final confirmation = task.result['imageConfirmation'] as Map?;
+      final images = confirmation?['images'] as List? ?? [?confirmation];
+      final references = confirmation?['newReferences'] as List? ?? [];
+      if (images.isEmpty ||
+          [
+            ...images,
+            ...references,
+          ].any((p) => p is! Map || p['nsfw'] != false)) {
+        throw const FormatException('此请求未通过 iOS 生图内容限制，请从当前设备重新发起');
+      }
+      for (final preview in [...images, ...references]) {
+        for (final id in (preview as Map)['references'] as List? ?? []) {
+          if (id is! String ||
+              (await _repository.getAsset(id)).metadata['nsfw'] == true) {
+            throw const FormatException('此任务不允许使用 NSFW 图片作为参考图');
+          }
+        }
+      }
+    }
+    return (await session.request(
+          'POST',
+          '/v1/tasks/$taskId/confirm',
+          json: {'confirmationId': confirmationId, 'approved': approved},
+        ))['accepted'] ==
+        true;
+  }
 
   /// The session belongs to the app's services, which close it.
   @override
