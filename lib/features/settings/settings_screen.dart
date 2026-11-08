@@ -67,6 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final remote = ref.watch(servicesProvider).remote;
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
+    final beta = ref.watch(settingProvider('beta')).value?['enabled'] == true;
     final roles = ref.watch(settingProvider('modelRoles')).value ?? {};
     final highlightCount = ref
         .watch(settingProvider('chapterHighlights'))
@@ -87,6 +88,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final renderHtml = html?['render'] != false;
     void setHtml(bool value) =>
         ref.read(repositoryProvider).setSetting('html', {'render': value});
+    Future<void> setBeta(bool value) async {
+      try {
+        await ref.read(repositoryProvider).setSetting('beta', {
+          'enabled': value,
+        });
+      } catch (error) {
+        if (context.mounted) showError(context, error);
+      }
+    }
+
     final sections = <SettingsTab, List<Widget>>{
       SettingsTab.general: [
         Text(
@@ -125,6 +136,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
         FTileGroup(
           children: [
+            FTile(
+              key: const Key('settings-beta'),
+              prefix: const Icon(FLucideIcons.flaskConical),
+              title: const Text('Beta 模式'),
+              subtitle: _wrapped('开启正在试验中的功能。'),
+              suffix: FSwitch(value: beta, onChange: setBeta),
+              onPress: () => setBeta(!beta),
+            ),
             FTile(
               key: const Key('settings-html'),
               prefix: const Icon(FLucideIcons.codeXml),
