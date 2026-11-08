@@ -19,6 +19,13 @@ const _toolNames = {
   'delete_chapter',
   'activate_skill',
   'read_skill_file',
+  'read_comic',
+  'plan_comic',
+  'edit_comic',
+  'draw_comic',
+  'continue_comic',
+  'adapt_comic',
+  'generate_image',
 };
 
 Uint8List _zip(Map<String, String> files) {
@@ -118,7 +125,9 @@ body''', directory: 'plot');
           .map((m) => m.group(1)!)
           .where(
             (w) => w.startsWith(
-              RegExp(r'list|read|propose|activate|create|rename|delete'),
+              RegExp(
+                r'list|read|propose|activate|create|rename|delete|plan|edit|draw|continue|adapt|generate',
+              ),
             ),
           );
       expect(_toolNames.containsAll(used), isTrue, reason: '${s.name}: $used');

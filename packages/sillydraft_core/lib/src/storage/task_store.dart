@@ -61,7 +61,7 @@ extension TaskOperations on StoryRepository {
         now,
       ],
     );
-    if (kind == TaskKind.comic && retryOf != null) {
+    if ((kind == TaskKind.comic || kind == TaskKind.agent) && retryOf != null) {
       final old = await getTask(retryOf);
       if (old.kind != kind || old.branchId != branchId || old.isActive) {
         throw const FormatException('漫画恢复任务不匹配');
@@ -69,6 +69,33 @@ extension TaskOperations on StoryRepository {
       await _execute(
         'UPDATE generation_tasks SET result_json = ? WHERE id = ?',
         [jsonEncode(old.result), id],
+      );
+    }
+    if (kind == TaskKind.comic && input['agentComicCall'] is Map) {
+      final link = jsonObject(input['agentComicCall'], 'agentComicCall');
+      final parent = await getTask(link['taskId'] as String);
+      if (!parent.isActive ||
+          parent.kind != TaskKind.agent ||
+          parent.branchId != branchId) {
+        throw const GenerationCancelled();
+      }
+      if (!await agentComicScopeCurrent(parent, link)) {
+        throw const ComicConflict();
+      }
+      final calls = Map<String, dynamic>.from(
+        parent.result['agentComicCalls'] as Map? ?? {},
+      );
+      if (calls.containsKey(link['key'])) {
+        throw const FormatException('漫画调用已提交，请查看原任务');
+      }
+      calls[link['key'] as String] = {
+        'signature': link['signature'],
+        'taskId': id,
+      };
+      await updateTask(
+        parent.id,
+        status: TaskStatus.running,
+        result: {'agentComicCalls': calls},
       );
     }
     if (kind == TaskKind.illustration && input['frozenComic'] is Map) {

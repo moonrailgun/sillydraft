@@ -10,15 +10,24 @@ import '../tasks/task_runner.dart';
 
 /// Freezes manuscript versions before any model request; never writes prose.
 final class ComicService {
-  const ComicService({required this.repository, required this.runner});
+  const ComicService({
+    required this.repository,
+    required this.runner,
+    this.agentCall,
+  });
   final StoryRepository repository;
   final TaskControl runner;
+  final Map<String, dynamic>? agentCall;
 
   Future<GenerationTask> _start({
     required String branchId,
     required TaskKind kind,
     required Map<String, dynamic> input,
-  }) => runner.start(branchId: branchId, kind: kind, input: input);
+  }) => runner.start(
+    branchId: branchId,
+    kind: kind,
+    input: {...input, 'agentComicCall': ?agentCall},
+  );
 
   /// Freeze only completed comics up to the target; prose is never story input.
   Future<Map<String, dynamic>> _originalInput(

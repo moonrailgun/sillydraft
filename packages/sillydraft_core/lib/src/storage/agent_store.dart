@@ -82,6 +82,62 @@ extension AgentOperations on StoryRepository {
     return action();
   });
 
+  Future<bool> agentComicScopeCurrent(
+    GenerationTask task,
+    Map<String, dynamic> link,
+  ) async {
+    if (!await agentChaptersCurrent(
+      task,
+      (link['chapters'] as List).cast<Map<String, dynamic>>(),
+    )) {
+      return false;
+    }
+    for (final entry in (link['heads'] as Map).entries) {
+      if ((await getComic(task.branchId, entry.key as String))?.id !=
+          entry.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<Map<String, dynamic>> saveAgentComic({
+    required String taskId,
+    required Map<String, dynamic> link,
+    required ComicDocument document,
+    required String expectedRevisionId,
+  }) => _write(() async {
+    final task = await getTask(taskId);
+    if (!task.isActive) throw const GenerationCancelled();
+    final calls = Map<String, dynamic>.from(
+      task.result['agentComicCalls'] as Map? ?? {},
+    );
+    if (calls.containsKey(link['key'])) throw const FormatException('漫画调用已保存');
+    if (!await agentComicScopeCurrent(task, link)) throw const ComicConflict();
+    final revision = await saveComic(
+      branchId: task.branchId,
+      chapterId: document.chapterId,
+      document: document,
+      expectedRevisionId: expectedRevisionId,
+    );
+    final result = {
+      'saved': true,
+      'chapterId': document.chapterId,
+      'revisionId': revision.id,
+      'document': revision.document.toJson(),
+    };
+    calls[link['key'] as String] = {
+      'signature': link['signature'],
+      'result': result,
+    };
+    await updateTask(
+      taskId,
+      status: TaskStatus.running,
+      result: {'agentComicCalls': calls},
+    );
+    return result;
+  });
+
   /// Chapter management shares the normal store operations and their cleanup.
   Future<List<Chapter>?> manageAgentChapter({
     required GenerationTask task,

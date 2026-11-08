@@ -408,6 +408,39 @@ Map<String, dynamic> _imageTool(
 }
 
 extension _AgentExecution on TaskRunner {
+  Future<bool> _confirmImage(
+    GenerationTask task,
+    GenerationCancellation cancel,
+    Map<String, dynamic> preview,
+  ) async {
+    final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
+    final answer = Completer<bool>();
+    _imageConfirmations[task.id] = (id: confirmationId, answer: answer);
+    final removeConfirmation = cancel.onCancel(() {
+      if (!answer.isCompleted) answer.complete(false);
+    });
+    try {
+      await repository.updateTask(
+        task.id,
+        status: TaskStatus.running,
+        result: {
+          'imageConfirmation': {...preview, 'id': confirmationId},
+        },
+      );
+      final approved = await answer.future;
+      cancel.check();
+      return approved;
+    } finally {
+      removeConfirmation();
+      _imageConfirmations.remove(task.id);
+      await repository.updateTask(
+        task.id,
+        status: TaskStatus.running,
+        result: {'imageConfirmation': null},
+      );
+    }
+  }
+
   Future<void> _executeAgent(
     GenerationTask task,
     ModelProvider provider,
@@ -450,11 +483,26 @@ extension _AgentExecution on TaskRunner {
             chapters.any(
               (c) => c['id'] == (input['image'] as Map?)?['chapterId'],
             ));
+    final originalComic = input['originalComic'] == true;
+    final comicSnapshot = Map<String, dynamic>.from(
+      input['comicSnapshot'] as Map? ?? {},
+    );
+    var comicCallIndex = 0;
+    const proseTools = {
+      'propose_chapter',
+      'insert_images',
+      'read_chapter',
+      'search_story',
+    };
     final tools = [
+      if (!illustrationOnly)
+        for (final tool in _comicTools)
+          if (!originalComic || tool['function']['name'] != 'adapt_comic') tool,
       for (final tool in _editingTools)
-        if (!illustrationOnly ||
-            !writingTools.contains(tool['function']['name']))
-          tool,
+        if (!originalComic || !proseTools.contains(tool['function']['name']))
+          if (!illustrationOnly ||
+              !writingTools.contains(tool['function']['name']))
+            tool,
       if (input['image'] case final Map<String, dynamic> image) ...[
         _imageTool(
           image,
@@ -484,10 +532,6 @@ extension _AgentExecution on TaskRunner {
         tools: tools,
         imageRequired: illustrationOnly,
         execute: (call) async {
-          if ((illustrationBatch && call.name == 'generate_image') ||
-              (!canBatchImages && call.name == 'generate_images')) {
-            return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
-          }
           if (writingTools.contains(call.name)) {
             if (illustrationOnly) {
               return {
@@ -503,6 +547,27 @@ extension _AgentExecution on TaskRunner {
                 'retryable': false,
               };
             }
+          }
+          if (!tools.any((t) => t['function']['name'] == call.name)) {
+            return {
+              'error': '本轮未提供此工具',
+              'code': 'tool_not_allowed',
+              'retryable': false,
+            };
+          }
+          if (_comicTools.any((t) => t['function']['name'] == call.name)) {
+            return _agentComic(
+              task,
+              call,
+              cancel,
+              chapters,
+              comicSnapshot,
+              call.name == 'read_comic' ? 'read' : '${comicCallIndex++}',
+            );
+          }
+          if ((illustrationBatch && call.name == 'generate_image') ||
+              (!canBatchImages && call.name == 'generate_images')) {
+            return {'error': '请使用本轮提供的生图工具', 'code': 'tool_not_allowed'};
           }
           final result = await _executeTool(
             task,
@@ -790,6 +855,16 @@ extension _AgentExecution on TaskRunner {
           'content': content,
           'tool_call_id': call.id,
         });
+        if (_comicTools.any((t) => t['function']['name'] == call.name)) {
+          if (result['cancelled'] == true || result['status'] == 'cancelled') {
+            await record('assistant', '已取消本次漫画操作。', const {});
+            throw const GenerationCancelled();
+          }
+          if (result['status'] == 'failed' ||
+              result['status'] == 'interrupted') {
+            throw ProviderException('comic_failed', result['error'] as String);
+          }
+        }
         if (call.name == 'generate_image' || call.name == 'generate_images') {
           if (result['cancelled'] == true || result['status'] == 'cancelled') {
             await record('assistant', '已取消本次生图。', const {});
@@ -1393,47 +1468,21 @@ extension _AgentExecution on TaskRunner {
           return {'code': 'image_routing_failed', 'error': error.message};
         }
       }
-      final confirmationId = '${task.id}:${++_imageConfirmationSequence}';
-      final answer = Completer<bool>();
-      _imageConfirmations[task.id] = (id: confirmationId, answer: answer);
-      final removeConfirmation = cancel.onCancel(() {
-        if (!answer.isCompleted) answer.complete(false);
+      final approved = await _confirmImage(task, cancel, {
+        'newReferences': [
+          for (final ref in shared.values)
+            if (ref.assetId == null)
+              {
+                ...ref.preview,
+                if (referenceRequests[ref] case final routed?) ...{
+                  'connection': routed.connection.raw,
+                  'prompt': routed.request.prompt,
+                  'nsfw': routed.nsfw,
+                },
+              },
+        ],
+        if (batch) 'images': previews else ...previews.single,
       });
-      bool approved;
-      try {
-        await repository.updateTask(
-          task.id,
-          status: TaskStatus.running,
-          result: {
-            'imageConfirmation': {
-              'id': confirmationId,
-              'newReferences': [
-                for (final ref in shared.values)
-                  if (ref.assetId == null)
-                    {
-                      ...ref.preview,
-                      if (referenceRequests[ref] case final routed?) ...{
-                        'connection': routed.connection.raw,
-                        'prompt': routed.request.prompt,
-                        'nsfw': routed.nsfw,
-                      },
-                    },
-              ],
-              if (batch) 'images': previews else ...previews.single,
-            },
-          },
-        );
-        approved = await answer.future;
-      } finally {
-        removeConfirmation();
-        _imageConfirmations.remove(task.id);
-        await repository.updateTask(
-          task.id,
-          status: TaskStatus.running,
-          result: {'imageConfirmation': null},
-        );
-      }
-      cancel.check();
       if (!approved) {
         return {'cancelled': true, 'message': '作者已取消本次生图，未调用生图引擎。请勿自动重试。'};
       }
@@ -1662,7 +1711,7 @@ extension _AgentExecution on TaskRunner {
               'title': c.title,
               'name': c.name,
               'revisionId': c.revisionId,
-              'text': c.content.text,
+              'text': task.input['originalComic'] == true ? '' : c.content.text,
             },
         ]);
       if (delete) return {'chapterId': target!['id'], 'deleted': true};

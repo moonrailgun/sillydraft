@@ -5,8 +5,15 @@ import 'skills.dart';
 /// same name. They only use the assistant's own tools.
 List<AgentSkill> builtInSkills() => [
   for (final (source, files) in _sources)
-    parseSkill(source, files: files, builtIn: true),
+    parseSkill('$source\n$_comicMode', files: files, builtIn: true),
 ];
+
+const _comicMode = '''
+## 原创漫画模式
+当前作品为原创漫画时，以 read_comic 读取的已保存分镜、对白和页面为依据；上述 read_chapter、propose_chapter 和段落修改步骤改用漫画工具，不创建小说底稿。按页、格定位问题，使用 edit_comic 修改画面、衔接或对白；修改后整页需要重画。
+只要求分镜时用 plan_comic 保存，不调用生图。要求绘制时用 draw_comic 绘制已有分镜，或 continue_comic 保存并绘制下一页；generate_image 仅用于独立插图。
+继续画默认追加当前话；明确要求下一话时才 create_chapter，再使用返回的章节 ID。已有未完成页面先处理。小说作品仍按上面的正文流程执行，改编使用 adapt_comic。
+''';
 
 const _sources = <(String, Map<String, String>)>[
   (
