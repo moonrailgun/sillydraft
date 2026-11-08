@@ -131,7 +131,10 @@ extension AssetOperations on StoryRepository {
       throw const FormatException('不是插画任务');
     }
     if (task.result['assetId'] case final String id) return getAsset(id);
-    if (task.status != TaskStatus.running) return null;
+    final lateComic =
+        task.input['frozenComic'] is Map &&
+        [TaskStatus.cancelled, TaskStatus.interrupted].contains(task.status);
+    if (task.status != TaskStatus.running && !lateComic) return null;
     final replacement = task.input['regeneration'] as Map?;
     String? replacementError;
     IllustrationGraph? graph;
@@ -194,6 +197,21 @@ extension AssetOperations on StoryRepository {
         },
       },
     );
+    if (lateComic) {
+      await _execute(
+        'UPDATE generation_tasks SET result_json = ?, updated_at = ? WHERE id = ?',
+        [
+          jsonEncode({
+            ...task.result,
+            'assetId': asset.id,
+            'stage': 'saved_after_cancel',
+          }),
+          _now(),
+          taskId,
+        ],
+      );
+      return asset;
+    }
     if (replacement != null && replacementError == null) {
       final oldId = replacement['assetId'] as String;
       for (final chapter in graph!.placements(oldId)) {

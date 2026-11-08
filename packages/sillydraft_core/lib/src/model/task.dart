@@ -12,6 +12,7 @@ enum TaskKind {
   agent,
   illustration,
   sidecar,
+  comic,
 }
 
 enum TaskStatus { queued, running, completed, failed, cancelled, interrupted }
@@ -62,8 +63,10 @@ final class GenerationTask extends JsonSource {
   bool get isActive =>
       status == TaskStatus.queued || status == TaskStatus.running;
   bool get isRemote =>
+      kind != TaskKind.comic &&
       (input['connection'] as Map?)?['protocol'] ==
-      ModelProtocol.sillyDraftRunner.name;
+          ModelProtocol.sillyDraftRunner.name;
+  String get remoteExecutionId => result['remoteExecutionId'] as String? ?? id;
 
   /// Local time's UTC offset when the task's `clock` was read, so its time
   /// macros render the same later. Older tasks rendered the UTC clock as is.

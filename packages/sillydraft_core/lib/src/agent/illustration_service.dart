@@ -646,6 +646,7 @@ final class IllustrationService {
     Map<String, dynamic>? scene,
     String? previousSceneAssetId,
     Map<String, dynamic>? regeneration,
+    Map<String, dynamic>? frozenComic,
     bool? nsfw,
     ModelConnection? promptConnection,
     ModelConnection? nsfwConnection,
@@ -661,7 +662,7 @@ final class IllustrationService {
         ? null
         : await repository.getChapter(branchId: branchId, chapterId: chapterId);
     final visual = [...visualReferences];
-    if (regeneration == null) {
+    if (regeneration == null && frozenComic == null) {
       await addAssetReferences(branchId, chapterId, visual, referenceAssetIds);
     }
     if (scene != null) {
@@ -706,6 +707,7 @@ final class IllustrationService {
               previousSceneAssetId != null),
     );
     final ids = <String>{
+      if (frozenComic != null) ...referenceAssetIds,
       for (final r in visual.where((r) => r.kind == LoreKind.character))
         ?r.assetId,
       ?previousSceneAssetId,
@@ -725,7 +727,9 @@ final class IllustrationService {
         final ref = visual.where((r) => r.assetId == id).firstOrNull;
         imageLabels.add(
           ref == null
-              ? 'previous view of this scene'
+              ? (id == previousSceneAssetId
+                    ? 'previous view of this scene'
+                    : 'reference image ${references.length}')
               : '${ref.kind.name} ${ref.name}',
         );
       }
@@ -746,7 +750,8 @@ final class IllustrationService {
       branchId: branchId,
       kind: TaskKind.illustration,
       chapterId: chapter?.id,
-      baseRevisionId: chapter?.revisionId,
+      baseRevisionId:
+          frozenComic?['sourceRevisionId'] as String? ?? chapter?.revisionId,
       input: {
         'connection': connection.raw,
         'nsfw': ?nsfw,
@@ -757,6 +762,7 @@ final class IllustrationService {
         'sourcePrompt': sourcePrompt,
         'previousSceneAssetId': ?previousSceneAssetId,
         'regeneration': ?regeneration,
+        'frozenComic': ?frozenComic,
         if (visual.isNotEmpty)
           'visualReferences': [for (final ref in visual) ref.preview],
         'scene': ?scene,

@@ -14,7 +14,7 @@ extension _IllustrationExecution on TaskRunner {
           ...jsonObject(task.input['imageRequest'], 'imageRequest'),
           'usagePurpose': task.kind.name,
           'usageBranchId': task.branchId,
-          if (task.isRemote) 'executionId': task.id,
+          if (task.isRemote) 'executionId': task.remoteExecutionId,
           if (task.isRemote)
             'retrieveOnly': task.result['remoteReconnect'] == true,
         });
@@ -49,7 +49,7 @@ extension _IllustrationExecution on TaskRunner {
         references: references,
         cancellation: cancel,
       );
-      cancel.check();
+      if (input['frozenComic'] == null) cancel.check();
       await repository.updateTask(
         task.id,
         status: TaskStatus.running,
@@ -61,7 +61,7 @@ extension _IllustrationExecution on TaskRunner {
       } on FormatException catch (e) {
         throw ProviderException('image_data', e.message);
       }
-      cancel.check();
+      if (input['frozenComic'] == null) cancel.check();
       final used =
           (references.isEmpty ? null : connection.comfyEditWorkflow) ??
           connection.comfyWorkflow;

@@ -63,4 +63,5 @@ const taskKindLabels = {
   TaskKind.analysis: '资料整理',
   TaskKind.illustration: '插画生成',
   TaskKind.sidecar: '旁路整理',
+  TaskKind.comic: '漫画创作',
 };

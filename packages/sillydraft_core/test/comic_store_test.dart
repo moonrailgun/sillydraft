@@ -115,6 +115,82 @@ void main() {
     expect(changed.panels.single['visualReview'], isTrue);
   });
 
+  test(
+    'candidate adoption and discard are atomic and protect preview head',
+    () async {
+      final doc = comicFixture(chapter);
+      final head = await repo.saveComic(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        document: doc,
+        expectedRevisionId: null,
+      );
+      final task = await repo.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.comic,
+        input: {
+          'comicHeads': {chapter.id: head.id},
+        },
+      );
+      await repo.saveComicTaskDocument(
+        task.id,
+        doc.edit({'style': '彩色'}),
+        candidateOnly: true,
+      );
+      await repo.updateTask(task.id, status: TaskStatus.completed);
+      await expectLater(
+        repo.resolveComicCandidate(
+          taskId: task.id,
+          chapterId: chapter.id,
+          expectedRevisionId: 'stale',
+          adopt: true,
+        ),
+        throwsA(isA<ComicConflict>()),
+      );
+      expect((await repo.getTask(task.id)).result['comicCandidates'], [
+        chapter.id,
+      ]);
+      await repo.resolveComicCandidate(
+        taskId: task.id,
+        chapterId: chapter.id,
+        expectedRevisionId: head.id,
+        adopt: true,
+      );
+      final adopted = (await repo.getComic(novel.activeBranchId, chapter.id))!;
+      expect(adopted.parentRevisionId, head.id);
+      expect(adopted.document.style, '彩色');
+      expect(adopted.document.checked, isFalse);
+      expect((await repo.getTask(task.id)).result['comicCandidates'], isEmpty);
+      expect(
+        (await repo.getTask(task.id)).result['comicDocuments'],
+        isNotEmpty,
+      );
+      final discarded = await repo.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.comic,
+        input: {
+          'comicHeads': {chapter.id: adopted.id},
+        },
+      );
+      await repo.saveComicTaskDocument(discarded.id, doc, candidateOnly: true);
+      await repo.updateTask(discarded.id, status: TaskStatus.failed);
+      await repo.resolveComicCandidate(
+        taskId: discarded.id,
+        chapterId: chapter.id,
+        expectedRevisionId: adopted.id,
+        adopt: false,
+      );
+      expect(
+        (await repo.getComic(novel.activeBranchId, chapter.id))!.id,
+        adopted.id,
+      );
+      expect(
+        (await repo.getTask(discarded.id)).result['comicCandidates'],
+        isEmpty,
+      );
+    },
+  );
+
   test('source splitting preserves all characters and UTF-16 boundaries', () {
     final text = '😀信${'字' * 1500}。\n门外。';
     final units = splitComicSource(text, maxUnitLength: 20);
@@ -414,6 +490,54 @@ void main() {
           copy.ids[chapter.id]!,
         ))!.id,
         comic.id,
+      );
+    },
+  );
+
+  test(
+    'copied completed candidates can be adopted in the copied work',
+    () async {
+      final doc = comicFixture(chapter);
+      final head = await repo.saveComic(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        document: doc,
+        expectedRevisionId: null,
+      );
+      final task = await repo.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.comic,
+        input: {
+          'comicHeads': {chapter.id: head.id},
+        },
+      );
+      await repo.saveComicTaskDocument(
+        task.id,
+        doc.edit({'style': '彩色'}),
+        candidateOnly: true,
+      );
+      await repo.updateTask(task.id, status: TaskStatus.completed);
+      final copy = (await repo.exportProject(novel.id)).copy();
+      final restored = await repo.restoreProject(
+        copy.snapshot,
+        encryptedSources: {},
+      );
+      await repo.resolveComicCandidate(
+        taskId: copy.ids[task.id]!,
+        chapterId: copy.ids[chapter.id]!,
+        expectedRevisionId: copy.ids[head.id],
+        adopt: true,
+      );
+      final adopted = (await repo.getComic(
+        restored.activeBranchId,
+        copy.ids[chapter.id]!,
+      ))!;
+      expect(adopted.document.style, '彩色');
+      expect(adopted.document.sourceText, doc.sourceText);
+      expect(adopted.document.panels.first['id'], doc.panels.first['id']);
+      expect(
+        (await repo.getComic(novel.activeBranchId, chapter.id))!.id,
+        head.id,
       );
     },
   );

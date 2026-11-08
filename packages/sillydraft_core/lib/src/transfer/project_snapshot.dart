@@ -87,6 +87,17 @@ final class ProjectSnapshot {
     }
     for (final table in projectTables) {
       for (final row in rows[table]!) {
+        if (table == 'generation_tasks' && row['kind'] == 'illustration') {
+          final input = jsonDecode(row['input_json'] as String) as Map;
+          if (input['frozenComic'] is Map &&
+              (input['connection'] as Map?)?['protocol'] ==
+                  'sillyDraftRunner') {
+            final result = jsonDecode(row['result_json'] as String) as Map;
+            // Reconnecting a copied task must retrieve the original remote job.
+            result['remoteExecutionId'] ??= row['id'];
+            row['result_json'] = jsonEncode(result);
+          }
+        }
         for (final key in row.keys.toList()) {
           final value = row[key];
           if (key == 'key' && table == 'app_settings' && value is String) {
@@ -155,7 +166,13 @@ String canonicalJson(Object? value) {
 }
 
 Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
-  if (['local', 'global', 'variables'].contains(key)) {
+  if ([
+    'local',
+    'global',
+    'variables',
+    'executionId',
+    'remoteExecutionId',
+  ].contains(key)) {
     return value;
   }
   if (value is List) return value.map((v) => _remapJson(v, ids, key)).toList();
