@@ -76,3 +76,5 @@ export 'src/remote/remote_tasks.dart';
 export 'src/remote/share.dart';
 export 'src/remote/tls.dart';
 export 'src/remote/wire.dart';
+
+export 'src/model/comic.dart';

@@ -75,6 +75,10 @@ extension BranchOperations on StoryRepository {
         ],
       );
     }
+    await _execute(
+      'INSERT INTO branch_comics SELECT ?, chapter_id, comic_revision_id FROM branch_comics WHERE branch_id = ? AND chapter_id IN (SELECT chapter_id FROM branch_chapters WHERE branch_id = ?)',
+      [id, branchId, id],
+    );
     await _forkSideData(source, id, selectedChapters);
     await _touchNovel(source.novel.id);
     return getBranch(id);

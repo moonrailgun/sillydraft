@@ -239,6 +239,7 @@ extension ManuscriptOperations on StoryRepository {
       where,
     );
     for (final table in [
+      'branch_comics',
       'proposals',
       'reading_bookmarks',
       'variable_revisions',

@@ -1,6 +1,8 @@
 import 'chapter_title.dart';
 import 'manuscript.dart';
 
+enum WorkFormat { novel, comic }
+
 final class Novel {
   const Novel({
     required this.id,
@@ -8,6 +10,7 @@ final class Novel {
     required this.activeBranchId,
     required this.createdAt,
     required this.updatedAt,
+    this.workFormat = WorkFormat.novel,
     this.synopsis = '',
     this.genre = '自由创作',
     this.language = 'zh',
@@ -18,6 +21,7 @@ final class Novel {
     this.chapterNumerals = ChapterNumerals.chinese,
   });
 
+  final WorkFormat workFormat;
   final String id;
   final String title;
   final String synopsis;
@@ -35,6 +39,7 @@ final class Novel {
   final DateTime updatedAt;
 
   Novel copyWith({
+    WorkFormat? workFormat,
     String? title,
     String? synopsis,
     String? genre,
@@ -49,6 +54,7 @@ final class Novel {
     DateTime? updatedAt,
   }) => Novel(
     id: id,
+    workFormat: workFormat ?? this.workFormat,
     title: title ?? this.title,
     synopsis: synopsis ?? this.synopsis,
     genre: genre ?? this.genre,

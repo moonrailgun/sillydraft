@@ -38,7 +38,12 @@ extension ProjectOperations on StoryRepository {
       if (table == 'library_resources' || table == 'app_settings') continue;
       if (table == 'novels') {
         filter = 'id = ?';
-      } else if (['branches', 'revisions', 'story_assets'].contains(table)) {
+      } else if ([
+        'branches',
+        'revisions',
+        'story_assets',
+        'comic_revisions',
+      ].contains(table)) {
         filter = 'novel_id = ?';
       } else if (table == 'agent_messages') {
         filter =
@@ -125,8 +130,8 @@ extension ProjectOperations on StoryRepository {
         .toList();
     return ProjectSnapshot.fromJson({
       'format': 'sillydraft-project',
-      'version': 1,
-      'schema': 9,
+      'version': 2,
+      'schema': 12,
       'tables': result,
     });
   });
@@ -264,7 +269,12 @@ extension ProjectOperations on StoryRepository {
         }
       } else if (table == 'novels') {
         await _execute('DELETE FROM novels WHERE id = ?', [id]);
-      } else if (['branches', 'revisions', 'story_assets'].contains(table)) {
+      } else if ([
+        'branches',
+        'revisions',
+        'story_assets',
+        'comic_revisions',
+      ].contains(table)) {
         await _execute('DELETE FROM $table WHERE novel_id = ?', [id]);
       } else if (table == 'agent_messages') {
         for (final row in previous[table]!) {
@@ -365,6 +375,7 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
   final novels = index('novels'),
       branches = index('branches'),
       revisions = index('revisions'),
+      comics = index('comic_revisions'),
       tasks = index('generation_tasks'),
       conversations = index('agent_conversations'),
       assets = index('story_assets'),
@@ -422,6 +433,7 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
       }
     }
   }
+  if (!WorkFormat.values.any((f) => f.name == novel['work_format'])) invalid();
   ref(novel['cover_asset_id'], assets);
   for (final b in branches.values) {
     ref(b['parent_branch_id'], branches);
@@ -462,6 +474,56 @@ void _validateProjectGraph(Map<String, List<Map<String, dynamic>>> t) {
   for (final row in t['branch_chapters']!) {
     ref(row['revision_id'], revisions, nullable: false);
     if (revisions[row['revision_id']]!['chapter_id'] != row['chapter_id']) {
+      invalid();
+    }
+  }
+  cycle(comics, 'parent_revision_id');
+  for (final row in comics.values) {
+    final doc = ComicDocument.fromJson(
+      jsonDecode(row['document_json'] as String) as Map<String, dynamic>,
+    );
+    final source = revisions[doc.sourceRevisionId];
+    if (doc.chapterId != row['chapter_id'] ||
+        !doc.isOriginal &&
+            (source == null ||
+                source['chapter_id'] != doc.chapterId ||
+                ManuscriptContent.decode(source['content_json'] as String)
+                        .text !=
+                    doc.sourceText)) {
+      invalid();
+    }
+    final parent = comics[row['parent_revision_id']];
+    if (parent != null && parent['chapter_id'] != row['chapter_id']) invalid();
+    ref(row['task_id'], tasks);
+    for (final p in doc.priorSources) {
+      ref(p['revisionId'], revisions, nullable: false);
+      if (revisions[p['revisionId']]!['chapter_id'] != p['chapterId']) {
+        invalid();
+      }
+    }
+    for (final p in doc.priorComics) {
+      if (!revisions.values.any((r) => r['chapter_id'] == p['chapterId'])) {
+        invalid();
+      }
+      ref(p['revisionId'], comics);
+      if (p['revisionId'] != null &&
+          comics[p['revisionId']]!['chapter_id'] != p['chapterId']) {
+        invalid();
+      }
+    }
+    for (final id in doc.assetIds) {
+      ref(id, assets, nullable: false);
+    }
+    for (final panel in doc.imageItems) {
+      ref(panel['imageTaskId'], tasks);
+    }
+  }
+  final comicHeads = <String>{};
+  for (final row in t['branch_comics']!) {
+    final key = '${row['branch_id']}/${row['chapter_id']}';
+    if (!chapterKeys.contains(key) || !comicHeads.add(key)) invalid();
+    ref(row['comic_revision_id'], comics, nullable: false);
+    if (comics[row['comic_revision_id']]!['chapter_id'] != row['chapter_id']) {
       invalid();
     }
   }
