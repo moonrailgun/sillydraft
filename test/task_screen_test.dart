@@ -33,6 +33,36 @@ Future<void> showTask(
 }
 
 void main() {
+  testWidgets('comic tasks expose checkpoints, candidates and their chapter', (
+    tester,
+  ) async {
+    final repo = StoryRepository.memory();
+    final novel = await repo.createNovel(title: '漫画');
+    final chapter = await repo.createChapter(branchId: novel.activeBranchId);
+    final task = await repo.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.comic,
+      input: {
+        'comicHeads': {chapter.id: null},
+      },
+    );
+    await repo.updateTask(
+      task.id,
+      status: TaskStatus.interrupted,
+      result: {
+        'stage': 'audit',
+        'comicCandidates': [chapter.id],
+      },
+    );
+    await showTask(tester, repo, task);
+    await tester.pumpAndSettle();
+    expect(find.text('继续未完成部分'), findsOneWidget);
+    expect(find.text('阶段：对照原文检查'), findsOneWidget);
+    expect(find.text('1 章候选待处理'), findsOneWidget);
+    expect(find.text('打开漫画'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'waiting for approval opens the task conversation, not the latest',
     (tester) async {

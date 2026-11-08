@@ -146,6 +146,52 @@ Future<List<GenerationTask>> _tasks(_Desk d, TaskKind kind) async => [
 ];
 
 void main() {
+  for (final content in ['empty', 'comic', 'comic-task']) {
+    testWidgets(
+      'next chapter only reuses genuinely empty chapters ($content)',
+      (tester) async {
+        final d = await _desk(tester);
+        final repo = d.services.repository;
+        if (content == 'comic') {
+          await repo.saveComic(
+            branchId: d.branchId,
+            chapterId: d.first.id,
+            document: ComicDocument.original(
+              chapterId: d.first.id,
+              instruction: '雨夜开场',
+            ),
+            expectedRevisionId: null,
+          );
+        } else if (content == 'comic-task') {
+          await repo.createTask(
+            branchId: d.branchId,
+            kind: TaskKind.comic,
+            input: {
+              'comicAction': 'compose',
+              'comicHeads': {d.first.id: null},
+            },
+          );
+        }
+        final chapter = await startNextChapter(
+          d.ref,
+          await repo.getStory(d.branchId),
+          name: '归途',
+          brief: '写归途',
+        );
+        expect(chapter.id == d.first.id, content == 'empty');
+        await _settle(tester);
+        if (content != 'empty') {
+          final original = await repo.getChapter(
+            branchId: d.branchId,
+            chapterId: d.first.id,
+          );
+          expect(original.name, '渡口');
+          expect(original.content.text.trim(), isEmpty);
+        }
+      },
+    );
+  }
+
   testWidgets('an assistant round organizes each surviving accepted revision', (
     tester,
   ) async {

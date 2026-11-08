@@ -40,7 +40,7 @@ class NovelStartOptions extends StatelessWidget {
           key: const Key('start-blank'),
           icon: FLucideIcons.squarePen,
           title: '空白作品',
-          subtitle: '填写书名和设定，从第一章写起',
+          subtitle: '填写作品名称和设定，从第一章写起',
           onTap: () => choose(startBlankNovel),
         ),
         _option(

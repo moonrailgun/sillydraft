@@ -111,7 +111,14 @@ Future<Chapter> startNextChapter(
   }
   final last = story.chapters.lastOrNull;
   final Chapter chapter;
-  if (last != null && last.content.text.trim().isEmpty) {
+  if (last != null &&
+      last.content.text.trim().isEmpty &&
+      await repo.getComic(story.branch.id, last.id) == null &&
+      !(await repo.listTasks(branchId: story.branch.id, activeOnly: true)).any(
+        (t) =>
+            t.kind == TaskKind.comic &&
+            (t.input['comicHeads'] as Map? ?? {}).containsKey(last.id),
+      )) {
     await repo.renameChapter(
       branchId: story.branch.id,
       chapterId: last.id,
