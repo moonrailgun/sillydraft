@@ -608,6 +608,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
   /// reaches the image engine until the author confirms.
   Widget _imageConfirmation(GenerationTask task, Map<String, dynamic> pending) {
     final batch = pending['images'] is List;
+    final comic = pending['comic'] == true;
     final previews = batch
         ? (pending['images'] as List).cast<Map<String, dynamic>>()
         : [pending];
@@ -662,7 +663,9 @@ class _AgentState extends ConsumerState<AgentPanel> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    batch
+                    comic
+                        ? '${pending['name']}？'
+                        : batch
                         ? '生成 ${previews.length} 张本章亮点插图？'
                         : '生成插图「${pending['name']}」？',
                   ),
@@ -711,7 +714,7 @@ class _AgentState extends ConsumerState<AgentPanel> {
               key: ValueKey('image-confirmation-${pending['id']}'),
               children: [
                 FAccordionItem(
-                  title: const Text('提示词与参考图'),
+                  title: Text(comic ? '漫画要求与参考图' : '提示词与参考图'),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -738,7 +741,10 @@ class _AgentState extends ConsumerState<AgentPanel> {
                             child: Text('${index + 1}. ${preview['name']}'),
                           ),
                         const SizedBox(height: 8),
-                        Text('提示词', style: label),
+                        Text(
+                          comic ? '漫画要求（确认后规划整页并按内容选择生图引擎）' : '提示词',
+                          style: label,
+                        ),
                         const SizedBox(height: 4),
                         SelectableText('${preview['prompt']}'),
                         if (preview['illustrationAnchor'] case {

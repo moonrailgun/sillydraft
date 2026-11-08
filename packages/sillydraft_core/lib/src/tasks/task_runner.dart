@@ -4,6 +4,7 @@ import 'dart:math' show max, min;
 import 'dart:typed_data';
 
 import '../agent/editor_agent.dart';
+import '../agent/comic_service.dart';
 import '../agent/illustration_service.dart';
 import '../agent/image_prompt.dart';
 import '../agent/sidecar_agent.dart';
@@ -32,6 +33,7 @@ import '../st/world_book_engine.dart';
 import '../st/world_book.dart';
 import '../storage/story_repository.dart';
 import '../tracking/application_tracking.dart';
+import '../transfer/project_snapshot.dart' show canonicalJson;
 
 part 'agent_runner.dart';
 part 'agent_compaction.dart';
@@ -39,6 +41,7 @@ part 'illustration_runner.dart';
 part 'sidecar_runner.dart';
 part 'lore_tools.dart';
 part 'comic_runner.dart';
+part 'comic_agent.dart';
 part 'writing_quality.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
@@ -257,6 +260,16 @@ final class TaskRunner implements TaskControl {
   @override
   Future<void> cancel(String id) async {
     final task = await repository.getTask(id, snapshots: false);
+    if (task.kind == TaskKind.agent) {
+      _cancellations[id]?.cancel();
+      for (final call
+          in (task.result['agentComicCalls'] as Map? ?? {}).values) {
+        if (call['taskId'] case final String childId) {
+          final child = await repository.getTask(childId);
+          if (child.isActive) await cancel(child.id);
+        }
+      }
+    }
     if (task.kind == TaskKind.comic) {
       _cancellations[id]?.cancel();
       for (final child in (task.result['comicChildren'] as Map? ?? {}).values) {
