@@ -5,11 +5,16 @@ import 'dart:typed_data';
 
 import '../agent/editor_agent.dart';
 import '../agent/illustration_service.dart';
+import '../agent/image_prompt.dart';
 import '../agent/sidecar_agent.dart';
 import '../agent/skills.dart';
 import '../agent/writing_service.dart';
 import '../assets/asset_library.dart';
 import '../model/asset.dart';
+import '../model/comic.dart';
+
+import 'package:uuid/uuid.dart';
+
 import '../providers/image_provider.dart';
 
 import '../model/lore.dart';
@@ -33,6 +38,7 @@ part 'agent_compaction.dart';
 part 'illustration_runner.dart';
 part 'sidecar_runner.dart';
 part 'lore_tools.dart';
+part 'comic_runner.dart';
 part 'writing_quality.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
@@ -251,6 +257,13 @@ final class TaskRunner implements TaskControl {
   @override
   Future<void> cancel(String id) async {
     final task = await repository.getTask(id, snapshots: false);
+    if (task.kind == TaskKind.comic) {
+      _cancellations[id]?.cancel();
+      for (final child in (task.result['comicChildren'] as Map? ?? {}).values) {
+        final t = await repository.getTask(child as String);
+        if (t.isActive) await cancel(t.id);
+      }
+    }
     if (task.isRemote && task.input['agentMessage'] == null) {
       final config = ModelConnection.fromJson(
         jsonObject(task.input['connection'], 'connection'),
@@ -258,7 +271,9 @@ final class TaskRunner implements TaskControl {
       final provider = await providerFactory(config);
       try {
         if (provider is! RemoteJobControl) throw StateError('连接不支持远程取消确认');
-        await (provider as RemoteJobControl).cancelRemote(id);
+        await (provider as RemoteJobControl).cancelRemote(
+          task.remoteExecutionId,
+        );
       } finally {
         provider.close();
       }
@@ -358,6 +373,10 @@ final class TaskRunner implements TaskControl {
       cancel.check();
       if (task.kind == TaskKind.illustration) {
         await _executeIllustration(task, cancel);
+        return;
+      }
+      if (task.kind == TaskKind.comic) {
+        await _executeComic(task, cancel);
         return;
       }
       final input = task.input;
@@ -542,13 +561,21 @@ final class TaskRunner implements TaskControl {
         reasoning: looped ? reasoning.toString() : durableReasoning,
         error: error.toString(),
       );
-    } on FormatException {
+    } on ComicConflict catch (error) {
+      await repository.updateTask(
+        task.id,
+        status: TaskStatus.failed,
+        error: error.toString(),
+      );
+    } on FormatException catch (error) {
       await repository.updateTask(
         task.id,
         status: TaskStatus.failed,
         partialText: looped ? text.toString() : durableText,
         reasoning: looped ? reasoning.toString() : durableReasoning,
-        error: '返回结果未满足格式要求，原始输出已保留。',
+        error: task.kind == TaskKind.comic
+            ? error.message
+            : '返回结果未满足格式要求，原始输出已保留。',
       );
     } catch (_) {
       await repository.updateTask(

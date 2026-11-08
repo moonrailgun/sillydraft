@@ -1,6 +1,99 @@
 part of 'story_repository.dart';
 
 extension ComicOperations on StoryRepository {
+  Future<void> resolveComicCandidate({
+    required String taskId,
+    required String chapterId,
+    required String? expectedRevisionId,
+    required bool adopt,
+  }) => _write(() async {
+    final task = await getTask(taskId);
+    final candidates = List<String>.from(
+      task.result['comicCandidates'] as List? ?? const [],
+    );
+    if (task.kind != TaskKind.comic ||
+        task.isActive ||
+        !candidates.contains(chapterId)) {
+      throw StateError('此候选尚未完成或已处理');
+    }
+    if (adopt) {
+      final doc = ComicDocument.fromJson(
+        Map<String, dynamic>.from(
+          (task.result['comicDocuments'] as Map)[chapterId] as Map,
+        ),
+      );
+      await saveComic(
+        branchId: task.branchId,
+        chapterId: chapterId,
+        document: doc.edit({}),
+        expectedRevisionId: expectedRevisionId,
+        taskId: taskId,
+        reason: '采用候选分镜',
+      );
+    }
+    candidates.remove(chapterId);
+    await _execute(
+      'UPDATE generation_tasks SET result_json = ?, updated_at = ? WHERE id = ?',
+      [
+        jsonEncode({...task.result, 'comicCandidates': candidates}),
+        _now(),
+        taskId,
+      ],
+    );
+  });
+
+  /// The new head and checkpoint commit together, including conflicted candidates.
+  Future<bool> saveComicTaskDocument(
+    String taskId,
+    ComicDocument doc, {
+    bool candidateOnly = false,
+    String? drawn,
+  }) => _write(() async {
+    final task = await getTask(taskId);
+    if (task.kind != TaskKind.comic || !task.isActive) return false;
+    final heads = Map<String, dynamic>.from(
+      task.result['comicHeads'] as Map? ?? task.input['comicHeads'] as Map,
+    );
+    var saved = false;
+    if (!candidateOnly && await comicImageInputsCurrent(task, doc)) {
+      try {
+        final revision = await saveComic(
+          branchId: task.branchId,
+          chapterId: doc.chapterId,
+          document: doc,
+          expectedRevisionId: heads[doc.chapterId] as String?,
+          taskId: task.id,
+          reason: '漫画任务',
+        );
+        heads[doc.chapterId] = revision.id;
+        doc = revision.document;
+        saved = true;
+      } on ComicConflict {
+        /* Preserve the full candidate for comparison. */
+      }
+    }
+    await updateTask(
+      taskId,
+      status: TaskStatus.running,
+      result: {
+        'comicHeads': heads,
+        'comicDocuments': {
+          ...?(task.result['comicDocuments'] as Map?),
+          doc.chapterId: doc.toJson(),
+        },
+        'comicCandidates': {
+          ...?(task.result['comicCandidates'] as List?),
+          if (!saved) doc.chapterId,
+        }.toList(),
+        'comicDrawn': [
+          ...?(task.result['comicDrawn'] as List?),
+          if (drawn != null && saved) drawn,
+        ],
+      },
+    );
+    return saved;
+  });
+
   Future<ComicRevision?> getComic(String branchId, String chapterId) async {
     final rows = await _rows(
       '''SELECT r.* FROM branch_comics h
@@ -114,6 +207,17 @@ extension ComicOperations on StoryRepository {
       reason: '恢复漫画历史',
       requireCurrentSource: false,
     );
+  }
+
+  Future<bool> comicImageInputsCurrent(
+    GenerationTask task,
+    ComicDocument doc,
+  ) async {
+    if (!await comicSourcesCurrent(task.branchId, doc)) return false;
+    final previous = task.input['comicPreviousChapterId'] as String?;
+    return previous == null ||
+        (await getComic(task.branchId, previous))?.id ==
+            task.input['comicPreviousRevisionId'];
   }
 
   Future<ComicRevision> saveComic({

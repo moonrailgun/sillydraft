@@ -30,6 +30,20 @@ extension TaskOperations on StoryRepository {
         }
       }
     }
+    if (kind == TaskKind.comic) {
+      final targets = (input['comicHeads'] as Map).keys.toSet();
+      for (final active in await listTasks(
+        branchId: branchId,
+        activeOnly: true,
+      )) {
+        if (active.kind == TaskKind.comic &&
+            (active.input['comicHeads'] as Map? ?? {}).keys.any(
+              targets.contains,
+            )) {
+          throw const FormatException('此话已有漫画任务，请等待完成');
+        }
+      }
+    }
     final id = _id(), now = _now();
     await _execute(
       '''INSERT INTO generation_tasks
@@ -47,6 +61,35 @@ extension TaskOperations on StoryRepository {
         now,
       ],
     );
+    if (kind == TaskKind.comic && retryOf != null) {
+      final old = await getTask(retryOf);
+      if (old.kind != kind || old.branchId != branchId || old.isActive) {
+        throw const FormatException('漫画恢复任务不匹配');
+      }
+      await _execute(
+        'UPDATE generation_tasks SET result_json = ? WHERE id = ?',
+        [jsonEncode(old.result), id],
+      );
+    }
+    if (kind == TaskKind.illustration && input['frozenComic'] is Map) {
+      final link = input['frozenComic'] as Map;
+      final parent = await getTask(link['parentTaskId'] as String);
+      if (parent.kind != TaskKind.comic ||
+          parent.branchId != branchId ||
+          !parent.isActive) {
+        throw const GenerationCancelled();
+      }
+      await updateTask(
+        parent.id,
+        status: TaskStatus.running,
+        result: {
+          'comicChildren': {
+            ...?(parent.result['comicChildren'] as Map?),
+            link['key'] as String: id,
+          },
+        },
+      );
+    }
     return getTask(id);
   }, tasksOnly: true);
 
@@ -345,6 +388,10 @@ extension TaskOperations on StoryRepository {
 /// Input keys holding frozen request snapshots: what replays or inspects one
 /// task, and most of its size.
 const _snapshotKeys = [
+  'comicDocuments',
+  'comicSnapshot',
+  'comicContext',
+  'comicPreceding',
   'pendingAgent',
   'preset',
   'writingPreset',
@@ -378,7 +425,7 @@ final _taskColumns =
     'error, result_json, retry_of, created_at, updated_at';
 final _listedColumns = _taskColumns.replaceFirst(
   'result_json',
-  "json_remove(result_json, '\$.transcript') AS result_json",
+  "json_remove(result_json, '\$.transcript', '\$.comicCalls', '\$.comicDocuments', '\$.agentComicCalls') AS result_json",
 );
 final _listedInput =
     'json_remove(input_json, ${_snapshotKeys.map((k) => "'\$.$k'").join(', ')})';
