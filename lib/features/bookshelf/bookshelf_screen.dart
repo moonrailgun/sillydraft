@@ -504,7 +504,7 @@ class _NovelCard extends ConsumerWidget {
               ],
               const SizedBox(height: 6),
               Text(
-                '${genre.isEmpty ? '' : '$genre · '}${dateLabel(novel.updatedAt)} 更新',
+                '${novel.workFormat == WorkFormat.comic ? '漫画 · ' : ''}${genre.isEmpty ? '' : '$genre · '}${dateLabel(novel.updatedAt)} 更新',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.typography.body.xs.copyWith(

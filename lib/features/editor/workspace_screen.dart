@@ -9,6 +9,8 @@ import '../../app/services.dart';
 import '../../app/task_activity.dart';
 import '../../app/widgets.dart';
 import '../bookshelf/novel_dialog.dart';
+import '../comics/comic_screen.dart';
+import '../comics/comic_reader.dart';
 import '../reader/reader_screen.dart';
 import 'editor_screen.dart';
 import 'resizable_workspace.dart';
@@ -31,7 +33,8 @@ enum WorkspaceSection {
   manuscript(FLucideIcons.listTree, '正文'),
   lore(FLucideIcons.package, '资料'),
   agent(FLucideIcons.sparkles, '助手'),
-  gallery(FLucideIcons.images, '插图');
+  gallery(FLucideIcons.images, '插图'),
+  comic(FLucideIcons.bookImage, '漫画');
 
   const WorkspaceSection(this.icon, this.label);
   final IconData icon;
@@ -43,6 +46,7 @@ const _tools = [
   WorkspaceSection.agent,
   WorkspaceSection.lore,
   WorkspaceSection.gallery,
+  WorkspaceSection.comic,
 ];
 
 /// Everything about one novel: its manuscript, lore, assistant and images are
@@ -62,6 +66,7 @@ class NovelWorkspace extends ConsumerStatefulWidget {
 
 class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   String? _selected;
+  bool _initialSection = false;
   var _section = WorkspaceSection.manuscript;
 
   /// The tool on the right of a wide screen: the assistant until another is
@@ -172,7 +177,11 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           .createChapter(branchId: story.branch.id, name: name);
       if (mounted) {
         setState(() => _selected = chapter.id);
-        _edit(chapter);
+        if (story.novel.workFormat == WorkFormat.comic) {
+          _go(WorkspaceSection.comic);
+        } else {
+          _edit(chapter);
+        }
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -189,6 +198,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   );
 
   Widget _buildStory(StorySnapshot story) {
+    if (!_initialSection) {
+      _initialSection = true;
+      if (story.novel.workFormat == WorkFormat.comic) {
+        _section = _tool = WorkspaceSection.comic;
+        _visited.add(_section);
+      }
+    }
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final selected =
         story.chapters.where((s) => s.id == _selected).firstOrNull ??
@@ -199,7 +215,11 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       for (final s in WorkspaceSection.values)
         (
           icon: s.icon,
-          label: s.label,
+          label:
+              s == WorkspaceSection.manuscript &&
+                  story.novel.workFormat == WorkFormat.comic
+              ? '目录'
+              : s.label,
           badge: s == WorkspaceSection.agent ? pending : 0,
         ),
     ];
@@ -227,6 +247,15 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         branchId: branchKey,
         embedded: true,
       ),
+      WorkspaceSection.comic =>
+        selected == null
+            ? const Center(child: Text('先创建一话，开始画漫画'))
+            : ComicScreen(
+                key: ValueKey('comic:$branchKey:${selected.id}'),
+                branchId: branchKey,
+                chapterId: selected.id,
+                embedded: true,
+              ),
     };
     final theme = context.theme;
     final canPop = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
@@ -329,11 +358,13 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
               icon: FLucideIcons.bookOpen,
               tooltip: '阅读',
               onPress: () => _push(
-                ReaderScreen(
-                  branchId: branchKey,
-                  onEdit: _edit,
-                  onIllustrate: _illustrate,
-                ),
+                story.novel.workFormat == WorkFormat.comic && selected != null
+                    ? ComicReader(branchId: branchKey, chapterId: selected.id)
+                    : ReaderScreen(
+                        branchId: branchKey,
+                        onEdit: _edit,
+                        onIllustrate: _illustrate,
+                      ),
               ),
             ),
             MenuAction(
@@ -577,10 +608,12 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         ),
         const SizedBox(height: 8),
         Text(
-          '${countCharacters(story.text)} 字 · ${story.chapters.length} 章',
+          story.novel.workFormat == WorkFormat.comic
+              ? '${story.chapters.length} 话'
+              : '${countCharacters(story.text)} 字 · ${story.chapters.length} 章',
           style: muted,
         ),
-        if (goal > 0) ...[
+        if (goal > 0 && story.novel.workFormat != WorkFormat.comic) ...[
           const SizedBox(height: 12),
           FDeterminateProgress(
             value: (int.parse(countCharacters(story.text)) / goal)
@@ -604,7 +637,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           ),
         const SizedBox(height: 20),
         Text(
-          '正文目录',
+          story.novel.workFormat == WorkFormat.comic ? '漫画目录' : '正文目录',
           style: theme.typography.body.md.copyWith(
             fontWeight: FontWeight.w600,
             color: theme.colors.foreground,
@@ -620,10 +653,20 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             selected: wide && selected?.id == chapter.id,
             prefix: const Icon(FLucideIcons.fileText),
             title: Text(chapter.title.isEmpty ? '未命名章节' : chapter.title),
-            subtitle: Text('${countCharacters(chapter.content.text)} 字'),
+            subtitle: story.novel.workFormat == WorkFormat.comic
+                ? null
+                : Text('${countCharacters(chapter.content.text)} 字'),
             suffix: MenuAction(
               tooltip: '章节操作',
               entries: [
+                menuEntry(
+                  story.novel.workFormat == WorkFormat.comic ? '创作漫画' : '改编为漫画',
+                  () {
+                    setState(() => _selected = chapter.id);
+                    _go(WorkspaceSection.comic);
+                  },
+                  icon: WorkspaceSection.comic.icon,
+                ),
                 menuEntry(
                   '重命名章节',
                   () => _renameChapter(story, chapter),
@@ -651,6 +694,9 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             onPress: () {
               if (wide) {
                 setState(() => _selected = chapter.id);
+              } else if (story.novel.workFormat == WorkFormat.comic) {
+                setState(() => _selected = chapter.id);
+                _go(WorkspaceSection.comic);
               } else {
                 _push(
                   ReaderScreen(

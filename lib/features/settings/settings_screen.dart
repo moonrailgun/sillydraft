@@ -140,7 +140,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               key: const Key('settings-beta'),
               prefix: const Icon(FLucideIcons.flaskConical),
               title: const Text('Beta 模式'),
-              subtitle: _wrapped('开启正在试验中的功能。'),
+              subtitle: _wrapped('开启正在试验中的功能，例如新建漫画。'),
               suffix: FSwitch(value: beta, onChange: setBeta),
               onPress: () => setBeta(!beta),
             ),

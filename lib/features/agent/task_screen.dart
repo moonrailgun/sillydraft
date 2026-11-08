@@ -7,6 +7,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../branches/candidate_screen.dart';
+import '../comics/comic_screen.dart';
 import '../illustrations/asset_image.dart';
 import '../illustrations/illustration_detail.dart';
 import '../lore/analysis_review_screen.dart';
@@ -99,6 +100,16 @@ const _toolLabels = {
   'generate_images': '批量生成插画',
   'insert_images': '插入插画',
   'activate_skill': '加载创作技能',
+};
+
+const _comicStages = {
+  'context': '整理前情',
+  'facts': '提取原文事实',
+  'panels': '编排分镜',
+  'audit': '对照原文检查',
+  'image-rating': '画面内容分级',
+  'image-prompt': '准备生图提示词',
+  'completed': '已完成',
 };
 
 Iterable<Map> _toolResults(Map? result) sync* {
@@ -205,13 +216,17 @@ class TaskScreen extends ConsumerWidget {
       for (final step in steps) ..._toolResults(step.result),
     ];
     final childIds = <String>{
+      if (task.result['comicChildren'] case final Map comicChildren)
+        ...comicChildren.values.whereType<String>(),
       if (task.result['imageTaskId'] case final String id) id,
       ...(task.result['imageTaskIds'] as List? ?? const []).whereType<String>(),
       for (final result in toolResults)
         if (result['taskId'] case final String id) id,
     };
     final tasksValue =
-        task.kind == TaskKind.agent || task.kind == TaskKind.sidecar
+        task.kind == TaskKind.agent ||
+            task.kind == TaskKind.sidecar ||
+            task.kind == TaskKind.comic
         ? ref.watch(tasksProvider(task.branchId))
         : null;
     final children = (tasksValue?.value ?? <GenerationTask>[])
@@ -262,7 +277,14 @@ class TaskScreen extends ConsumerWidget {
     final waiting = task.isActive && task.result['imageConfirmation'] is Map;
     final unfinished = steps.where((s) => s.result == null).firstOrNull;
     final hadToolErrors = steps.any((s) => _toolFailed(s.result));
-    final hasResults = writtenIds.isNotEmpty || assetIds.isNotEmpty;
+    final comicIds = <String>{
+      if (task.kind == TaskKind.comic) ...[
+        ...(task.input['comicHeads'] as Map? ?? {}).keys.whereType<String>(),
+        ...(task.result['comicHeads'] as Map? ?? {}).keys.whereType<String>(),
+      ],
+    };
+    final hasResults =
+        writtenIds.isNotEmpty || assetIds.isNotEmpty || comicIds.isNotEmpty;
     final heading = waiting
         ? '等待你确认插画'
         : !task.isActive && pending.isNotEmpty
@@ -321,24 +343,27 @@ class TaskScreen extends ConsumerWidget {
           }
         }, primary: true),
       if (!task.isActive && task.status != TaskStatus.completed)
-        _button('重新生成（新任务）', () async {
-          try {
-            final next = await ref
-                .read(servicesProvider)
-                .runner
-                .resume(task.id);
-            if (context.mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => TaskScreen(taskId: next.id),
-                ),
-              );
+        _button(
+          task.kind == TaskKind.comic ? '继续未完成部分' : '重新生成（新任务）',
+          () async {
+            try {
+              final next = await ref
+                  .read(servicesProvider)
+                  .runner
+                  .resume(task.id);
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TaskScreen(taskId: next.id),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) showError(context, e);
             }
-          } catch (e) {
-            if (context.mounted) showError(context, e);
-          }
-        }),
+          },
+        ),
       if (!waiting && conversation != null) _button('回到创作会话', openConversation),
       if (task.isActive || canReconnect)
         FButton(
@@ -410,7 +435,9 @@ class TaskScreen extends ConsumerWidget {
                               : '查看错误原因后，可以重新生成。',
                         TaskStatus.cancelled => '生成已停止，已保存的内容会保留。',
                         TaskStatus.interrupted =>
-                          task.isRemote
+                          task.kind == TaskKind.comic
+                              ? '已保存完成的阶段和图片。继续会从记录处恢复；状态不明的远程请求会先尝试取回原结果。'
+                              : task.isRemote
                               ? '本地连接已中断，任务可能仍在服务端执行。获取远程结果会连接同一任务；重新生成会发起新的模型请求。'
                               : '之前的模型连接已中断。重新生成会创建新任务并再次发起模型请求。',
                       },
@@ -426,6 +453,18 @@ class TaskScreen extends ConsumerWidget {
                       ? '正在保存图片到本地…'
                       : '正在等待生图服务返回图片…',
                 ),
+              ],
+              if (task.kind == TaskKind.comic) ...[
+                const SizedBox(height: 12),
+                Text('阶段：${_comicStages[task.result['stage']] ?? '等待开始'}'),
+                if (children.isNotEmpty)
+                  Text(
+                    '图片任务：${children.where((t) => t.status == TaskStatus.completed).length}/${children.length} 已完成',
+                  ),
+                if ((task.result['comicCandidates'] as List? ?? []).isNotEmpty)
+                  Text(
+                    '${(task.result['comicCandidates'] as List).length} 章候选待处理',
+                  ),
               ],
               if (task.result['quality'] case final Map quality) ...[
                 const SizedBox(height: 12),
@@ -455,6 +494,30 @@ class TaskScreen extends ConsumerWidget {
                 (task.kind == TaskKind.branches &&
                     task.status == TaskStatus.completed))
               _section(context, '本次产物', [
+                for (final id in comicIds)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _card([
+                      Text(
+                        story?.chapters
+                                .where((c) => c.id == id)
+                                .firstOrNull
+                                ?.title ??
+                            '漫画章节',
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _button(
+                          '打开漫画',
+                          () => _open(
+                            context,
+                            ComicScreen(branchId: task.branchId, chapterId: id),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
                 for (final proposal in pending)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
