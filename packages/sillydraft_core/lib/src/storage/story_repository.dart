@@ -11,6 +11,7 @@ import '../model/chapter_title.dart';
 import '../model/manuscript.dart';
 import '../model/manuscript_presentation.dart';
 import '../model/story.dart';
+import '../model/comic.dart';
 import '../model/task.dart';
 import '../model/bookmark.dart';
 import '../model/resource.dart';
@@ -34,6 +35,7 @@ import '../transfer/manuscript_import.dart';
 
 part 'manuscript_store.dart';
 part 'branch_store.dart';
+part 'comic_store.dart';
 part 'proposal_store.dart';
 part 'story_mappers.dart';
 part 'task_store.dart';
@@ -148,6 +150,7 @@ final class StoryRepository {
 
   Future<Novel> createNovel({
     required String title,
+    WorkFormat workFormat = WorkFormat.novel,
     String synopsis = '',
     String genre = '自由创作',
     String language = 'zh',
@@ -172,8 +175,8 @@ final class StoryRepository {
     await _execute(
       '''INSERT INTO novels
       (id, title, synopsis, genre, language, style, point_of_view,
-       active_branch_id, chapter_numerals, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+       active_branch_id, chapter_numerals, work_format, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
       [
         id,
         title.trim(),
@@ -184,6 +187,7 @@ final class StoryRepository {
         pointOfView,
         branchId,
         chapterNumerals.name,
+        workFormat.name,
         now,
         now,
       ],
@@ -221,7 +225,7 @@ final class StoryRepository {
     await _execute(
       '''UPDATE novels SET title = ?, synopsis = ?, genre = ?,
       language = ?, style = ?, point_of_view = ?, active_branch_id = ?,
-      cover_asset_id = ?, archived = ?, chapter_numerals = ?, updated_at = ?
+      cover_asset_id = ?, archived = ?, chapter_numerals = ?, work_format = ?, updated_at = ?
       WHERE id = ?''',
       [
         novel.title.trim(),
@@ -234,6 +238,7 @@ final class StoryRepository {
         novel.coverAssetId,
         novel.archived ? 1 : 0,
         novel.chapterNumerals.name,
+        novel.workFormat.name,
         _now(),
         novel.id,
       ],

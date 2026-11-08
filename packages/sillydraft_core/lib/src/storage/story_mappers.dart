@@ -6,6 +6,7 @@ DateTime _date(Object? value) =>
 Novel _novel(Map<String, Object?> r) => Novel(
   id: r['id'] as String,
   title: r['title'] as String,
+  workFormat: WorkFormat.values.byName(r['work_format'] as String),
   synopsis: r['synopsis'] as String,
   genre: r['genre'] as String,
   language: r['language'] as String,

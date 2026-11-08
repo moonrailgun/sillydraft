@@ -3,23 +3,31 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
+import '../model/comic.dart';
+
 /// Versioned, portable project graph. Encrypted ST sources and image bytes are
 /// separate archive members; no global connection settings or secrets are here.
 final class ProjectSnapshot {
   factory ProjectSnapshot.fromJson(Map<String, dynamic> json) {
+    json = jsonDecode(jsonEncode(json)) as Map<String, dynamic>;
+    final legacy = json['version'] == 1 && json['schema'] == 9;
     if (json['format'] != 'sillydraft-project' ||
-        json['version'] != 1 ||
-        json['schema'] != 9 ||
+        (!legacy && (json['version'] != 2 || json['schema'] != 12)) ||
         json['tables'] is! Map) {
       throw const FormatException('不支持的项目备份格式');
     }
     final tables = json['tables'] as Map;
-    if (tables.length != projectTables.length ||
-        tables.keys.any((k) => !projectTables.contains(k))) {
+    final expected = projectTables
+        .where(
+          (t) => !legacy || !['comic_revisions', 'branch_comics'].contains(t),
+        )
+        .toList();
+    if (tables.length != expected.length ||
+        tables.keys.any((k) => !expected.contains(k))) {
       throw const FormatException('备份数据表不完整');
     }
     var count = 0;
-    for (final name in projectTables) {
+    for (final name in expected) {
       final rows = tables[name];
       if (rows is! List) throw const FormatException('备份数据表无效');
       count += rows.length;
@@ -29,6 +37,17 @@ final class ProjectSnapshot {
     }
     if ((tables['novels'] as List).length != 1) {
       throw const FormatException('备份须包含一部作品');
+    }
+    if (legacy) {
+      final novel = (tables['novels'] as List).single as Map;
+      if (novel.containsKey('work_format')) {
+        throw const FormatException('旧备份包含未知字段');
+      }
+      novel['work_format'] = 'novel';
+      tables['comic_revisions'] = <dynamic>[];
+      tables['branch_comics'] = <dynamic>[];
+      json['version'] = 2;
+      json['schema'] = 12;
     }
     return ProjectSnapshot._(jsonEncode(json));
   }
@@ -90,8 +109,8 @@ final class ProjectSnapshot {
     return (
       snapshot: ProjectSnapshot.fromJson({
         'format': 'sillydraft-project',
-        'version': 1,
-        'schema': 9,
+        'version': 2,
+        'schema': 12,
         'tables': rows,
       }),
       ids: Map.unmodifiable(ids),
@@ -116,6 +135,8 @@ const projectTables = [
   'analysis_acceptances',
   'branch_candidate_selections',
   'story_assets',
+  'comic_revisions',
+  'branch_comics',
   'app_settings',
 ];
 
@@ -134,24 +155,60 @@ String canonicalJson(Object? value) {
 }
 
 Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
-  if (['local', 'global', 'variables'].contains(key)) return value;
+  if (['local', 'global', 'variables'].contains(key)) {
+    return value;
+  }
   if (value is List) return value.map((v) => _remapJson(v, ids, key)).toList();
   if (value is Map) {
+    if (value.containsKey('adaptationId') && value.containsKey('units')) {
+      return remapComicDocument(
+        ComicDocument.fromJson(Map<String, dynamic>.from(value)),
+        ids,
+      ).toJson();
+    }
     if (key == 'presetOverrides') {
       return {for (final e in value.entries) ids[e.key] ?? e.key: e.value};
     }
-    if (key == 'sourceRevisions') {
+    if (key == 'sourceRevisions' || key == 'comicHeads') {
       return {
         for (final e in value.entries)
           ids[e.key] ?? e.key: ids[e.value] ?? e.value,
       };
     }
+    if (key == 'comicDocuments' || key == 'comicSnapshot') {
+      return {
+        for (final e in value.entries)
+          ids[e.key] ?? e.key: _remapJson(e.value, ids),
+      };
+    }
+    if (key == 'agentComicCalls') {
+      return {
+        for (final e in value.entries)
+          e.key: _remapJson(e.value, ids, 'agentComicCall'),
+      };
+    }
+    if (key == 'comicChildren' || key == 'comicCalls') {
+      return {
+        for (final e in value.entries)
+          _remapComicKey(e.key as String, ids): key == 'comicChildren'
+              ? ids[e.value] ?? e.value
+              : _remapJson(e.value, ids),
+      };
+    }
     return {
       for (final e in value.entries)
-        e.key: _remapJson(e.value, ids, e.key as String),
+        e.key: key == 'frozenComic' && e.key == 'key'
+            ? _remapComicKey(e.value as String, ids)
+            : key == 'agentComicCall' && e.key == 'signature'
+            ? canonicalJson(_remapJson(jsonDecode(e.value as String), ids))
+            : key == 'agentComicCall' && e.key == 'heads'
+            ? _remapJson(e.value, ids, 'comicHeads')
+            : _remapJson(e.value, ids, e.key as String),
     };
   }
   if (value is String) {
+    if (key == 'comicDrawn') return _remapComicKey(value, ids);
+    if (key == 'comicCandidates') return ids[value] ?? value;
     if (key == 'image' && value.startsWith('asset:')) {
       return 'asset:${ids[value.substring(6)] ?? value.substring(6)}';
     }
@@ -160,6 +217,19 @@ Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
         key.endsWith('Ids') ||
         key.endsWith('_id')) {
       return ids[value] ?? value;
+    }
+  }
+  return value;
+}
+
+String _remapComicKey(String value, Map<String, String> ids) {
+  for (final prefix in ['', 'context-']) {
+    if (!value.startsWith(prefix)) continue;
+    final key = value.substring(prefix.length);
+    for (var i = key.length - 1; i > 0; i--) {
+      if (key[i] != '-' && key[i] != '/') continue;
+      final id = ids[key.substring(0, i)];
+      if (id != null) return '$prefix$id${key.substring(i)}';
     }
   }
   return value;

@@ -40,11 +40,13 @@ void main() {
       partialText: '旧输出',
     );
     await current.close();
-    // Version 9 is version 11 without the tables of streamed progress and
-    // request usage.
+    // Build the old schema by removing each later migration.
     sqlite.sqlite3.open(path)
       ..execute('DROP TABLE task_progress')
       ..execute('DROP TABLE usage_records')
+      ..execute('DROP TABLE branch_comics')
+      ..execute('DROP TABLE comic_revisions')
+      ..execute('ALTER TABLE novels DROP COLUMN work_format')
       ..execute('PRAGMA user_version = 9')
       ..close();
 
@@ -72,7 +74,7 @@ void main() {
     expect((await repo.usageByMonth()).single.requests, 1);
     await repo.close();
     final db = sqlite.sqlite3.open(path);
-    expect(db.select('PRAGMA user_version').single.values.single, 11);
+    expect(db.select('PRAGMA user_version').single.values.single, 12);
     db.close();
   });
   test('a version 10 library gains the table of request usage', () async {
@@ -84,6 +86,9 @@ void main() {
     await current.close();
     sqlite.sqlite3.open(path)
       ..execute('DROP TABLE usage_records')
+      ..execute('DROP TABLE branch_comics')
+      ..execute('DROP TABLE comic_revisions')
+      ..execute('ALTER TABLE novels DROP COLUMN work_format')
       ..execute('PRAGMA user_version = 10')
       ..close();
 
@@ -102,9 +107,41 @@ void main() {
     expect((await repo.usageByMonth()).single.requests, 1);
     await repo.close();
     final db = sqlite.sqlite3.open(path);
-    expect(db.select('PRAGMA user_version').single.values.single, 11);
+    expect(db.select('PRAGMA user_version').single.values.single, 12);
     db.close();
   });
+  test(
+    'a version 11 library gains comics without changing manuscripts',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('v11-library-');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = '${dir.path}/library.sqlite';
+      final current = StoryRepository.open(path);
+      final novel = await current.createNovel(title: '旧小说');
+      final chapter = await current.createChapter(
+        branchId: novel.activeBranchId,
+        content: ManuscriptContent.plainText('原文不变。'),
+      );
+      await current.close();
+      sqlite.sqlite3.open(path)
+        ..execute('DROP TABLE branch_comics')
+        ..execute('DROP TABLE comic_revisions')
+        ..execute('ALTER TABLE novels DROP COLUMN work_format')
+        ..execute('PRAGMA user_version = 11')
+        ..close();
+      final repo = StoryRepository.open(path);
+      expect((await repo.listNovels()).single.workFormat, WorkFormat.novel);
+      expect(
+        (await repo.getChapter(
+          branchId: novel.activeBranchId,
+          chapterId: chapter.id,
+        )).revisionId,
+        chapter.revisionId,
+      );
+      expect(await repo.getComic(novel.activeBranchId, chapter.id), isNull);
+      await repo.close();
+    },
+  );
   test('a database from an older app is refused and left untouched', () async {
     final dir = await Directory.systemTemp.createTemp('old-library-');
     addTearDown(() => dir.delete(recursive: true));

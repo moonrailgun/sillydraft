@@ -16,7 +16,7 @@ final class StoryDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
@@ -33,6 +33,7 @@ final class StoryDatabase extends GeneratedDatabase {
         ...assetSchema,
         ...progressSchema,
         ...usageSchema,
+        ...comicSchema,
       ]) {
         await customStatement(sql);
       }
@@ -57,6 +58,14 @@ final class StoryDatabase extends GeneratedDatabase {
       }
       if (from < 11) {
         for (final sql in usageSchema) {
+          await customStatement(sql);
+        }
+      }
+      if (from < 12) {
+        await customStatement(
+          "ALTER TABLE novels ADD COLUMN work_format TEXT NOT NULL DEFAULT 'novel' CHECK(work_format IN ('novel', 'comic'))",
+        );
+        for (final sql in comicSchema) {
           await customStatement(sql);
         }
       }
@@ -96,6 +105,22 @@ final class StoryDatabase extends GeneratedDatabase {
     'CREATE INDEX IF NOT EXISTS usage_created ON usage_records(created_at)',
   ];
 
+  static const comicSchema = <String>[
+    '''CREATE TABLE comic_revisions (
+      id TEXT PRIMARY KEY, novel_id TEXT NOT NULL REFERENCES novels(id),
+      chapter_id TEXT NOT NULL, origin_branch_id TEXT NOT NULL REFERENCES branches(id),
+      parent_revision_id TEXT REFERENCES comic_revisions(id), document_json TEXT NOT NULL,
+      task_id TEXT REFERENCES generation_tasks(id), reason TEXT NOT NULL, created_at INTEGER NOT NULL
+    )''',
+    'CREATE INDEX comics_chapter ON comic_revisions(novel_id, chapter_id)',
+    '''CREATE TABLE branch_comics (
+      branch_id TEXT NOT NULL, chapter_id TEXT NOT NULL,
+      comic_revision_id TEXT NOT NULL REFERENCES comic_revisions(id),
+      PRIMARY KEY(branch_id, chapter_id),
+      FOREIGN KEY(branch_id, chapter_id) REFERENCES branch_chapters(branch_id, chapter_id)
+    )''',
+  ];
+
   static const assetSchema = <String>[
     '''CREATE TABLE story_assets (
       id TEXT PRIMARY KEY, novel_id TEXT NOT NULL REFERENCES novels(id),
@@ -118,6 +143,7 @@ final class StoryDatabase extends GeneratedDatabase {
       archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
       chapter_numerals TEXT NOT NULL DEFAULT 'chinese'
         CHECK(chapter_numerals IN ('chinese', 'arabic')),
+      work_format TEXT NOT NULL DEFAULT 'novel' CHECK(work_format IN ('novel', 'comic')),
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     )''',
     '''CREATE TABLE branches (
