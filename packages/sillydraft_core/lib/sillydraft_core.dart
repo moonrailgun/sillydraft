@@ -3,6 +3,7 @@ library;
 export 'src/tracking/application_tracking.dart';
 
 export 'src/transfer/publication_exporter.dart';
+export 'src/transfer/comic_exporter.dart';
 export 'src/transfer/project_snapshot.dart';
 export 'src/transfer/project_backup.dart';
 export 'src/transfer/project_sync.dart';
