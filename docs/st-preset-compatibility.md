@@ -222,9 +222,11 @@ HTML 前端块按酒馆助手固定提交 `a0f3a180344cff38a4b3e75041d5a94380b87
 
 HTML 高度沿用酒馆助手 `src/iframe/adjust_iframe_height.js` 的 `body.scrollHeight` 测量：普通内容展开和收起都同步调整，`details` 的隐藏子元素不再撑住空白；收缩动画持续跟随实际内容高度。只有 `body { height: 100% }` 等受框架高度约束的布局保留每次 DOM 变化后一次的可见底边收缩，避免视口比例面板反复缩小。
 
-HTML 网页视图的默认背景透明，未指定背景的区域透出阅读器底色；HTML 自身声明的背景色和图片保留。`webview_flutter_wkwebview 3.27.0` 的背景设置在 macOS 会调用未实现的 `opaque` 接口，因此 macOS 通过原生通道关闭 WKWebView 的默认背景绘制。此处暂用 WebKit 的 `drawsBackground` KVC 属性（[上游缺口](https://bugs.webkit.org/show_bug.cgi?id=221663)），调用前检查 setter 是否存在；不支持时输出诊断并继续显示内容。原生修改须重新构建、重启，热重载无效。
+HTML 网页视图的原生背景透明，普通 HTML 片段未指定背景的区域透出阅读器底色。HTML 前端块按独立网页处理：默认黑字白底、浅色控件，作者声明的文字颜色、背景色／图片和 `color-scheme` 优先；未声明颜色或引用未定义颜色变量时，不再继承应用暗色模式的浅色文字。此处沿用酒馆助手固定提交 `a0f3a180344cff38a4b3e75041d5a94380b877d6` 的 `src/panel/render/iframe.ts` 不注入 ST 正文色的做法，并为原生透明 WebView 补上配套白色画布。这不会自动重配作者自带的深浅色主题。
 
-HTML 未声明文字颜色时继承所在阅读器的正文颜色，切换阅读主题只更新默认色，不重载页面；页面自带颜色优先。原生网页视图额外把未消费的纵向滚轮／触控板 `wheel` 事件转给外层滚动容器：内部区域还能沿该方向滚动、页面调用 `preventDefault()` 或设置 `overscroll-behavior: contain/none` 时保留网页行为，到边界后才继续滚动正文。此为原生宿主的适配；手机触摸拖动仍由原有平台手势仲裁处理。
+`webview_flutter_wkwebview 3.27.0` 的背景设置在 macOS 会调用未实现的 `opaque` 接口，因此 macOS 通过原生通道关闭 WKWebView 的默认背景绘制。此处暂用 WebKit 的 `drawsBackground` KVC 属性（[上游缺口](https://bugs.webkit.org/show_bug.cgi?id=221663)），调用前检查 setter 是否存在；不支持时输出诊断并继续显示内容。原生修改须重新构建、重启，热重载无效。
+
+普通 HTML 片段未声明文字颜色时继承所在阅读器的正文颜色，页面自带颜色优先。切换应用或阅读主题不重载网页：只更新片段的默认文字色，前端块保持自己的配色和页面状态。`integration_test/html_interaction_test.dart` 在真实 WKWebView 中覆盖浅色渐变背景／未定义文字色、深色页面、作者颜色优先、透明片段和主题切换。原生网页视图额外把未消费的纵向滚轮／触控板 `wheel` 事件转给外层滚动容器：内部区域还能沿该方向滚动、页面调用 `preventDefault()` 或设置 `overscroll-behavior: contain/none` 时保留网页行为，到边界后才继续滚动正文。此为原生宿主的适配；手机触摸拖动仍由原有平台手势仲裁处理。
 
 **酒馆输入框按小说续写适配。** ST 1.19.0 的 `#send_textarea` 与 `#send_but` 分别是聊天输入框和发送入口，`/setinput` 填入文本并返回管道值（依据固定提交的 `public/script.js`、`public/scripts/slash-commands.js`）。按产品要求，SillyDraft 将前端对该输入框的赋值、`input`/`change`、发送按钮和 `SillyTavern.getContext().generate()` 适配为直接续写下一章；同一轮赋值和发送合并，已有写作任务时拒绝重复启动。`/setinput` 同样直接续写，含 `/cut` 的管道仍确认改写。这是小说产品的语义适配，不等同于 ST 仅填入草稿。普通 HTML 片段无此权限；角色卡创建前的预览只保存要求。
 

@@ -194,10 +194,12 @@ class HtmlBlockViewState extends ConsumerState<HtmlBlockView> {
       state: state,
       nonce: HtmlBlocks.nonce(),
       viewportHeight: _viewport ?? 800,
-      // A root fallback inherits naturally; authored HTML colors still win.
-      baseStyle:
-          'html{--sd-text-color:$_textColor;}'
-          ':where(html){color:var(--sd-text-color);}',
+      // 酒馆助手 iframe.ts (a0f3a180) keeps frontend colors independent of ST.
+      // Pair the default text with a canvas; fragments inherit the reader.
+      baseStyle: widget.block.kind == HtmlBlockKind.frontend
+          ? ':where(html){color:#000;background:#fff;color-scheme:light;}'
+          : 'html{--sd-text-color:$_textColor;}'
+                ':where(html){color:var(--sd-text-color);}',
     );
     try {
       final controller = _controller ?? await _createController();

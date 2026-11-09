@@ -26,6 +26,8 @@ void main() {
     WidgetTester tester, {
     required ValueNotifier<Color> color,
     required ScrollController scroll,
+    String source = _source,
+    HtmlBlockKind kind = HtmlBlockKind.fragment,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -37,19 +39,19 @@ void main() {
                 style: TextStyle(color: value),
                 child: SingleChildScrollView(
                   controller: scroll,
-                  child: const Column(
+                  child: Column(
                     children: [
-                      SizedBox(height: 120),
+                      const SizedBox(height: 120),
                       HtmlBlockView(
                         block: HtmlBlock(
                           start: 0,
-                          end: _source.length,
-                          source: _source,
-                          kind: HtmlBlockKind.fragment,
+                          end: source.length,
+                          source: source,
+                          kind: kind,
                         ),
                         width: 400,
                       ),
-                      SizedBox(height: 1600),
+                      const SizedBox(height: 1600),
                     ],
                   ),
                 ),
@@ -113,6 +115,67 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(await css('plain', 'color'), 'rgb(9, 8, 7)');
   });
+
+  for (final darkPage in [false, true]) {
+    testWidgets(
+      'HTML frontend keeps its ${darkPage ? 'dark' : 'light'} palette across reader themes',
+      (tester) async {
+        final color = ValueNotifier(ReaderTheme.night.foreground);
+        final controller = await mount(
+          tester,
+          color: color,
+          scroll: ScrollController(),
+          kind: HtmlBlockKind.frontend,
+          source:
+              '''
+<!DOCTYPE html><html><head><style>
+body {
+  background: ${darkPage ? '#161f33' : 'linear-gradient(135deg, #f5f5f5, #e0e0e0)'};
+  color: ${darkPage ? '#e2e8f0' : 'var(--missing-text-color)'};
+}
+</style></head><body>$_source</body></html>
+''',
+        );
+        await controller.runJavaScript('window.pageState = "preserved"');
+        for (final theme in [
+          ReaderTheme.night,
+          ReaderTheme.paper,
+          ReaderTheme.night,
+        ]) {
+          color.value = theme.foreground;
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(
+            await controller.runJavaScriptReturningResult(
+              'getComputedStyle(document.getElementById("plain")).color',
+            ),
+            darkPage ? 'rgb(226, 232, 240)' : 'rgb(0, 0, 0)',
+          );
+          expect(
+            await controller.runJavaScriptReturningResult(
+              'getComputedStyle(document.getElementById("authored")).color',
+            ),
+            'rgb(12, 34, 56)',
+          );
+          expect(
+            await controller.runJavaScriptReturningResult('window.pageState'),
+            'preserved',
+          );
+        }
+        expect(
+          await controller.runJavaScriptReturningResult(
+            'getComputedStyle(document.documentElement).backgroundColor',
+          ),
+          'rgb(255, 255, 255)',
+        );
+        expect(
+          await controller.runJavaScriptReturningResult(
+            'getComputedStyle(document.body).${darkPage ? 'backgroundColor' : 'backgroundImage'}',
+          ),
+          darkPage ? 'rgb(22, 31, 51)' : 'linear-gradient(135deg, rgb(245, 245, 245), rgb(224, 224, 224))',
+        );
+      },
+    );
+  }
 
   testWidgets('HTML hands only unconsumed wheel scrolling to its parent', (
     tester,
