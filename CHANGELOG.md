@@ -6,6 +6,12 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+## v1.2.2 · 2026-11-10
+
+### Improved
+
+- Maintenance release.
+
 ## v1.2.1 · 2026-11-10
 
 ### Fixed
