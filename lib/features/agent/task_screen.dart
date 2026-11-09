@@ -7,6 +7,8 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../branches/candidate_screen.dart';
+import '../comics/comic_canvas.dart';
+import '../comics/comic_reader.dart';
 import '../comics/comic_screen.dart';
 import '../illustrations/asset_image.dart';
 import '../illustrations/illustration_detail.dart';
@@ -156,6 +158,27 @@ class TaskScreen extends ConsumerWidget {
 
   void _open(BuildContext context, Widget screen) =>
       Navigator.push(context, MaterialPageRoute<void>(builder: (_) => screen));
+
+  /// Originals are drawn on the canvas, adaptations in the adaptation panel.
+  Future<void> _openComic(
+    BuildContext context,
+    WidgetRef ref,
+    String branchId,
+    String chapterId,
+  ) async {
+    try {
+      final data = await ref.read(comicProvider((branchId, chapterId)).future);
+      if (!context.mounted) return;
+      _open(
+        context,
+        comicOnCanvas(data)
+            ? ComicCanvasPage(branchId: branchId, chapterId: chapterId)
+            : ComicScreen(branchId: branchId, chapterId: chapterId),
+      );
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
 
   Widget _button(String text, VoidCallback onPress, {bool primary = false}) =>
       FButton(
@@ -510,10 +533,7 @@ class TaskScreen extends ConsumerWidget {
                         alignment: Alignment.centerLeft,
                         child: _button(
                           '打开漫画',
-                          () => _open(
-                            context,
-                            ComicScreen(branchId: task.branchId, chapterId: id),
-                          ),
+                          () => _openComic(context, ref, task.branchId, id),
                         ),
                       ),
                     ]),

@@ -7,33 +7,46 @@ import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../illustrations/asset_image.dart';
 
-final comicProvider =
-    FutureProvider.family<
-      ({
-        Chapter chapter,
-        ComicRevision? comic,
-        bool sourceCurrent,
-        bool original,
-      }),
-      (String, String)
-    >((ref, key) async {
+/// A chapter with its comic, as [comicProvider] reads it.
+typedef ComicChapter = ({
+  Chapter chapter,
+  ComicRevision? comic,
+  bool sourceCurrent,
+  bool original,
+});
+
+/// Whether a chapter's comic is made on the canvas: an original, or a comic
+/// work's chapter with neither comic nor prose. The rest are adapted from
+/// their prose in the adaptation panel.
+bool comicOnCanvas(ComicChapter data) =>
+    data.comic?.document.isOriginal ??
+    data.original && data.chapter.content.text.trim().isEmpty;
+
+final comicProvider = FutureProvider.family<ComicChapter, (String, String)>((
+  ref,
+  key,
+) async {
+  ref.watch(repositoryContentChangesProvider);
+  final repo = ref.watch(repositoryProvider);
+  final chapter = await repo.getChapter(branchId: key.$1, chapterId: key.$2);
+  final comic = await repo.getComic(key.$1, key.$2);
+  return (
+    original:
+        comic?.document.isOriginal ??
+        (await repo.getStory(key.$1)).novel.workFormat == WorkFormat.comic,
+    chapter: chapter,
+    comic: comic,
+    sourceCurrent:
+        comic == null || await repo.comicSourcesCurrent(key.$1, comic.document),
+  );
+});
+
+/// A chapter's saved comic, if any, without [comicProvider]'s source checks:
+/// cheap enough to watch for every chapter of an outline.
+final comicHeadProvider =
+    FutureProvider.family<ComicRevision?, (String, String)>((ref, key) {
       ref.watch(repositoryContentChangesProvider);
-      final repo = ref.watch(repositoryProvider);
-      final chapter = await repo.getChapter(
-        branchId: key.$1,
-        chapterId: key.$2,
-      );
-      final comic = await repo.getComic(key.$1, key.$2);
-      return (
-        original:
-            comic?.document.isOriginal ??
-            (await repo.getStory(key.$1)).novel.workFormat == WorkFormat.comic,
-        chapter: chapter,
-        comic: comic,
-        sourceCurrent:
-            comic == null ||
-            await repo.comicSourcesCurrent(key.$1, comic.document),
-      );
+      return ref.watch(repositoryProvider).getComic(key.$1, key.$2);
     });
 
 /// The same ordered, unabridged content is used in previews and the reader.
@@ -119,14 +132,21 @@ class ComicPageView extends StatelessWidget {
       if (page['assetId'] case final String id)
         AssetImageView(assetId: id, label: document.pageTranscript(page))
       else
-        const Padding(padding: EdgeInsets.all(24), child: Text('尚未绘制，请生成漫画页。')),
+        Padding(
+          padding: const EdgeInsets.all(24),
+          // Originals have no 生成漫画 button: pages are redrawn on the canvas.
+          child: Text(
+            document.isOriginal ? '这一页还没画好，可以在漫画画布里重试。' : '尚未绘制，请生成漫画页。',
+          ),
+        ),
       if (page['assetId'] != null &&
           page['fingerprint'] != document.pageFingerprint(page))
         const Padding(
           padding: EdgeInsets.only(top: 12),
           child: Text('分镜已修改，请重画此页。'),
         )
-      else if (page['visualReview'] == true)
+      // Originals ignore legacy continuity flags.
+      else if (page['visualReview'] == true && !document.isOriginal)
         const Padding(
           padding: EdgeInsets.only(top: 12),
           child: Text('画面衔接待复核。'),
@@ -172,9 +192,12 @@ class ComicReader extends ConsumerWidget {
                   style: context.theme.typography.body.xl,
                 ),
                 const SizedBox(height: 16),
-                if (!data.sourceCurrent) const Text('依据已过期：这里保留的是先前版本的漫画。'),
-                if (doc != null && !doc.checked)
-                  const Text('分镜尚未通过检查，以下是创作预览。'),
+                // Originals have no source to go stale and no check gate.
+                if (doc?.isOriginal != true) ...[
+                  if (!data.sourceCurrent) const Text('依据已过期：这里保留的是先前版本的漫画。'),
+                  if (doc != null && !doc.checked)
+                    const Text('分镜尚未通过检查，以下是创作预览。'),
+                ],
                 if (doc == null || doc.panels.isEmpty)
                   const Text('本章还没有分镜，请在漫画工作区开始创作。'),
                 for (final (i, panel)

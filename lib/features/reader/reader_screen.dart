@@ -22,6 +22,7 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import '../agent/agent_providers.dart';
 import '../agent/task_screen.dart';
 import '../agent/writing_request_screen.dart';
+import '../comics/comic_reader.dart';
 import '../html/html_block_view.dart';
 import '../lore/sidecar.dart';
 import '../settings/world_info_budget.dart';
@@ -1291,15 +1292,54 @@ class _ReaderState extends ConsumerState<ReaderScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              _chapterTitle(chapter),
-                              style: TextStyle(
-                                fontSize: _style.fontSize + 6,
-                                fontWeight: FontWeight.w600,
-                                color: foreground,
-                                fontFamily: _style.font.family,
-                                fontFamilyFallback: _style.font.fallback,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _chapterTitle(chapter),
+                                    style: TextStyle(
+                                      fontSize: _style.fontSize + 6,
+                                      fontWeight: FontWeight.w600,
+                                      color: foreground,
+                                      fontFamily: _style.font.family,
+                                      fontFamilyFallback: _style.font.fallback,
+                                    ),
+                                  ),
+                                ),
+                                // A comic is another telling of the chapter,
+                                // never mixed into its prose.
+                                if (ref
+                                        .watch(
+                                          comicHeadProvider((
+                                            _branchId,
+                                            chapter.id,
+                                          )),
+                                        )
+                                        .value !=
+                                    null) ...[
+                                  const SizedBox(width: 8),
+                                  _noTap(
+                                    FButton(
+                                      variant: FButtonVariant.outline,
+                                      size: FButtonSizeVariant.sm,
+                                      mainAxisSize: MainAxisSize.min,
+                                      onPress: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => ComicReader(
+                                            branchId: _branchId,
+                                            chapterId: chapter.id,
+                                          ),
+                                        ),
+                                      ),
+                                      prefix: const Icon(
+                                        FLucideIcons.bookImage,
+                                      ),
+                                      child: const Text('看漫画版'),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             SizedBox(height: _style.fontSize * 1.5),
                             if (!replacing && (hasText || draft == null))
