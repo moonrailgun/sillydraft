@@ -52,13 +52,10 @@ class _HomeState extends ConsumerState<HomeScreen> {
     _visited.add(selectedIndex);
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final update = ref.watch(availableUpdateProvider);
+    final desktopUpdate = wide && !touchPlatform && update != null;
     final needsModel =
         ref.watch(servicesProvider).remote == null &&
         ref.watch(connectionsProvider).value?.isEmpty == true;
-    final desktopUpdate =
-        wide &&
-        !touchPlatform &&
-        ref.watch(servicesProvider).updateEndpoint != null;
     final destinations = <NavDestination>[
       (icon: FLucideIcons.libraryBig, label: '作品', badge: 0),
       (icon: FLucideIcons.folderOpen, label: '资源', badge: 0),
@@ -90,18 +87,12 @@ class _HomeState extends ConsumerState<HomeScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                         child: FButton(
                           key: const Key('desktop-update'),
-                          variant: update == null
-                              ? FButtonVariant.outline
-                              : FButtonVariant.primary,
-                          prefix: Icon(
-                            update == null
-                                ? FLucideIcons.refreshCw
-                                : FLucideIcons.download,
-                          ),
+                          variant: FButtonVariant.primary,
+                          prefix: const Icon(FLucideIcons.download),
                           onPress: () => openUpdates(context, ref),
                           child: Flexible(
                             child: Text(
-                              update == null ? '检查更新' : '新版本 ${update.version}',
+                              '新版本 ${update.version}',
                               textAlign: TextAlign.center,
                             ),
                           ),

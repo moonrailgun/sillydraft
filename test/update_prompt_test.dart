@@ -9,7 +9,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sillydraft/app/app.dart';
 import 'package:sillydraft/app/home_screen.dart';
 import 'package:sillydraft/app/services.dart';
-import 'package:sillydraft/app/widgets.dart' show AppBackButton, AppBottomBar;
+import 'package:sillydraft/app/widgets.dart'
+    show AppBackButton, AppBottomBar, AppSidebar;
 import 'package:sillydraft/features/settings/settings_screen.dart';
 import 'package:sillydraft/features/update/update_prompt.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
@@ -171,7 +172,7 @@ void main() {
     return Uri.parse('http://127.0.0.1:${server.port}/latest');
   }
 
-  /// Taps 检查更新 and waits for the offer.
+  /// Opens the update entry and waits for the offer.
   Future<void> checkNow(
     WidgetTester tester, {
     int taps = 1,
@@ -284,7 +285,7 @@ void main() {
   });
 
   testWidgets(
-    'desktop update entry stays at bottom left and reopens the cached release',
+    'desktop shows an update above settings only when a release is available',
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
     (tester) async {
       var requests = 0;
@@ -294,21 +295,37 @@ void main() {
         home: true,
         size: const Size(1280, 900),
       );
+      int badge() => tester
+          .widget<AppSidebar>(find.byType(AppSidebar))
+          .destinations[HomeTab.settings]
+          .badge;
       final entry = find.byKey(const Key('desktop-update'));
-      expect(entry, findsOneWidget);
-      final bounds = tester.getRect(entry);
-      expect(bounds.right, lessThanOrEqualTo(200));
-      expect(bounds.top, greaterThan(700));
+      final settings = find.widgetWithText(FSidebarItem, '设置');
+      final settingsWithoutUpdate = tester.getRect(settings);
+      expect(entry, findsNothing);
+      expect(tester.widget<AppSidebar>(find.byType(AppSidebar)).footer, isNull);
+      expect(find.text('检查更新'), findsOneWidget);
+      expect(badge(), 0);
 
-      await checkNow(tester, key: 'desktop-update');
+      await checkNow(tester);
       await tester.tap(find.text('稍后'));
       await tester.pumpAndSettle();
+      expect(entry, findsOneWidget);
       expect(find.text('新版本 0.2.0'), findsOneWidget);
+      expect(
+        tester.getRect(entry).bottom + 8,
+        lessThanOrEqualTo(tester.getRect(settings).top),
+      );
+      expect(tester.getRect(settings), settingsWithoutUpdate);
+      expect(find.text('更新至 0.2.0'), findsOneWidget);
+      expect(badge(), 0);
 
       // Recreate the provider scope: the daily throttle must not hide an offer.
       await tester.pumpWidget(const SizedBox());
       await mount(tester, services, home: true);
-      expect(find.text('新版本 0.2.0'), findsOneWidget);
+      expect(entry, findsOneWidget);
+      expect(find.text('更新至 0.2.0'), findsOneWidget);
+      expect(badge(), 0);
       await recheck(tester);
       expect(requests, 1);
       await checkNow(tester, key: 'desktop-update');
@@ -316,8 +333,12 @@ void main() {
       expect(requests, 1);
       await tester.tap(find.text('跳过此版本'));
       await settleUpdates(tester);
-      expect(find.text('新版本 0.2.0'), findsNothing);
-      expect(entry, findsOneWidget);
+      expect(find.text('更新至 0.2.0'), findsNothing);
+      expect(find.text('检查更新'), findsOneWidget);
+      expect(badge(), 0);
+      expect(entry, findsNothing);
+      expect(tester.widget<AppSidebar>(find.byType(AppSidebar)).footer, isNull);
+      expect(tester.getRect(settings), settingsWithoutUpdate);
     },
   );
 

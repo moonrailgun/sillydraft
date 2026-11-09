@@ -890,8 +890,8 @@ class AppSidebar extends StatelessWidget {
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (footerCount > 0) _group(split, destinations.length),
                 ?footer,
+                if (footerCount > 0) _group(split, destinations.length),
               ],
             )
           : null,
