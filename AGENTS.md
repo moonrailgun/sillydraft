@@ -32,6 +32,8 @@ dart test test/html_blocks_test.dart -N '用例名的一部分'  # 单个用例
 cd server && dart analyze && dart test         # 可选远程执行器
 
 ./release.sh [--allow-dirty] [patch|minor|major]  # 发布：升版本、提交、打 tag、推送，CI 出包（见 docs/building.md“发布”）
+python3 tool/changelog.py check                # 检查中英文日志格式与条目数量
+python3 -m unittest discover -s tool -p 'test_*.py' -v  # 发布与签名工具测试
 ```
 
 格式检查（仓库根目录）：
@@ -75,3 +77,9 @@ macOS 上的数据库位于 `~/Library/Application Support/com.moonrailgun.silly
 - 产品设计与开发遵守[系统与设计规范](docs/design-guidelines.md)及[界面设计标准](design.md)，其中汇总系统定位、界面交互、数据与生成流程、兼容边界和交付要求。独立元素之间必须保留可见的外部间距；容器内部默认四周保留 16 个逻辑像素内边距，标题、图表、控件和底部说明不得紧贴边缘。紧凑布局和动态内容同样适用，开发时主动检查，不等用户再次指出。
 - 提交信息用 Conventional Commits 加作用域，如 `fix(reader): …`、`feat(core): …`。
 - 测试使用本地协议服务器，不调用付费模型。
+
+## 更新日志
+
+- 用户可见的功能、改进或修复，必须在同一改动中同步维护根目录 `CHANGELOG.md` 的 `## Unreleased` 和 `CHANGELOG.zh-CN.md` 的 `## 未发布`；代理完成实现时主动补齐两种语言，不等发版时再从提交记录生成。
+- 条目按 `Added / Improved / Fixed` 与 `新增 / 改进 / 修复` 对应分类，用 `###` 分类标题和 `- ` 列表；续行缩进两格。两种语言的分类、条目顺序和含义一一对应。校验能检查版本、日期及各分类条目数，翻译准确性仍需审阅。
+- 用用户能理解的语言说明变化，不写提交标题、内部重构、测试或构建细节。没有用户可见变化时不必添条目；同一未发布功能再次调整时改原条目，避免重复堆积。

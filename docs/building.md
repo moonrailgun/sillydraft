@@ -110,9 +110,12 @@ Flutter 3.47.7（engine `deb287481e`）的 [Command 映射](https://github.com/f
 
 版本号只维护根目录 `pubspec.yaml` 的 `version: 主.次.修订+构建号`，Flutter 注入各平台。1.0 前功能或数据 schema 变化升次版本，修复升修订号；构建号每次发布 +1（Android 覆盖安装要求 versionCode 不降低）。`packages/sillydraft_core` 与 `server` 的版本号不参与发布，执行器按同一 tag 的源码运行。
 
+更新日志以根目录 [CHANGELOG.md](../CHANGELOG.md)（英文）和 [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md)（中文）为唯一来源。开发时在 `## Unreleased` / `## 未发布` 下同步记录用户可见变化，跟随功能改动一起提交；分类使用 `### Added / Improved / Fixed` 与 `### 新增 / 改进 / 修复`，条目以 `- ` 开头，续行缩进两格。两种语言的条目顺序、含义保持对应；同一未发布功能的后续调整修改原条目，不重复追加。纯内部重构、测试和文档维护不必写入。
+
 在仓库根目录执行：
 
 ```sh
+python3 tool/changelog.py check  # 只读校验；CI 也会运行
 ./release.sh patch   # 0.1.0 → 0.1.1；minor → 0.2.0；major → 1.0.0
 ./release.sh         # 不带参数时列出三项和结果版本供选择
 ./release.sh --allow-dirty minor   # 工作区有未提交改动时照常发布

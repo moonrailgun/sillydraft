@@ -31,7 +31,8 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: python3 -m unittest discover -s tool -p test_ios_signing.py -v
+      - run: python3 -m unittest discover -s tool -p 'test_*.py' -v
+      - run: python3 tool/changelog.py check
       - run: dart pub get --enforce-lockfile
         working-directory: packages/sillydraft_core
       - run: dart pub get --enforce-lockfile

@@ -11,6 +11,8 @@
   <a href="https://github.com/moonrailgun/sillydraft/releases/latest">下载应用</a> ·
   <a href="#开始使用">开始使用</a> ·
   <a href="docs/user-guide.md">使用指南</a> ·
+  <a href="CHANGELOG.zh-CN.md">更新日志</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="docs/building.md">开发与构建</a>
 </p>
 
