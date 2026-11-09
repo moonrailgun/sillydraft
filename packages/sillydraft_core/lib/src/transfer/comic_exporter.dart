@@ -38,13 +38,14 @@ final class ComicExporter {
     final issues = <String>[];
     for (final chapter in chapters) {
       final doc = (await repository.getComic(branchId, chapter.id))?.document;
-      if (doc == null || !doc.checked) {
+      // Originals only need every page drawn; stale pages export as drawn.
+      if (doc == null || !doc.isOriginal && !doc.checked) {
         issues.add('${chapter.title}：尚未通过分镜检查');
       } else {
         final missing = doc.imageItems
             .where((p) => p['assetId'] == null)
             .length;
-        if (doc.hasPages && !doc.complete && missing == 0) {
+        if (!doc.isOriginal && doc.hasPages && !doc.complete && missing == 0) {
           issues.add('${chapter.title}：画面过期或待复核，请重画或确认');
         }
         if (missing > 0) issues.add('${chapter.title}：缺少 $missing 张图片');
@@ -91,10 +92,9 @@ p{margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{overflow-wrap
       final doc = documents[i];
       html.write('<section><h2>${_escape(chapters[i].title)}</h2>');
       text.writeln('${chapters[i].title}\n');
+      // Only adaptations can be non-current; originals always are.
       if (!await repository.comicSourcesCurrent(branchId, doc)) {
-        final notice = doc.isOriginal
-            ? '依据历史漫画版本；此前漫画或顺序已有修改。'
-            : '依据历史正文版本；原文此后已有修改。';
+        const notice = '依据历史正文版本；原文此后已有修改。';
         html.write('<p class="notice">$notice</p>');
         text.writeln(notice);
       }

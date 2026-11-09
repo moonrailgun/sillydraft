@@ -204,6 +204,10 @@ Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
           e.key: _remapJson(e.value, ids, 'agentComicCall'),
       };
     }
+    // Keyed by character name; only the child task ids move.
+    if (key == 'comicSheetChildren') {
+      return {for (final e in value.entries) e.key: ids[e.value] ?? e.value};
+    }
     if (key == 'comicChildren' || key == 'comicCalls') {
       return {
         for (final e in value.entries)
@@ -229,7 +233,9 @@ Object? _remapJson(Object? value, Map<String, String> ids, [String key = '']) {
     if (key == 'image' && value.startsWith('asset:')) {
       return 'asset:${ids[value.substring(6)] ?? value.substring(6)}';
     }
+    // Lore `images` lists asset ids; a copy must point at its own assets.
     if (key == 'id' ||
+        key == 'images' ||
         key.endsWith('Id') ||
         key.endsWith('Ids') ||
         key.endsWith('_id')) {

@@ -340,6 +340,42 @@ void main() {
     },
   );
 
+  test('whole-document draw redraws a flagged adaptation page', () async {
+    final plan = await runner.wait(
+      (await service.adapt(
+        branchId: novel.activeBranchId,
+        chapterIds: [chapter.id],
+        connection: connection,
+      )).id,
+    );
+    expect(plan.status, TaskStatus.completed, reason: plan.error);
+    Future<GenerationTask> drawAll(String head) async => runner.wait(
+      (await service.generateImages(
+        branchId: novel.activeBranchId,
+        chapterId: chapter.id,
+        connection: connection,
+        promptConnection: connection,
+        expectedRevisionId: head,
+      )).id,
+    );
+    var head = (await repo.getComic(novel.activeBranchId, chapter.id))!;
+    expect((await drawAll(head.id)).status, TaskStatus.completed);
+    head = (await repo.getComic(novel.activeBranchId, chapter.id))!;
+    final json = head.document.toJson();
+    (json['pages'] as List).first['visualReview'] = true;
+    final flagged = await repo.saveComic(
+      branchId: novel.activeBranchId,
+      chapterId: chapter.id,
+      document: ComicDocument.fromJson(json),
+      expectedRevisionId: head.id,
+    );
+    expect(images, 1);
+    final redraw = await drawAll(flagged.id);
+    expect(redraw.status, TaskStatus.completed, reason: redraw.error);
+    // Adaptations keep the review flag: the page is drawn again.
+    expect(images, 2);
+  });
+
   test(
     'explicit legacy redraw upgrades to pages without losing old images',
     () async {

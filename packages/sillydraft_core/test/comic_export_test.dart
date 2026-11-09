@@ -7,6 +7,7 @@ import 'package:test/test.dart';
 
 import 'asset_library_test.dart' show testPicture;
 import 'comic_store_test.dart' show comicFixture;
+import 'native_comic_test.dart' show twoPageFixture;
 
 ComicDocument checkedComic(ComicDocument doc) => ComicDocument.fromJson({
   ...doc.toJson(),
@@ -90,6 +91,55 @@ void main() {
         exporter.export(branchId: chapter.branchId, chapterIds: [chapter.id]),
         throwsFormatException,
       );
+    },
+  );
+
+  test(
+    'original export ignores stale pages and blocks missing images',
+    () async {
+      final image = await assets.importImage(
+        branchId: chapter.branchId,
+        name: '页',
+        bytes: testPicture(),
+      );
+      final plan = twoPageFixture(chapter.id);
+      final page = plan.pages.first;
+      final panels = plan.panels;
+      panels.first['description'] = '女孩回头';
+      // Page 1 was drawn and flagged under the old rules, then edited.
+      final doc = plan
+          .edit({
+            'pages': [
+              {
+                ...page,
+                'assetId': image.id,
+                'fingerprint': plan.pageFingerprint(page),
+                'visualReview': true,
+              },
+              plan.pages.last,
+            ],
+          })
+          .editPanels(panels);
+      await save(doc);
+      await expectLater(
+        exporter.export(branchId: chapter.branchId, chapterIds: [chapter.id]),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('缺少 1 张图片'),
+          ),
+        ),
+      );
+      await save(doc.withoutPage('page2'));
+      final head = (await repo.getComic(chapter.branchId, chapter.id))!;
+      expect(head.document.stalePageIds, ['page1']);
+      final file = await exporter.export(
+        branchId: chapter.branchId,
+        chapterIds: [chapter.id],
+      );
+      final zip = ZipDecoder().decodeBytes(file.bytes);
+      expect(zip.findFile('assets/${image.hash}.png'), isNotNull);
     },
   );
 
