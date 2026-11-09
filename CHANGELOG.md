@@ -6,6 +6,8 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+## v1.2.1 · 2026-11-10
+
 ### Fixed
 
 - World books using positions before or after the author’s note now work in writing generation and assistant conversations, with their content included at the default author’s note position.
