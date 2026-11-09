@@ -243,7 +243,7 @@ void main() {
       });
       await showTask(tester, repo, task!);
       await tester.pumpAndSettle();
-      expect(find.text('工具 · save_lore'), findsOneWidget);
+      expect(find.text('保存资料'), findsOneWidget);
       expect(
         find.text('未完成'),
         conflict ? findsOneWidget : findsNothing,
