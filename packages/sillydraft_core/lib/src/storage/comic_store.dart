@@ -118,18 +118,8 @@ extension ComicOperations on StoryRepository {
   Future<bool> comicSourcesCurrent(String branchId, ComicDocument doc) async {
     final chapters = (await getStory(branchId)).chapters;
     final index = chapters.indexWhere((c) => c.id == doc.chapterId);
-    if (doc.isOriginal) {
-      if (index < 0 || doc.priorComics.length != index) return false;
-      for (var i = 0; i < index; i++) {
-        final ref = doc.priorComics[i];
-        if (ref['chapterId'] != chapters[i].id ||
-            ref['revisionId'] !=
-                (await getComic(branchId, chapters[i].id))?.id) {
-          return false;
-        }
-      }
-      return true;
-    }
+    // Originals take prior episodes as they are at the next drawing.
+    if (doc.isOriginal) return index >= 0;
     if (index < 0 || chapters[index].revisionId != doc.sourceRevisionId) {
       return false;
     }
@@ -192,9 +182,12 @@ extension ComicOperations on StoryRepository {
       ], '漫画版本'),
     );
     final panels = revision.document.imageItems;
-    // Historical approval does not establish continuity in the current branch.
+    // Historical approval does not establish continuity in the current branch;
+    // originals have no continuity review.
     for (final panel in panels) {
-      if (panel['assetId'] != null) panel['visualReview'] = true;
+      if (panel['assetId'] != null && !revision.document.isOriginal) {
+        panel['visualReview'] = true;
+      }
     }
     return saveComic(
       branchId: branchId,
@@ -397,10 +390,12 @@ extension ComicOperations on StoryRepository {
     final heads = <String, ComicRevision>{};
     final panelsByChapter = <String, List<Map<String, dynamic>>>{};
     final affectedPanels = <String, Set<String>>{};
+    final originals = <String>{if (after.isOriginal) after.chapterId};
     for (final chapter in story.chapters) {
       final head = await getComic(branch.id, chapter.id);
       if (head == null) continue;
       heads[chapter.id] = head;
+      if (head.document.isOriginal) originals.add(chapter.id);
       panelsByChapter[chapter.id] = chapter.id == after.chapterId
           ? nextPanels
           : head.document.imageItems;
@@ -430,7 +425,9 @@ extension ComicOperations on StoryRepository {
           if (affected.add(panel['id'] as String)) expanded = true;
           if (assetId != null) {
             if (affectedAssets.add(assetId)) expanded = true;
-            if (panel['visualReview'] != true) {
+            // Propagate through originals but never flag them.
+            if (panel['visualReview'] != true &&
+                !originals.contains(entry.key)) {
               panel['visualReview'] = true;
               changedChapters.add(entry.key);
             }

@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import '../model/comic.dart';
+import '../model/lore.dart';
 import '../model/task.dart';
 import '../providers/provider.dart';
 import '../storage/story_repository.dart';
 import '../tasks/task_runner.dart';
+import 'illustration_service.dart';
 
 /// Freezes manuscript versions before any model request; never writes prose.
 final class ComicService {
@@ -29,7 +31,7 @@ final class ComicService {
     input: {...input, 'agentComicCall': ?agentCall},
   );
 
-  /// Freeze only completed comics up to the target; prose is never story input.
+  /// Freeze drawn comics up to the target; prose is never story input.
   Future<Map<String, dynamic>> _originalInput(
     String branchId,
     String chapterId,
@@ -47,13 +49,28 @@ final class ComicService {
     final prior = <Map<String, dynamic>>[], context = <Map<String, dynamic>>[];
     Map<String, dynamic>? previous;
     for (final c in story.chapters.take(index + (includeCurrent ? 1 : 0))) {
-      final comic = await repository.getComic(branchId, c.id);
+      var comic = await repository.getComic(branchId, c.id);
+      // An adaptation episode is context only when checked, complete and
+      // current; otherwise it is skipped, never a blocker (ruling R18).
+      if (comic != null &&
+          !comic.document.isOriginal &&
+          (!comic.document.checked ||
+              !comic.document.complete ||
+              !await repository.comicSourcesCurrent(
+                branchId,
+                comic.document,
+              ))) {
+        comic = null;
+      }
       if (comic != null) {
-        if (!comic.document.checked || !comic.document.complete) {
-          throw const FormatException('请先完成已有漫画页并处理待复核画面');
-        }
-        if (!await repository.comicSourcesCurrent(branchId, comic.document)) {
-          throw const ComicConflict();
+        if (comic.document.isOriginal) {
+          // Checks, review flags and stale pages are hints; only gaps block.
+          final page = comic.document.pages.indexWhere(
+            (p) => p['assetId'] == null,
+          );
+          if (page >= 0) {
+            throw FormatException('第 ${page + 1} 页还没有画好，请先重试或删除这一页');
+          }
         }
         context.add({
           'chapterId': c.id,
@@ -62,7 +79,8 @@ final class ComicService {
           'pages': comic.document.pages,
           'continuity': comic.document.toJson()['continuity'],
         });
-        previous = comic.document.imageItems.lastOrNull;
+        // An emptied episode must not hide the one before it.
+        previous = comic.document.imageItems.lastOrNull ?? previous;
       }
       if (c.id != chapterId) {
         prior.add({'chapterId': c.id, 'revisionId': comic?.id});
@@ -86,9 +104,24 @@ final class ComicService {
     ModelConnection? imageConnection,
     ModelConnection? nsfwConnection,
     String? expectedRevisionId,
+    bool characterSheets = false,
   }) async {
     if (instruction.trim().isEmpty) throw const FormatException('请输入开场或下一页剧情');
     final input = await _originalInput(branchId, chapterId, expectedRevisionId);
+    // Sheets only for the opening: no page here and no earlier original pages.
+    var opening =
+        characterSheets &&
+        (input['comicDocuments'] as List).every(
+          (d) => (d['pages'] as List).isEmpty,
+        );
+    for (final prior in input['comicPrior'] as List) {
+      if (!opening) break;
+      final comic = await repository.getComic(
+        branchId,
+        prior['chapterId'] as String,
+      );
+      opening = comic == null || !comic.document.isOriginal;
+    }
     if ((input['comicDocuments'] as List).isEmpty) {
       input['comicDocuments'] = [
         ComicDocument.original(
@@ -112,8 +145,46 @@ final class ComicService {
         'promptConnection': connection.raw,
         'imageConnection': ?imageConnection?.raw,
         'nsfwConnection': ?nsfwConnection?.raw,
+        if (opening) 'comicCharacterSheets': true,
       },
     );
+  }
+
+  /// One reference sheet for a visible character, saved to its lore entry.
+  /// Comics are untouched; later pages pick the image up automatically.
+  Future<String> drawCharacterSheet({
+    required String branchId,
+    required String chapterId,
+    required String name,
+    required ModelConnection connection,
+  }) async {
+    final entry = (await repository.listLore(
+      branchId,
+      throughChapterId: chapterId,
+      kind: LoreKind.character,
+    )).where((e) => e.name == name).firstOrNull;
+    if (entry == null) throw FormatException('找不到角色资料：$name');
+    final saved = entry.data['referencePrompt'] as String? ?? '';
+    final prompt = saved.trim().isEmpty ? entry.content.trim() : saved;
+    if (prompt.isEmpty) throw FormatException('$name缺少固定外观描述，请先在资料中补充');
+    final illustration = IllustrationService(
+      repository: repository,
+      runner: runner,
+    );
+    final reference = VisualReference(
+      kind: LoreKind.character,
+      name: entry.name,
+      prompt: prompt,
+      entry: entry,
+    );
+    await illustration.ensureReference(
+      branchId: branchId,
+      chapterId: chapterId,
+      connection: connection,
+      reference: reference,
+      defaults: await illustration.savedDefaults(connection),
+    );
+    return reference.assetId!;
   }
 
   Future<GenerationTask> suggestDirections({
@@ -246,7 +317,8 @@ final class ComicService {
     if (expectedRevisionId != null && head?.id != expectedRevisionId) {
       throw const ComicConflict();
     }
-    if (head == null || !checkFirst && !head.document.checked) {
+    if (head == null ||
+        !checkFirst && !head.document.isOriginal && !head.document.checked) {
       throw const FormatException('请先检查分镜并修正所有问题');
     }
     if (!await repository.comicSourcesCurrent(branchId, head.document)) {
@@ -264,7 +336,11 @@ final class ComicService {
               )['id']
               as String;
     }
-    final previous = await _previousComic(branchId, chapterId);
+    final previous = await _previousComic(
+      branchId,
+      chapterId,
+      original: head.document.isOriginal,
+    );
     return _start(
       branchId: branchId,
       kind: TaskKind.comic,
@@ -286,12 +362,19 @@ final class ComicService {
 
   Future<ComicRevision?> _previousComic(
     String branchId,
-    String chapterId,
-  ) async {
+    String chapterId, {
+    bool original = false,
+  }) async {
     final chapters = (await repository.getStory(branchId)).chapters;
     final index = chapters.indexWhere((c) => c.id == chapterId);
     if (index <= 0) return null;
     final prior = await repository.getComic(branchId, chapters[index - 1].id);
+    // Originals continue from the last drawn page; checks and flags are hints.
+    if (original && prior != null && prior.document.isOriginal) {
+      return prior.document.imageItems.lastOrNull?['assetId'] == null
+          ? null
+          : prior;
+    }
     if (prior == null ||
         !prior.document.checked ||
         !prior.document.complete ||

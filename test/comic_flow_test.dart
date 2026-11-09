@@ -182,7 +182,7 @@ void main() {
         expect(text['text'], '你是谁？');
         expect(text.containsKey('factId'), isFalse);
         expect(saved!.pages.single['assetId'], 'image1');
-        expect(saved!.complete, isFalse);
+        expect(saved!.stalePageIds, ['page1']);
         expect(tester.takeException(), isNull);
       },
     );

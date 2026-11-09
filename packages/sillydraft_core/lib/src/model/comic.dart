@@ -301,10 +301,20 @@ final class ComicDocument {
           'fingerprint',
           'visualReview',
           'referenceAssetIds',
+          'characters',
         });
         members.addAll(_refs(page, 'panelIds', previousPanels, nonempty: true));
         _strings(page['referenceAssetIds']);
         if ((page['referenceAssetIds'] as List).length > 16) _invalid('参考图过多');
+        // Names that pick automatic reference images, main characters first.
+        if (page['characters'] != null) {
+          final names = _strings(page['characters']);
+          if (names.length > 16 ||
+              names.toSet().length != names.length ||
+              names.any((n) => n.trim().isEmpty || n.length > 100)) {
+            _invalid('漫画页人物无效');
+          }
+        }
         for (final key in ['assetId', 'imageTaskId', 'fingerprint']) {
           if (page[key] != null) _string(page, key, required: true);
         }
@@ -359,14 +369,26 @@ final class ComicDocument {
   List<Map<String, dynamic>> get priorComics =>
       isOriginal ? _maps(toJson(), 'priorComics') : [];
   List<Map<String, dynamic>> get imageItems => hasPages ? pages : panels;
-  bool get complete =>
-      imageItems.isNotEmpty &&
-      imageItems.every(
-        (p) =>
-            p['assetId'] != null &&
-            p['visualReview'] != true &&
-            (!hasPages || p['fingerprint'] == pageFingerprint(p)),
-      );
+
+  /// Originals only need every page drawn; stale and flagged pages are hints.
+  bool get complete => isOriginal
+      ? pages.isNotEmpty && pages.every((p) => p['assetId'] != null)
+      : imageItems.isNotEmpty &&
+            imageItems.every(
+              (p) =>
+                  p['assetId'] != null &&
+                  p['visualReview'] != true &&
+                  (!hasPages || p['fingerprint'] == pageFingerprint(p)),
+            );
+
+  /// Drawn pages whose storyboard changed after drawing.
+  List<String> get stalePageIds => [
+    for (final p in pages)
+      if (p['assetId'] != null && p['fingerprint'] != pageFingerprint(p))
+        p['id'] as String,
+  ];
+
+  String? get lastPageId => pages.lastOrNull?['id'] as String?;
 
   String pageFingerprint(Map<String, dynamic> page) => sha256
       .convert(
@@ -503,6 +525,7 @@ final class ComicDocument {
         'fingerprint',
         'visualReview',
         'referenceAssetIds',
+        'characters',
       ]) {
         page.remove(key);
       }
@@ -683,6 +706,79 @@ final class ComicDocument {
             'audit': toJson()['audit'],
           })
         : result;
+  }
+
+  /// Drops the page and its panels; the image stays in history.
+  ComicDocument withoutPage(String pageId) {
+    final removed = (_page(pageId)['panelIds'] as List).toSet();
+    return _withLayout(
+      panels.where((p) => !removed.contains(p['id'])).toList(),
+      pages.where((p) => p['id'] != pageId).toList(),
+    );
+  }
+
+  /// Replaces one page's panels in place. Images stay, possibly stale; the
+  /// check survives only an unchanged storyboard.
+  ComicDocument editPage(String pageId, List<Map<String, dynamic>> values) {
+    if (values.isEmpty) throw const FormatException('每页至少需要一格分镜');
+    final old = (_page(pageId)['panelIds'] as List).toSet();
+    final next = (jsonDecode(jsonEncode(values)) as List)
+        .cast<Map<String, dynamic>>();
+    final all = panels;
+    // Pages cover panels in order, so this page's panels are contiguous.
+    final start = all.indexWhere((p) => old.contains(p['id']));
+    final result = _withLayout(
+      [...all.take(start), ...next, ...all.skip(start + old.length)],
+      [
+        for (final p in pages)
+          p['id'] == pageId
+              ? {...p, 'panelIds': next.map((p) => p['id']).toList()}
+              : p,
+      ],
+      edited: pageId,
+    );
+    return result.fingerprint == fingerprint
+        ? ComicDocument.fromJson({
+            ...result.toJson(),
+            'audit': toJson()['audit'],
+          })
+        : result;
+  }
+
+  Map<String, dynamic> _page(String id) =>
+      pages.where((p) => p['id'] == id).firstOrNull ?? _invalid('漫画页不存在');
+
+  // Links to removed or now-later panels would fail validation. Dropping one
+  // is layout, not an edit: drawn pages other than [edited] stay fresh.
+  ComicDocument _withLayout(
+    List<Map<String, dynamic>> panels,
+    List<Map<String, dynamic>> pages, {
+    String? edited,
+  }) {
+    final seen = <Object?>{};
+    for (final p in panels) {
+      if (p['previousPanelId'] != null &&
+          !seen.contains(p['previousPanelId'])) {
+        p.remove('previousPanelId');
+      }
+      seen.add(p['id']);
+    }
+    final fresh = {
+      for (final p in this.pages)
+        if (p['id'] != edited &&
+            p['assetId'] != null &&
+            p['fingerprint'] == pageFingerprint(p))
+          p['id'],
+    };
+    final next = edit({'panels': panels, 'pages': pages});
+    return next.edit({
+      'pages': [
+        for (final p in next.pages)
+          fresh.contains(p['id'])
+              ? {...p, 'fingerprint': next.pageFingerprint(p)}
+              : p,
+      ],
+    });
   }
 }
 
