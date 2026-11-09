@@ -556,24 +556,7 @@ final class PromptCompiler {
           );
         }
       }
-      for (final entry in world.entries.where((e) => e.entry.position == 4)) {
-        final role = [
-          'system',
-          'user',
-          'assistant',
-        ][entry.entry.role.clamp(0, 2)];
-        injections.add(
-          _Injection(
-            PromptMessage(
-              role,
-              entry.content,
-              source: 'world:${entry.entry.id}',
-            ),
-            entry.entry.depth,
-            entry.entry.order,
-          ),
-        );
-      }
+      injections.addAll(_worldInjections(world));
       final injectedHistory = _inject(history, injections);
       final newChat = stringField(raw, 'new_chat_prompt');
       if (newChat.isNotEmpty) {
@@ -726,6 +709,21 @@ final class _Injection {
   const _Injection(this.message, this.depth, this.order);
   final PromptMessage message;
   final int depth, order;
+}
+
+List<_Injection> _worldInjections(WorldBookResult world) {
+  return [
+    for (final entry in world.entries.where((e) => e.entry.position == 4))
+      _Injection(
+        PromptMessage(
+          ['system', 'user', 'assistant'][entry.entry.role.clamp(0, 2)],
+          entry.content,
+          source: 'world:${entry.entry.id}',
+        ),
+        entry.entry.depth,
+        entry.entry.order,
+      ),
+  ];
 }
 
 List<PromptMessage> _inject(

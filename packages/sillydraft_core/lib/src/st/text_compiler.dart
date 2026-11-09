@@ -83,19 +83,7 @@ _compileText(
     story += '\n';
   }
   var queue = [...history];
-  final injections = <_Injection>[];
-  for (final entry in world.entries.where((e) => e.entry.position == 4)) {
-    injections.add(
-      _Injection(
-        PromptMessage(
-          ['system', 'user', 'assistant'][entry.entry.role.clamp(0, 2)],
-          entry.content,
-        ),
-        entry.entry.depth,
-        entry.entry.order,
-      ),
-    );
-  }
+  final injections = _worldInjections(world);
   final out = StringBuffer();
   if (position == 1 && story.isNotEmpty) {
     final role = [
