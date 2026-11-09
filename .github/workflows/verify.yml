@@ -42,8 +42,27 @@ jobs:
       - run: dart test --reporter expanded
         working-directory: packages/sillydraft_core
       - run: flutter test test --reporter expanded
-      - run: dart test --reporter expanded
+      - name: Test server
         working-directory: server
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            set +e
+            dart test --reporter expanded 2>&1 | tee "$RUNNER_TEMP/server-tests.log"
+            status=${PIPESTATUS[0]}
+            set -e
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            # sqlite3 3.7.1 hashes HTTP error bodies as if they were binaries.
+            # Retry the download failure only; never retry failing tests.
+            if [ "$attempt" -eq 3 ] ||
+               ! grep -q 'Error: Running build hooks failed.' "$RUNNER_TEMP/server-tests.log" ||
+               ! grep -q 'Hash of downloaded file libsqlite3.* is .*expected' "$RUNNER_TEMP/server-tests.log"; then
+              exit "$status"
+            fi
+            sleep "$((attempt * 5))"
+          done
 
   desktop:
     # A release commit is verified by release.yml on its tag; skip the branch push.
