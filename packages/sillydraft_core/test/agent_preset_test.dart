@@ -293,6 +293,67 @@ void main() {
     },
   );
 
+  test(
+    'assistant sends authors-note world info instead of failing preparation',
+    () async {
+      final repo = StoryRepository.memory();
+      addTearDown(repo.close);
+      final novel = await repo.createNovel(title: '雾港');
+      await repo.createChapter(
+        branchId: novel.activeBranchId,
+        content: ManuscriptContent.plainText('港口的清晨'),
+      );
+      final conversation = await repo.createConversation(
+        branchId: novel.activeBranchId,
+      );
+      ProviderRequest? seen;
+      final runner = TaskRunner(
+        repository: repo,
+        providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
+          seen = request;
+          yield const TextDelta('收到');
+          yield const GenerationFinished('stop');
+        }),
+      );
+      addTearDown(runner.close);
+      final task = await EditorAgent(repository: repo, runner: runner).send(
+        conversationId: conversation,
+        connection: ModelConnection(
+          id: 't',
+          name: 't',
+          baseUrl: 'http://localhost:1',
+          model: 't',
+        ),
+        message: '帮我分析设定',
+        chatPreset: _chatPreset(),
+        worldBooks: [
+          ScopedWorldBook(
+            WorldBook.fromJson({
+              'entries': {
+                '1': {
+                  'uid': 1,
+                  'constant': true,
+                  'position': 3,
+                  'content': '港口有灯塔',
+                },
+              },
+            }),
+          ),
+        ],
+      );
+      await runner.wait(task.id);
+      expect((await repo.getTask(task.id)).status, TaskStatus.completed);
+      expect(
+        seen!.messages.any(
+          (m) =>
+              m['role'] == 'system' &&
+              (m['content'] as String).contains('港口有灯塔'),
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('text-completion templates are refused for the assistant', () async {
     final repo = StoryRepository.memory();
     addTearDown(repo.close);

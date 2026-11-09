@@ -338,7 +338,7 @@ final class WorldBookEngine {
         }
         activated.add(entry);
         // 7: an outlet, read by `{{outlet::name}}` (PromptCompiler).
-        if (![0, 1, 4, 7].contains(entry.position)) {
+        if (![0, 1, 2, 3, 4, 7].contains(entry.position)) {
           diagnostics.add(
             CompatibilityDiagnostic(
               'world_book_position',

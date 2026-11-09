@@ -712,7 +712,16 @@ final class _Injection {
 }
 
 List<_Injection> _worldInjections(WorldBookResult world) {
+  String at(int position) => world.entries
+      .where((e) => e.entry.position == position)
+      .map((e) => e.content)
+      .join('\n');
+  // ST 1.19.0 (06bde939): world-info.js ANWithWI; authors-note.js
+  // loadSettings defaults to an empty system note at depth 4, every turn.
+  final note = '${at(2)}\n\n${at(3)}'.replaceAll(RegExp(r'(^\n)|(\n$)'), '');
   return [
+    if (note.isNotEmpty)
+      _Injection(PromptMessage('system', note, source: 'authorsNote'), 4, 100),
     for (final entry in world.entries.where((e) => e.entry.position == 4))
       _Injection(
         PromptMessage(

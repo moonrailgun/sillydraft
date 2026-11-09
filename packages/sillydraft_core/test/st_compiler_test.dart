@@ -64,6 +64,132 @@ PresetInput input(
 );
 
 void main() {
+  group('world info around the default authors note', () {
+    final books = [
+      ScopedWorldBook(
+        WorldBook.fromJson({
+          'entries': {
+            for (final (id, position, order, content) in [
+              (1, 2, 90, 'top high'),
+              (2, 3, 20, 'bottom {{user}}'),
+              (3, 2, 10, 'top low'),
+            ])
+              '$id': {
+                'uid': id,
+                'constant': true,
+                'position': position,
+                'order': order,
+                'content': content,
+              },
+          },
+        }),
+      ),
+    ];
+    final history = [
+      for (var i = 0; i < 5; i++)
+        ContextChapter(
+          branchId: 'main',
+          position: i,
+          chapterId: 'c$i',
+          revisionId: 'r$i',
+          content: 'history $i',
+        ),
+    ];
+    const note = 'top low\ntop high\n\nbottom 阿雨';
+    test('chat keeps both groups at system depth four', () {
+      final result = PromptCompiler().compile(
+        input(
+          chat([p('chatHistory', '', marker: true)]),
+          books: books,
+          history: history,
+        ),
+      );
+      expect(result.canRun, isTrue);
+      final index = result.messages.indexWhere((m) => m.content == note);
+      expect(index, greaterThanOrEqualTo(0));
+      expect(result.messages[index].role, 'system');
+      expect(result.messages.length - index - 1, 4);
+    });
+    test('text completion includes the note at depth four', () {
+      final preset = PresetImporter().decode({
+        'context': {'story_string': ''},
+        'preset': {'temp': 0.8},
+      });
+      final result = PromptCompiler().compile(
+        input(preset, books: books, history: history),
+      );
+      expect(result.canRun, isTrue);
+      final text = result.completionText!;
+      expect(text, contains(note));
+      expect(text.indexOf(note), lessThan(text.indexOf('history 2')));
+      expect(text.indexOf(note), greaterThan(text.indexOf('history 1')));
+    });
+    for (final position in [2, 3]) {
+      test('position $position alone has no extra blank lines', () {
+        final result = PromptCompiler().compile(
+          input(
+            chat([p('chatHistory', '', marker: true)]),
+            books: [
+              ScopedWorldBook(
+                WorldBook.fromJson({
+                  'entries': {
+                    '1': {
+                      'uid': 1,
+                      'constant': true,
+                      'position': position,
+                      'content': 'note',
+                    },
+                  },
+                }),
+              ),
+            ],
+          ),
+        );
+        expect(result.canRun, isTrue);
+        expect(result.messages.first.content, 'note');
+      });
+    }
+
+    test('missing chat history still blocks injection', () {
+      final result = PromptCompiler().compile(
+        input(chat([p('main', 'base')]), books: books),
+      );
+      expect(result.canRun, isFalse);
+      expect(
+        result.diagnostics.map((d) => d.code),
+        contains('injection_without_history'),
+      );
+    });
+    test('example and unknown positions remain unsupported', () {
+      for (final position in [5, 6, 99]) {
+        final result = PromptCompiler().compile(
+          input(
+            chat([p('chatHistory', '', marker: true)]),
+            books: [
+              ScopedWorldBook(
+                WorldBook.fromJson({
+                  'entries': {
+                    '1': {
+                      'uid': 1,
+                      'constant': true,
+                      'position': position,
+                      'content': 'x',
+                    },
+                  },
+                }),
+              ),
+            ],
+          ),
+        );
+        expect(result.canRun, isFalse);
+        expect(
+          result.diagnostics.map((d) => d.code),
+          contains('world_book_position'),
+        );
+      }
+    });
+  });
+
   test(
     'unfilled extension markers follow ST prompt selection without blocking',
     () {

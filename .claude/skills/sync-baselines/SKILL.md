@@ -95,6 +95,7 @@ git -C ~/Develop/SillyTavern diff --stat <旧提交> <新提交> -- \
 | 宏环境、全新安装的指令/上下文/推理模板 | `env-macros.js`、`MacroEnvBuilder.js`、`instruct-mode.js`、`power-user.js`、`default/content/settings.json` | `core/st/macro_env.dart` | `macro_engine_test.dart` |
 | moment.js 子集 | ST `package-lock.json` 中的 moment 版本（当前 2.30.1） | `core/st/moment.dart` | `macro_engine_test.dart` |
 | 世界书扫描默认值、`GENERATION_TYPE_TRIGGERS`、支持的插入位置、扫描字段、`convertCharacterBook` | `world-info.js`、`src/constants.js`、`default/content/settings.json` | `core/st/world_book_engine.dart`、`core/st/world_book.dart`、`lib/features/settings/world_info_budget.dart` | `world_book_engine_test.dart`、`test/world_info_budget_test.dart` |
+| 世界书作者注释前后分组、默认作者注释锚点（系统、深度 4、每轮） | `world-info.js`、`authors-note.js` | `core/st/prompt_compiler.dart`、`core/st/text_compiler.dart` | `st_compiler_test.dart`、`agent_preset_test.dart` |
 | 正则脚本规则、`sanitizeRegexMacro`、placement 编号 | `extensions/regex/engine.js` | `core/st/regex_pipeline.dart`；placement 数字散落在 `prompt_compiler.dart`、`tasks/task_runner.dart`、`model/manuscript_presentation.dart`、`lib/features/resources/resource_preview.dart` | `macro_engine_test.dart`、`st_compiler_test.dart` |
 | 聊天补全预设的参数键、连接字段 `_connectionKeys`、预设类型识别 | `openai.js` `settingsToUpdate`（第四项为 true 的是连接设置）、`preset-manager.js` | `core/st/preset_importer.dart` | `st_import_test.dart` |
 | 凭据字段（导入时隐藏） | 同上 | `core/st/import_types.dart` `credentialKeys` | `st_import_test.dart` |

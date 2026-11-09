@@ -8,6 +8,8 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ### Fixed
 
+- World books using positions before or after the author’s note now work in writing generation and assistant conversations, with their content included at the default author’s note position.
+
 - HTML frontends preserve their own colors when switching app or reader themes, fixing hard-to-read text on light backgrounds in dark mode. Pages without specified colors default to black text on white, while author-defined colors and backgrounds take precedence.
 
 ## v1.2.0 · 2026-11-10
