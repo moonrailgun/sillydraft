@@ -6,6 +6,10 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+### Fixed
+
+- HTML frontends preserve their own colors when switching app or reader themes, fixing hard-to-read text on light backgrounds in dark mode. Pages without specified colors default to black text on white, while author-defined colors and backgrounds take precedence.
+
 ## v1.2.0 · 2026-11-10
 
 ### Added
