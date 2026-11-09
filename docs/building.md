@@ -112,7 +112,7 @@ Flutter 3.47.7（engine `deb287481e`）的 [Command 映射](https://github.com/f
 
 更新日志以根目录 [CHANGELOG.md](../CHANGELOG.md)（英文）和 [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md)（中文）为唯一来源。开发时在 `## Unreleased` / `## 未发布` 下同步记录用户可见变化，跟随功能改动一起提交；分类使用 `### Added / Improved / Fixed` 与 `### 新增 / 改进 / 修复`，条目以 `- ` 开头，续行缩进两格。两种语言的条目顺序、含义保持对应；同一未发布功能的后续调整修改原条目，不重复追加。纯内部重构、测试和文档维护不必写入。
 
-在仓库根目录执行：
+发布脚本需要 Python 3（只使用标准库）。在仓库根目录执行：
 
 ```sh
 python3 tool/changelog.py check  # 只读校验；CI 也会运行
@@ -121,7 +121,11 @@ python3 tool/changelog.py check  # 只读校验；CI 也会运行
 ./release.sh --allow-dirty minor   # 工作区有未提交改动时照常发布
 ```
 
-脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在。加 `--allow-dirty` 时只要求 `pubspec.yaml` 没有未提交改动，其余改动原样留在工作区，不进入发布提交，CI 也只按 tag 构建。确认后只提交 `pubspec.yaml`（`chore(release): vX.Y.Z`），打附注 tag，再用 `git push --atomic` 同时推送分支和 tag。
+脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在，中英文日志的版本、日期和各分类条目数量一致。加 `--allow-dirty` 时仍要求 `pubspec.yaml` 和两份 `CHANGELOG` 没有未提交改动，其余改动及暂存状态原样保留，不进入发布提交，CI 也只按 tag 构建。
+
+确认后，脚本将未发布区归档为 `## vX.Y.Z · YYYY-MM-DD`（使用本机日期），在上方新建空的未发布区，再升版本；只提交 `pubspec.yaml` 和两份日志（`chore(release): vX.Y.Z`），打附注 tag，用 `git push --atomic` 同时推送分支和 tag。两种语言都没有条目时自动写入“维护更新。 / Maintenance release.”；单边缺项、重复版本、无效标题或日期会报错。校验不判断翻译是否准确，提交前仍需审阅。
+
+归档或提交失败时恢复这三个原本干净的文件；推送失败时保留完整本地发布提交和 tag，并显示重试命令。不要为重试推送再次升版本。
 
 tag 触发 `.github/workflows/release.yml`：
 
@@ -130,6 +134,8 @@ tag 触发 `.github/workflows/release.yml`：
 3. 并行构建并上传 `sillydraft-<版本>-android.apk`（只含 arm64-v8a；三种 ABI 合打时原生库未压缩，约 85 MB，仅 arm64 约 32 MB）、`-macos.zip`、`-windows-x64.zip`（含 VC++ 运行库）、`-linux-x64.tar.gz`。iOS 不放入公开 Release。
 4. 测试通过且所有平台打包成功后转为正式发布。任一失败时 Release 停在草稿，应用的更新检查看不到它；修复后在 Actions 里重跑失败的任务即可（上传会覆盖同名文件）。
 5. 配置 Apple Secrets 且仓库变量 `IOS_APP_STORE_ENABLED=true` 时，正式发布后再调用 iOS 工作流，签名、归档并上传 App Store Connect / TestFlight，正式提审手动确认。iOS 失败不会撤回已发布的其他平台包；首次配置和重传规则见 [iOS App Store 发布](ios-app-store.md)。也可手动运行 iOS 工作流。
+
+日志按版本归档，不代表该版本已正式发布。构建失败优先重跑原 tag；如果需要修复源码并另发新版本，须把尚未正式发布的用户可见变化同步补进两份未发布区，新版本的说明不会自动合并失败版本的归档。
 
 Android 签名需在仓库 Settings → Secrets and variables → Actions 中配置：
 

@@ -1,5 +1,6 @@
-"""Exercise bilingual changelog maintenance."""
+"""Exercise changelog maintenance and releases in disposable repositories."""
 import datetime
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -143,6 +144,110 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn('- 维护更新。', result.stdout)
         self.assertIn('- Maintenance release.', result.stdout)
         self.assertEqual(self.run_changelog('check').returncode, 0)
+
+
+class ReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        base = Path(self.temp.name)
+        self.root = base / 'checkout'
+        self.root.mkdir()
+        self.remote = base / 'origin.git'
+        self.env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
+                        GIT_AUTHOR_NAME='Release Test', GIT_AUTHOR_EMAIL='test@example.invalid',
+                        GIT_COMMITTER_NAME='Release Test', GIT_COMMITTER_EMAIL='test@example.invalid')
+        self.git('init', '--bare', str(self.remote))
+        self.git('init', '-b', 'main')
+        (self.root / 'tool').mkdir()
+        shutil.copy(SOURCE / 'release.sh', self.root)
+        shutil.copy(SOURCE / 'tool/changelog.py', self.root / 'tool')
+        (self.root / 'pubspec.yaml').write_text('name: sillydraft\nversion: 1.0.0+1\n')
+        (self.root / 'CHANGELOG.md').write_text(EN, encoding='utf-8')
+        (self.root / 'CHANGELOG.zh-CN.md').write_text(ZH, encoding='utf-8')
+        (self.root / 'unrelated.txt').write_text('original\n')
+        self.git('add', 'release.sh', 'tool/changelog.py', 'pubspec.yaml',
+                 'CHANGELOG.md', 'CHANGELOG.zh-CN.md', 'unrelated.txt')
+        self.git('commit', '-m', 'initial')
+        self.git('remote', 'add', 'origin', str(self.remote))
+        self.git('push', '-u', 'origin', 'main')
+        self.before = self.git('rev-parse', 'HEAD')
+
+    def git(self, *args):
+        return subprocess.check_output(['git', *args], cwd=self.root, env=self.env,
+                                       stderr=subprocess.PIPE, text=True).strip()
+
+    def release(self, *args, answer='y\n'):
+        return subprocess.run(['bash', 'release.sh', *args, 'patch'], cwd=self.root,
+                              env=self.env, input=answer, capture_output=True, text=True)
+
+    def hook(self, path):
+        path.write_text('#!/bin/sh\nexit 1\n')
+        path.chmod(0o755)
+
+    def test_release_commits_and_pushes_only_version_and_changelogs(self):
+        (self.root / 'unrelated.txt').write_text('staged\n')
+        self.git('add', 'unrelated.txt')
+        (self.root / 'unrelated.txt').write_text('unstaged\n')
+        result = self.release('--allow-dirty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'),
+                         'CHANGELOG.md\nCHANGELOG.zh-CN.md\npubspec.yaml')
+        self.assertEqual(self.git('status', '--porcelain'), 'MM unrelated.txt')
+        self.assertEqual(self.git('show', ':unrelated.txt'), 'staged')
+        self.assertEqual((self.root / 'unrelated.txt').read_text(), 'unstaged\n')
+        self.assertEqual(self.git('show', 'v1.0.1:pubspec.yaml'), 'name: sillydraft\nversion: 1.0.1+2')
+        self.assertIn('## v1.0.1 · ', self.git('show', 'v1.0.1:CHANGELOG.zh-CN.md'))
+        self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'),
+                         self.git('rev-parse', 'v1.0.1^{}'))
+
+    def test_dirty_release_files_are_rejected_even_when_allowed(self):
+        for name in ['pubspec.yaml', 'CHANGELOG.md', 'CHANGELOG.zh-CN.md']:
+            with self.subTest(name=name):
+                path = self.root / name
+                original = path.read_text(encoding='utf-8')
+                path.write_text(original + '\n', encoding='utf-8')
+                result = self.release('--allow-dirty')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(path.read_text(encoding='utf-8'), original + '\n')
+                self.assertEqual(self.git('rev-parse', 'HEAD'), self.before)
+                self.assertEqual(self.git('tag'), '')
+                path.write_text(original, encoding='utf-8')
+
+    def test_invalid_translation_and_cancellation_leave_no_release_changes(self):
+        result = self.release(answer='n\n')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        (self.root / 'CHANGELOG.zh-CN.md').write_text(ZH.replace('- 显示可用更新。', ''), encoding='utf-8')
+        self.git('add', 'CHANGELOG.zh-CN.md')
+        self.git('commit', '-m', 'incomplete translation')
+        before = self.git('rev-parse', 'HEAD')
+        result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), before)
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.assertEqual(self.git('tag'), '')
+
+    def test_commit_failure_restores_release_files_and_preserves_staging(self):
+        (self.root / 'unrelated.txt').write_text('staged\n')
+        self.git('add', 'unrelated.txt')
+        self.hook(self.root / '.git/hooks/pre-commit')
+        result = self.release('--allow-dirty')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.before)
+        self.assertEqual(self.git('status', '--porcelain'), 'M  unrelated.txt')
+        self.assertEqual(self.git('tag'), '')
+
+    def test_push_failure_keeps_complete_local_release_for_retry(self):
+        self.hook(self.remote / 'hooks/pre-receive')
+        result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('git push --atomic', result.stderr)
+        self.assertNotEqual(self.git('rev-parse', 'HEAD'), self.before)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.git('rev-parse', 'v1.0.1^{}'))
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.assertIn('## v1.0.1 · ', self.git('show', 'HEAD:CHANGELOG.md'))
+        self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'), self.before)
 
 
 if __name__ == '__main__':

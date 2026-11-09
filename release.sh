@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Publishes a release: bumps pubspec.yaml, commits, tags and pushes the branch
+# Publishes a release: archives changelogs, bumps pubspec.yaml, commits, tags and pushes the branch
 # and tag together; .github/workflows/release.yml then builds the packages.
 #
 #   ./release.sh [--allow-dirty] [patch|minor|major]   # no kind: choose from a menu
 #
 # --allow-dirty releases with uncommitted changes in the working tree. They are
-# left as they are: only pubspec.yaml is committed, and CI builds the tag.
+# left as they are: only pubspec.yaml and both changelogs are committed, and CI builds the tag.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -51,13 +51,15 @@ fi
 next=$(bump "${kind}") || die "$usage"
 next_build=$((build + 1))
 tag="v$next"
+release_files=(pubspec.yaml CHANGELOG.md CHANGELOG.zh-CN.md)
 
 if [[ $allow_dirty == true ]]; then
-  # The release commit takes pubspec.yaml whole, so its own edits would ride along.
-  [[ -z $(git status --porcelain -- pubspec.yaml) ]] || die "pubspec.yaml 有未提交的改动，请先提交或还原"
+  # These files are committed whole; their own edits would ride along.
+  [[ -z $(git status --porcelain -- "${release_files[@]}") ]] || die "pubspec.yaml 或 CHANGELOG 文件有未提交的改动，请先提交或还原"
 else
   [[ -z $(git status --porcelain) ]] || die "工作区有未提交的改动，请先提交或暂存（或加 --allow-dirty）"
 fi
+python3 tool/changelog.py check "$tag"
 branch=$(git symbolic-ref --short -q HEAD) || die "当前不在分支上"
 git fetch --quiet --tags origin
 if git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null; then
@@ -70,9 +72,25 @@ echo "发布 ${name}+${build} → ${next}+${next_build}（分支 ${branch}，tag
 read -rp "确认发布并推送？[Y/n] " ok
 [[ ${ok:-y} == [yY] ]] || die "已取消"
 
-sed -i.bak -E "s/^version: .*/version: $next+$next_build/" pubspec.yaml
-rm pubspec.yaml.bak
-git commit --quiet -m "chore(release): $tag" -- pubspec.yaml
+release_head=$(git rev-parse HEAD)
+rollback_release() {
+  local release_status=$?
+  if [[ $release_status != 0 && $(git rev-parse HEAD) == "$release_head" ]]; then
+    git restore --source=HEAD --staged --worktree -- "${release_files[@]}"
+  fi
+  return "$release_status"
+}
+trap rollback_release EXIT
+python3 tool/changelog.py release "$tag"
+python3 - "$next+$next_build" <<'PY'
+from pathlib import Path
+import re
+import sys
+path = Path('pubspec.yaml')
+path.write_text(re.sub(r'(?m)^version: .*', f'version: {sys.argv[1]}', path.read_text(encoding='utf-8')), encoding='utf-8')
+PY
+git commit --quiet -m "chore(release): $tag" -- "${release_files[@]}"
+trap - EXIT
 git tag -a "$tag" -m "$tag"
 if ! git push --atomic origin "HEAD:refs/heads/$branch" "refs/tags/$tag"; then
   die "推送失败，本地提交和 tag 已保留。重试：git push --atomic origin HEAD:refs/heads/${branch} refs/tags/${tag}；撤销：git tag -d ${tag} && git reset --keep HEAD~1"
