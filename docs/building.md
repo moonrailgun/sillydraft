@@ -130,7 +130,7 @@ python3 tool/changelog.py check  # 只读校验；CI 也会运行
 tag 触发 `.github/workflows/release.yml`：
 
 1. 调用 `verify.yml` 跑完整测试与构建；与下面的打包同时进行。发布提交推送到分支时 `verify.yml` 跳过，测试只在这里跑一遍。
-2. 校验 tag 与 pubspec 版本一致，创建草稿 Release，说明为上个 tag 以来的提交标题与安装提示。
+2. 校验 tag 与 pubspec 版本一致，用 `python3 tool/changelog.py notes vX.Y.Z` 提取该版本归档，创建草稿 Release；正文为中文在前、英文在后的双语说明，附上安装提示，不再读取提交标题。重跑时仍校验日志，已存在的 Release 沿用原正文。
 3. 并行构建并上传 `sillydraft-<版本>-android.apk`（只含 arm64-v8a；三种 ABI 合打时原生库未压缩，约 85 MB，仅 arm64 约 32 MB）、`-macos.zip`、`-windows-x64.zip`（含 VC++ 运行库）、`-linux-x64.tar.gz`。iOS 不放入公开 Release。
 4. 测试通过且所有平台打包成功后转为正式发布。任一失败时 Release 停在草稿，应用的更新检查看不到它；修复后在 Actions 里重跑失败的任务即可（上传会覆盖同名文件）。
 5. 配置 Apple Secrets 且仓库变量 `IOS_APP_STORE_ENABLED=true` 时，正式发布后再调用 iOS 工作流，签名、归档并上传 App Store Connect / TestFlight，正式提审手动确认。iOS 失败不会撤回已发布的其他平台包；首次配置和重传规则见 [iOS App Store 发布](ios-app-store.md)。也可手动运行 iOS 工作流。
@@ -148,7 +148,7 @@ Android 签名需在仓库 Settings → Secrets and variables → Actions 中配
 
 缺少时 Android 任务失败，Release 保持草稿。macOS 包未经 Developer ID 签名与公证，Release 说明中写有首次打开的方法。
 
-应用在设置中显示版本号，并通过 GitHub 的 latest release 接口检查更新（每天最多一次，可关闭）；有新版时提示下载本平台安装包，不在应用内安装。
+应用在设置中显示版本号，并通过 GitHub 的 latest release 接口检查更新（每天最多一次，可关闭）；有新版时显示同一份 Release 正文并提示下载本平台安装包，不在应用内安装。
 
 ## 数据与升级
 

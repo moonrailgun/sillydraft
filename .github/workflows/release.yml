@@ -38,15 +38,9 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME 与 pubspec.yaml 的版本 $version 不一致"
             exit 1
           fi
+          python3 tool/changelog.py notes "$GITHUB_REF_NAME" > notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then exit 0; fi
-          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
-          {
-            if [ -n "$prev" ]; then
-              git log --no-merges --format='- %s' "$prev..$GITHUB_REF_NAME" | grep -v '^- chore(release):' || true
-            else
-              echo '首个发布版本。'
-            fi
-            cat <<'EOF'
+          cat <<'EOF' >> notes.md
 
           ### 安装
 
@@ -55,7 +49,6 @@ jobs:
           - Windows：解压后运行 `sillydraft.exe`，保留整个目录。
           - Linux：解压后运行 `sillydraft`，需要桌面密钥环（Secret Service）。
           EOF
-          } > notes.md
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --title "SillyDraft $version" --notes-file notes.md
 
