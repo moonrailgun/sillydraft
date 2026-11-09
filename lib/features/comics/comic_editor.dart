@@ -58,15 +58,22 @@ const _textLabels = {
 };
 
 /// Save inside the dialog so a version conflict leaves the author's input open.
+/// With [pageId] the edit stays on that page, and a new panel joins its end.
 Future<void> editComicPanel(
   BuildContext context, {
   required ComicDocument document,
   required Map<String, dynamic>? panel,
   required Future<void> Function(ComicDocument) save,
+  String? pageId,
 }) => showAppDialog<void>(
   context: context,
   barrierDismissible: false,
-  builder: (_) => _PanelEditor(document: document, panel: panel, save: save),
+  builder: (_) => _PanelEditor(
+    document: document,
+    panel: panel,
+    save: save,
+    pageId: pageId,
+  ),
 );
 
 class _PanelEditor extends StatefulWidget {
@@ -74,10 +81,12 @@ class _PanelEditor extends StatefulWidget {
     required this.document,
     required this.panel,
     required this.save,
+    this.pageId,
   });
   final ComicDocument document;
   final Map<String, dynamic>? panel;
   final Future<void> Function(ComicDocument) save;
+  final String? pageId;
   @override
   State<_PanelEditor> createState() => _PanelEditorState();
 }
@@ -126,14 +135,23 @@ class _PanelEditorState extends State<_PanelEditor> {
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      final panels = widget.document.panels;
+      final doc = widget.document, page = widget.pageId;
+      final ids = page == null
+          ? null
+          : doc.pages.firstWhere((p) => p['id'] == page)['panelIds'] as List;
+      final panels = [
+        for (final p in doc.panels)
+          if (ids == null || ids.contains(p['id'])) p,
+      ];
       final i = panels.indexWhere((p) => p['id'] == _panel['id']);
       if (i < 0) {
         panels.add(_panel);
       } else {
         panels[i] = _panel;
       }
-      await widget.save(widget.document.editPanels(panels));
+      await widget.save(
+        page == null ? doc.editPanels(panels) : doc.editPage(page, panels),
+      );
       await _finish();
     } catch (e) {
       if (mounted) showError(context, e);

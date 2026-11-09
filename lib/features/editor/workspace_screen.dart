@@ -9,8 +9,11 @@ import '../../app/services.dart';
 import '../../app/task_activity.dart';
 import '../../app/widgets.dart';
 import '../bookshelf/novel_dialog.dart';
+import '../comics/comic_canvas.dart';
+import '../comics/comic_dialogs.dart';
 import '../comics/comic_screen.dart';
 import '../comics/comic_reader.dart';
+import '../comics/comic_storyboard.dart';
 import '../reader/reader_screen.dart';
 import 'editor_screen.dart';
 import 'resizable_workspace.dart';
@@ -49,6 +52,21 @@ const _tools = [
   WorkspaceSection.comic,
 ];
 
+/// A comic work's sections on a phone: the canvas right after the outline.
+const _comicSections = [
+  WorkspaceSection.manuscript,
+  WorkspaceSection.comic,
+  WorkspaceSection.lore,
+  WorkspaceSection.agent,
+  WorkspaceSection.gallery,
+];
+
+/// Whether a chapter's comic work goes through the adaptation panel: its
+/// comic is an adaptation, or it holds prose and no comic yet.
+bool _adapts(Chapter chapter, ComicRevision? head) => head == null
+    ? chapter.content.text.trim().isNotEmpty
+    : !head.document.isOriginal;
+
 /// Everything about one novel: its manuscript, lore, assistant and images are
 /// sections of this page. The branch being written is shown under the title
 /// and picked from there, because it decides what every section shows.
@@ -79,6 +97,38 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
 
   /// The latest request for the assistant from the reader.
   AgentRequest? _agentRequest;
+
+  /// A comic work's page picked on the canvas, shown by the storyboard; null
+  /// means the last page.
+  String? _selectedPage;
+
+  /// Text a finished episode carries into the next one's opening, with the
+  /// chapter it belongs to: the outline may show another chapter for a frame
+  /// before the new one loads.
+  (String, String)? _carry;
+
+  void _select(String chapterId, {String? carry}) => setState(() {
+    if (_selected != chapterId) _selectedPage = null;
+    _selected = chapterId;
+    _carry = carry == null ? null : (chapterId, carry);
+  });
+
+  /// Opens the adaptation panel: the tool beside the page, or for a comic
+  /// work on a phone (whose 漫画 section is the canvas) a page of its own.
+  void _adapt(StorySnapshot story, String chapterId, bool wide) {
+    _select(chapterId);
+    if (story.novel.workFormat == WorkFormat.comic && !wide) {
+      _push(ComicScreen(branchId: story.branch.id, chapterId: chapterId));
+    } else {
+      _go(WorkspaceSection.comic);
+    }
+  }
+
+  void _try(Future<void> action) => unawaited(
+    action.catchError((Object e) {
+      if (mounted) showError(context, e);
+    }),
+  );
 
   // Sections are built on first visit and then kept alive, so a half-typed
   // message or a scroll position survives switching and nothing runs early.
@@ -176,7 +226,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           .read(repositoryProvider)
           .createChapter(branchId: story.branch.id, name: name);
       if (mounted) {
-        setState(() => _selected = chapter.id);
+        _select(chapter.id);
         if (story.novel.workFormat == WorkFormat.comic) {
           _go(WorkspaceSection.comic);
         } else {
@@ -188,13 +238,22 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
     }
   }
 
+  /// The story last shown, kept on screen while a newly picked branch loads
+  /// so the sections, and unsaved storyboard edits, stay mounted.
+  StorySnapshot? _shown;
+
   @override
   Widget build(BuildContext context) => AsyncView(
     value: ref.watch(novelProvider(widget.novelId)),
-    builder: (novel) => AsyncView(
-      value: ref.watch(storyProvider(novel.activeBranchId)),
-      builder: _buildStory,
-    ),
+    builder: (novel) {
+      final story = ref.watch(storyProvider(novel.activeBranchId));
+      return AsyncView(
+        value: story.isLoading && !story.hasValue && _shown != null
+            ? AsyncData(_shown!)
+            : story,
+        builder: (story) => _buildStory(_shown = story),
+      );
+    },
   );
 
   Widget _buildStory(StorySnapshot story) {
@@ -206,22 +265,24 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
       }
     }
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final comic = story.novel.workFormat == WorkFormat.comic;
     final selected =
         story.chapters.where((s) => s.id == _selected).firstOrNull ??
         story.chapters.firstOrNull;
     final pending =
         ref.watch(pendingReviewCountProvider(story.branch.id)).value ?? 0;
+    final sections = comic ? _comicSections : WorkspaceSection.values;
+    // A comic work's 漫画 is the canvas on a phone, and its storyboard
+    // beside the canvas on a wide screen.
+    String label(WorkspaceSection s) => switch (s) {
+      WorkspaceSection.manuscript when comic => '目录',
+      WorkspaceSection.comic when comic && wide => '分镜',
+      _ => s.label,
+    };
+    int badge(WorkspaceSection s) => s == WorkspaceSection.agent ? pending : 0;
     final destinations = <NavDestination>[
-      for (final s in WorkspaceSection.values)
-        (
-          icon: s.icon,
-          label:
-              s == WorkspaceSection.manuscript &&
-                  story.novel.workFormat == WorkFormat.comic
-              ? '目录'
-              : s.label,
-          badge: s == WorkspaceSection.agent ? pending : 0,
-        ),
+      for (final s in sections)
+        (icon: s.icon, label: label(s), badge: badge(s)),
     ];
     final branchKey = story.branch.id;
     Widget page(WorkspaceSection section) => switch (section) {
@@ -247,15 +308,21 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         branchId: branchKey,
         embedded: true,
       ),
-      WorkspaceSection.comic =>
-        selected == null
-            ? const Center(child: Text('先创建一话，开始画漫画'))
-            : ComicScreen(
-                key: ValueKey('comic:$branchKey:${selected.id}'),
-                branchId: branchKey,
-                chapterId: selected.id,
-                embedded: true,
-              ),
+      WorkspaceSection.comic when selected == null => const Center(
+        child: Text('先创建一话，开始画漫画'),
+      ),
+      WorkspaceSection.comic when comic && !wide => _canvas(
+        story,
+        selected!,
+        wide: false,
+      ),
+      WorkspaceSection.comic when comic => _storyboard(story, selected!),
+      WorkspaceSection.comic => ComicScreen(
+        key: ValueKey('comic:$branchKey:${selected!.id}'),
+        branchId: branchKey,
+        chapterId: selected.id,
+        embedded: true,
+      ),
     };
     final theme = context.theme;
     final canPop = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
@@ -396,6 +463,19 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                   () => _push(TransferScreen(novelId: story.novel.id)),
                   icon: FLucideIcons.share2,
                 ),
+                if (comic && selected != null)
+                  menuEntry(
+                    '导出漫画',
+                    () => _try(
+                      showComicExport(
+                        context,
+                        ref,
+                        branchId: branchKey,
+                        chapterId: selected.id,
+                      ),
+                    ),
+                    icon: FLucideIcons.fileArchive,
+                  ),
               ],
             ),
             if (wide)
@@ -404,7 +484,7 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                 icon: open.tools
                     ? FLucideIcons.panelRight
                     : FLucideIcons.panelRightDashed,
-                tooltip: '${open.tools ? '收起' : '显示'}${_tool.label}',
+                tooltip: '${open.tools ? '收起' : '显示'}${label(_tool)}',
                 onPress: () => _panes(tools: !open.tools),
               ),
           ],
@@ -413,8 +493,8 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             ? null
             : AppBottomBar(
                 key: const Key('workspace-sections'),
-                selectedIndex: _section.index,
-                onSelect: (i) => _go(WorkspaceSection.values[i]),
+                selectedIndex: sections.indexOf(_section),
+                onSelect: (i) => _go(sections[i]),
                 destinations: destinations,
               ),
         child: wide
@@ -458,10 +538,10 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                           children: [
                             for (final t in _tools)
                               CountBadge(
-                                count: destinations[t.index].badge,
+                                count: badge(t),
                                 child: IconAction(
                                   icon: t.icon,
-                                  tooltip: t.label,
+                                  tooltip: label(t),
                                   size: 20,
                                   selected: open.tools && _tool == t,
                                   onPress: () => _pickTool(t),
@@ -475,11 +555,8 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
                 ],
               )
             : IndexedStack(
-                index: _section.index,
-                children: [
-                  for (final s in WorkspaceSection.values)
-                    kept(s, _section == s),
-                ],
+                index: sections.indexOf(_section),
+                children: [for (final s in sections) kept(s, _section == s)],
               ),
       ),
     );
@@ -564,9 +641,12 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
   }
 
   /// The page of a wide screen: the reader itself, with every reading
-  /// feature, kept in step with the outline on both sides.
+  /// feature, kept in step with the outline on both sides. A comic work's
+  /// page is its comic.
   Widget _page(StorySnapshot story, Chapter? selected) => selected == null
       ? const Center(child: Text('选择一个章节'))
+      : story.novel.workFormat == WorkFormat.comic
+      ? _canvas(story, selected, wide: true)
       : ReaderScreen(
           key: ValueKey('reader:${story.branch.id}'),
           branchId: story.branch.id,
@@ -578,6 +658,141 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
           onEdit: _edit,
           onIllustrate: _illustrate,
         );
+
+  /// One episode of a comic work, where it is read and drawn.
+  Widget _canvas(StorySnapshot story, Chapter chapter, {required bool wide}) {
+    final branchId = story.branch.id;
+    final head = ref.watch(comicHeadProvider((branchId, chapter.id)));
+    final adapts = head.hasValue && _adapts(chapter, head.value);
+    final carry = _carry?.$1 == chapter.id ? _carry!.$2 : null;
+    // Handed over once: the canvas keeps it from here.
+    if (carry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _carry = null);
+    }
+    void pick(String page) {
+      setState(() => _selectedPage = page);
+      if (wide) _go(WorkspaceSection.comic);
+    }
+
+    return ComicCanvas(
+      // Each episode starts at its top.
+      key: ValueKey('canvas:$branchId:${chapter.id}'),
+      branchId: branchId,
+      chapterId: chapter.id,
+      selectedPageId: _selectedPage,
+      initialInstruction: carry,
+      onSelectPage: pick,
+      onEditStoryboard: adapts
+          ? (_) => _adapt(story, chapter.id, wide)
+          : wide
+          ? pick
+          : (page) => _push(
+              ComicStoryboard(
+                branchId: branchId,
+                chapterId: chapter.id,
+                pageId: page,
+              ),
+            ),
+      onOpenChapter: (id, instruction) => _select(id, carry: instruction),
+      onReadProse: () => _push(
+        ReaderScreen(
+          branchId: branchId,
+          chapterId: chapter.id,
+          onEdit: _edit,
+          onIllustrate: _illustrate,
+        ),
+      ),
+      onAdapt: () => _adapt(story, chapter.id, wide),
+    );
+  }
+
+  /// A comic work's tool beside the canvas: the picked page's storyboard,
+  /// or the adaptation panel for an episode adapted from its prose.
+  Widget _storyboard(StorySnapshot story, Chapter chapter) {
+    final branchId = story.branch.id;
+    final head = ref.watch(comicHeadProvider((branchId, chapter.id)));
+    final adapts = head.hasValue && _adapts(chapter, head.value);
+    // The storyboard stays mounted under the panel and across episodes,
+    // pages and branches. Its unsaved drafts live in comicDraftsProvider,
+    // so the remount when the window crosses 900 px keeps them as well.
+    return IndexedStack(
+      index: adapts ? 1 : 0,
+      children: [
+        ComicStoryboard(
+          key: ValueKey('storyboard:${story.novel.id}'),
+          branchId: branchId,
+          chapterId: chapter.id,
+          pageId: _selectedPage,
+          embedded: true,
+        ),
+        if (adapts)
+          ComicScreen(
+            key: ValueKey('comic:$branchId:${chapter.id}'),
+            branchId: branchId,
+            chapterId: chapter.id,
+            embedded: true,
+          ),
+      ],
+    );
+  }
+
+  /// An episode's outline line: how much comic it has, or that it is drawing.
+  String _comicLine(StorySnapshot story, Chapter chapter, bool drawing) {
+    if (drawing) return '绘制中';
+    final doc = ref
+        .watch(comicHeadProvider((story.branch.id, chapter.id)))
+        .value
+        ?.document;
+    // Older adaptations are single panels, not pages.
+    return doc != null && !doc.hasPages
+        ? '${doc.panels.length} 格'
+        : '${doc?.pages.length ?? 0} 页';
+  }
+
+  /// The comic entries of an episode's menu in a comic work.
+  List<MenuEntry> _episodeMenu(
+    StorySnapshot story,
+    Chapter chapter,
+    bool wide,
+  ) {
+    final branchId = story.branch.id;
+    final head = ref.watch(comicHeadProvider((branchId, chapter.id)));
+    if (!head.hasValue) return [];
+    return [
+      if (_adapts(chapter, head.value))
+        menuEntry(
+          '改编为漫画',
+          () => _adapt(story, chapter.id, wide),
+          icon: WorkspaceSection.comic.icon,
+        ),
+      if (head.value != null) ...[
+        menuEntry(
+          '本话历史版本',
+          () => _try(
+            showComicHistory(
+              context,
+              ref,
+              branchId: branchId,
+              chapterId: chapter.id,
+            ),
+          ),
+          icon: FLucideIcons.history,
+        ),
+        menuEntry(
+          '导出漫画',
+          () => _try(
+            showComicExport(
+              context,
+              ref,
+              branchId: branchId,
+              chapterId: chapter.id,
+            ),
+          ),
+          icon: FLucideIcons.fileArchive,
+        ),
+      ],
+    ];
+  }
 
   /// The table of contents. On wide screens picking a chapter shows it on the
   /// page beside it.
@@ -596,6 +811,25 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
         ref.watch(settingProvider('goal/${story.novel.id}')).value?['words']
             as int? ??
         0;
+    final comic = story.novel.workFormat == WorkFormat.comic;
+    // Episodes a comic task is drawing; suggesting directions is not drawing.
+    // Selected as one string so other task writes do not rebuild the page.
+    final drawing = comic
+        ? ref
+              .watch(
+                tasksProvider(story.branch.id).select(
+                  (tasks) => [
+                    for (final t in tasks.value ?? <GenerationTask>[])
+                      if (t.kind == TaskKind.comic &&
+                          t.isActive &&
+                          t.input['comicAction'] != 'directions')
+                        ...(t.input['comicHeads'] as Map? ?? {}).keys,
+                  ].join(' '),
+                ),
+              )
+              .split(' ')
+              .toSet()
+        : const <String>{};
     final outline = ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -653,20 +887,19 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             selected: wide && selected?.id == chapter.id,
             prefix: const Icon(FLucideIcons.fileText),
             title: Text(chapter.title.isEmpty ? '未命名章节' : chapter.title),
-            subtitle: story.novel.workFormat == WorkFormat.comic
-                ? null
+            subtitle: comic
+                ? Text(_comicLine(story, chapter, drawing.contains(chapter.id)))
                 : Text('${countCharacters(chapter.content.text)} 字'),
             suffix: MenuAction(
               tooltip: '章节操作',
               entries: [
-                menuEntry(
-                  story.novel.workFormat == WorkFormat.comic ? '创作漫画' : '改编为漫画',
-                  () {
-                    setState(() => _selected = chapter.id);
+                if (!comic)
+                  menuEntry('改编为漫画', () {
+                    _select(chapter.id);
                     _go(WorkspaceSection.comic);
-                  },
-                  icon: WorkspaceSection.comic.icon,
-                ),
+                  }, icon: WorkspaceSection.comic.icon)
+                else
+                  ..._episodeMenu(story, chapter, wide),
                 menuEntry(
                   '重命名章节',
                   () => _renameChapter(story, chapter),
@@ -693,9 +926,9 @@ class _WorkspaceState extends ConsumerState<NovelWorkspace> {
             ),
             onPress: () {
               if (wide) {
-                setState(() => _selected = chapter.id);
-              } else if (story.novel.workFormat == WorkFormat.comic) {
-                setState(() => _selected = chapter.id);
+                _select(chapter.id);
+              } else if (comic) {
+                _select(chapter.id);
                 _go(WorkspaceSection.comic);
               } else {
                 _push(

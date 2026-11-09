@@ -7,6 +7,7 @@ import 'package:sillydraft/app/services.dart';
 import 'package:sillydraft/app/widgets.dart';
 import 'package:sillydraft/features/agent/task_screen.dart';
 import 'package:sillydraft/features/illustrations/asset_image.dart';
+import 'package:sillydraft/features/reader/reader_screen.dart';
 import 'package:sillydraft_core/sillydraft_core.dart';
 
 import 'support/host.dart';
@@ -60,6 +61,57 @@ void main() {
     expect(find.text('阶段：对照原文检查'), findsOneWidget);
     expect(find.text('1 章候选待处理'), findsOneWidget);
     expect(find.text('打开漫画'), findsOneWidget);
+    // A novel's chapter opens the adaptation panel.
+    await tester.tap(find.text('打开漫画'));
+    await tester.pumpAndSettle();
+    expect(find.text('编排分镜 → 检查改编 → 绘制'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an original comic task opens the comic canvas', (tester) async {
+    final repo = StoryRepository.memory();
+    final novel = await repo.createNovel(
+      title: '末班地铁',
+      workFormat: WorkFormat.comic,
+    );
+    final chapter = await repo.createChapter(branchId: novel.activeBranchId);
+    await repo.createChapter(
+      branchId: novel.activeBranchId,
+      content: ManuscriptContent.plainText('她在陆生站台下车。'),
+    );
+    final task = await repo.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.comic,
+      input: {
+        'comicAction': 'compose',
+        'comicHeads': {chapter.id: null},
+      },
+    );
+    await repo.updateTask(task.id, status: TaskStatus.failed, error: '超时');
+    await showTask(tester, repo, task);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开漫画'));
+    await tester.pumpAndSettle();
+    expect(find.text('第一页发生了什么？'), findsOneWidget);
+    expect(find.text('这一话是原创漫画，请在漫画画布中创作。'), findsNothing);
+
+    // The next episode has prose only: both of its entries work.
+    await tester.ensureVisible(find.text('下一话'));
+    await tester.tap(find.text('下一话'));
+    await tester.pumpAndSettle();
+    expect(find.text('本话有小说正文，还没有漫画'), findsOneWidget);
+    for (final label in ['阅读正文', '改编为漫画']) {
+      final button = find.widgetWithText(FButton, label);
+      expect(tester.widget<FButton>(button).onPress, isNotNull, reason: label);
+    }
+    await tester.tap(find.text('改编为漫画'));
+    await tester.pumpAndSettle();
+    expect(find.text('编排分镜 → 检查改编 → 绘制'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('阅读正文'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReaderScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
