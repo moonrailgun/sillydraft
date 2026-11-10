@@ -7,6 +7,8 @@ import 'package:sillydraft_core/sillydraft_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/library_host.dart';
+import '../../app/crash_log_button.dart';
+import '../../app/crash_logging.dart';
 import '../../app/services.dart';
 import '../../app/widgets.dart';
 import '../lore/sidecar.dart';
@@ -390,6 +392,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ],
       SettingsTab.about: [
+        if (canOpenCrashLogDirectory) ...[
+          Text('错误与崩溃日志', style: heading),
+          const SizedBox(height: 8),
+          const Text('日志仅保存在本机，供排查问题使用。分享前请检查是否包含私人信息。'),
+          const SizedBox(height: 12),
+          const CrashLogButton(key: Key('settings-crash-logs')),
+          const SizedBox(height: 24),
+        ],
         if (updates) ...[
           FTileGroup(
             children: [

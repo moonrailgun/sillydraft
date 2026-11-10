@@ -55,3 +55,11 @@ Android Release 需要正式签名配置，或显式设置 `SILLYDRAFT_DEVELOPME
 截图：[Android 工作区](native-android-workspace.png)、[Android 阅读器](native-android-reader.png)、[Android 预设](native-android-preset.png)、[iOS 工作区](native-ios-workspace.png)、[iOS 阅读器](native-ios-reader.png)、[iOS 预设](native-ios-preset.png)、[macOS 工作区](native-macos-workspace.png)、[macOS 阅读器](native-macos-reader.png)、[macOS 预设](native-macos-preset.png)。
 
 依据：[Flutter 可取消退出](https://api.flutter.dev/flutter/widgets/AppLifecycleListener/onExitRequested.html)、[macOS 构建与沙箱](https://docs.flutter.dev/platform-integration/macos/building)、[安全存储插件平台配置](https://pub.dev/packages/flutter_secure_storage)。
+
+## 2026-11-10 Windows 本地错误日志
+
+- Windows 11 x64 / Flutter 3.47.7 / Dart 3.13.5 / Visual Studio Build Tools 2026：`flutter build windows --release --no-pub` 通过。
+- 在已有 SillyDraft 实例持有资料库锁时启动新构建，确认启动失败页面对应的 `startup` 错误、版本信息和 Dart 堆栈保存在 `%APPDATA%\com.moonrailgun\sillydraft\logs`，同目录也生成原生日志。
+- `python tool/verify_windows_crash_log.py --build build/windows/x64` 通过：独立临时进程的真实无效内存访问、`abort`、正常退出、中文及空格路径和保留数量检查；未对正式应用或作品库触发崩溃。
+- Flutter 界面测试共 456 项通过；核心日志测试 5 项通过；根目录与核心包静态分析、401 个 Dart 文件的格式检查及中英文更新日志检查通过。
+- 深浅主题、390/1000 逻辑像素宽度与窄窗口 1.5 倍文字的设置页已做 widget 渲染检查。这不等同于原生窗口交互验收；本次没有自动点击系统文件管理器，也未验证其他平台的原生运行。

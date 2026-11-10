@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'app/crash_log_button.dart';
+import 'app/crash_logging.dart';
 import 'app/services.dart';
 import 'app/theme.dart';
 import 'app/tracking.dart';
@@ -8,10 +10,12 @@ import 'app/widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeCrashLogging();
   initializeApplicationTracking();
   try {
     runApp(SillyDraftApp(services: await AppServices.open()));
-  } catch (error) {
+  } catch (error, stack) {
+    recordLocalError(error, stack, source: 'startup');
     runApp(_StartupError(error: error));
   }
 }
@@ -58,6 +62,10 @@ class _StartupError extends StatelessWidget {
                   onPress: main,
                   child: const Text('重试'),
                 ),
+                if (canOpenCrashLogDirectory) ...[
+                  const SizedBox(height: 12),
+                  const CrashLogButton(),
+                ],
               ],
             ),
           ),

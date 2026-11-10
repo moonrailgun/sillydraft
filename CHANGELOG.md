@@ -8,7 +8,7 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ### Added
 
-- Save supported Windows crashes to local log files to help diagnose startup failures.
+- Save errors and supported Windows crashes to local log files, with an “Open crash log folder” button in desktop settings and the startup error screen to help report problems.
 
 ## v1.2.2 · 2026-11-10
 
