@@ -6,6 +6,10 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+### Added
+
+- Save supported Windows crashes to local log files to help diagnose startup failures.
+
 ## v1.2.2 · 2026-11-10
 
 ### Improved

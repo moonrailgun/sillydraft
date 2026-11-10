@@ -1,8 +1,11 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <flutter/standard_method_codec.h>
 
+#include "crash_log.h"
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -22,8 +25,20 @@ bool FlutterWindow::OnCreate() {
       frame.right - frame.left, frame.bottom - frame.top, project_);
   // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+    RecordNativeError("flutter_controller_failed", GetLastError());
     return false;
   }
+  diagnostics_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "app.sillydraft/diagnostics",
+      &flutter::StandardMethodCodec::GetInstance());
+  diagnostics_->SetMethodCallHandler([](const auto& call, auto result) {
+    if (call.method_name() == "getLogDirectory") {
+      result->Success(flutter::EncodableValue(
+          Utf8FromUtf16(GetCrashLogDirectory().c_str())));
+    } else {
+      result->NotImplemented();
+    }
+  });
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
@@ -40,6 +55,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (diagnostics_) {
+    diagnostics_->SetMethodCallHandler(nullptr);
+    diagnostics_ = nullptr;
+  }
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

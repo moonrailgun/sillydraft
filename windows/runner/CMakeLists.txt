@@ -7,6 +7,7 @@ project(runner LANGUAGES CXX)
 #
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
+  "crash_log.cpp"
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"
@@ -34,7 +35,20 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib" "ole32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# An opt-in, standalone process for real native crash verification. Never
+# install it in the application bundle or expose crash switches in the app.
+add_executable(sillydraft_crash_probe EXCLUDE_FROM_ALL
+  "../../tool/windows_crash_probe.cpp"
+  "crash_log.cpp"
+)
+apply_standard_settings(sillydraft_crash_probe)
+set_target_properties(sillydraft_crash_probe PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/crash-test")
+target_compile_definitions(sillydraft_crash_probe PRIVATE "NOMINMAX")
+target_link_libraries(sillydraft_crash_probe PRIVATE "shell32.lib" "ole32.lib")

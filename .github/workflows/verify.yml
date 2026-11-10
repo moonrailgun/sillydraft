@@ -92,6 +92,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libjsoncpp-dev
       - run: flutter pub get --enforce-lockfile
       - run: flutter build ${{ matrix.target }} --release
+      - if: runner.os == 'Windows'
+        run: python tool/verify_windows_crash_log.py --build build/windows/x64
       - if: runner.os == 'macOS'
         run: xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' test
       - if: runner.os == 'macOS'
