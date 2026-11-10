@@ -79,5 +79,6 @@ export 'src/remote/tls.dart';
 export 'src/remote/wire.dart';
 
 export 'src/model/comic.dart';
+export 'src/diagnostics/local_error_log.dart';
 
 export 'src/agent/comic_service.dart';
