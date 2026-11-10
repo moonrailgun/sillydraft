@@ -59,7 +59,24 @@ if [[ $allow_dirty == true ]]; then
 else
   [[ -z $(git status --porcelain) ]] || die "工作区有未提交的改动，请先提交或暂存（或加 --allow-dirty）"
 fi
-python3 tool/changelog.py check "$tag"
+# Windows app execution aliases can exist on PATH but fail without output.
+# Probe an actual Python 3 invocation instead of relying on command -v.
+python_command=(python3)
+python_found=false
+python_check='import sys; sys.exit(sys.version_info[0] != 3)'
+for candidate in python3 python; do
+  if "$candidate" -c "$python_check" >/dev/null 2>&1; then
+    python_command=("$candidate")
+    python_found=true
+    break
+  fi
+done
+if [[ $python_found == false ]] && py -3 -c "$python_check" >/dev/null 2>&1; then
+  python_command=(py -3)
+  python_found=true
+fi
+[[ $python_found == true ]] || die "未找到可用的 Python 3，请安装并加入 PATH（支持 python3、python 或 py -3）"
+"${python_command[@]}" tool/changelog.py check "$tag"
 branch=$(git symbolic-ref --short -q HEAD) || die "当前不在分支上"
 git fetch --quiet --tags origin
 if git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null; then
@@ -81,8 +98,8 @@ rollback_release() {
   return "$release_status"
 }
 trap rollback_release EXIT
-python3 tool/changelog.py release "$tag"
-python3 - "$next+$next_build" <<'PY'
+"${python_command[@]}" tool/changelog.py release "$tag"
+"${python_command[@]}" - "$next+$next_build" <<'PY'
 from pathlib import Path
 import re
 import sys

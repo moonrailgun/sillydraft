@@ -2,6 +2,7 @@
 import datetime
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -64,8 +65,8 @@ class ChangelogTests(unittest.TestCase):
 
     def run_changelog(self, *args):
         return subprocess.run(
-            [sys.executable, str(self.root / 'tool/changelog.py'), *args],
-            cwd=self.root, capture_output=True, text=True,
+            [sys.executable, '-X', 'utf8', str(self.root / 'tool/changelog.py'), *args],
+            cwd=self.root, capture_output=True, text=True, encoding='utf-8',
         )
 
     def test_archive_keeps_history_and_notes_select_only_requested_version(self):
@@ -154,7 +155,7 @@ class ReleaseTests(unittest.TestCase):
         self.root = base / 'checkout'
         self.root.mkdir()
         self.remote = base / 'origin.git'
-        self.env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
+        self.env = dict(os.environ, PYTHONUTF8='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
                         GIT_AUTHOR_NAME='Release Test', GIT_AUTHOR_EMAIL='test@example.invalid',
                         GIT_COMMITTER_NAME='Release Test', GIT_COMMITTER_EMAIL='test@example.invalid')
         self.git('init', '--bare', str(self.remote))
@@ -175,11 +176,35 @@ class ReleaseTests(unittest.TestCase):
 
     def git(self, *args):
         return subprocess.check_output(['git', *args], cwd=self.root, env=self.env,
-                                       stderr=subprocess.PIPE, text=True).strip()
+                                       stderr=subprocess.PIPE, text=True, encoding='utf-8').strip()
 
-    def release(self, *args, answer='y\n'):
-        return subprocess.run(['bash', 'release.sh', *args, 'patch'], cwd=self.root,
-                              env=self.env, input=answer, capture_output=True, text=True)
+    def release(self, *args, answer='y\n', kind='patch'):
+        command = ['bash', 'release.sh', *args]
+        if kind is not None:
+            command.append(kind)
+        # Binary stdin preserves the LF that Git Bash's read expects on Windows.
+        result = subprocess.run(command, cwd=self.root, env=self.env,
+                                input=answer.encode('utf-8'), capture_output=True)
+        result.stdout = result.stdout.decode('utf-8')
+        result.stderr = result.stderr.decode('utf-8')
+        return result
+
+    def python_commands(self, available):
+        commands = Path(self.temp.name) / 'commands with spaces'
+        commands.mkdir()
+        for name in ('python3', 'python', 'py'):
+            script = '#!/bin/bash\n'
+            if name == available:
+                if name == 'py':
+                    script += '[[ $1 == -3 ]] || exit 2\nshift\n'
+                script += f'exec {shlex.quote(Path(sys.executable).as_posix())} "$@"\n'
+            else:
+                # Reproduce the silent failure of a Windows app execution alias.
+                script += 'exit 49\n'
+            path = commands / name
+            path.write_text(script, encoding='utf-8', newline='\n')
+            path.chmod(0o755)
+        self.env['PATH'] = str(commands) + os.pathsep + self.env['PATH']
 
     def hook(self, path):
         path.write_text('#!/bin/sh\nexit 1\n')
@@ -200,6 +225,33 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('## v1.0.1 · ', self.git('show', 'v1.0.1:CHANGELOG.zh-CN.md'))
         self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'),
                          self.git('rev-parse', 'v1.0.1^{}'))
+
+    def test_interactive_release_falls_back_when_python3_alias_cannot_run(self):
+        self.python_commands('python')
+        result = self.release(kind=None, answer='1\ny\n')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('show', 'v1.0.1:pubspec.yaml'), 'name: sillydraft\nversion: 1.0.1+2')
+        self.assertIn('## v1.0.1 · ', self.git('show', 'v1.0.1:CHANGELOG.zh-CN.md'))
+        self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'),
+                         self.git('rev-parse', 'v1.0.1^{}'))
+
+    def test_release_uses_py_launcher_when_python_commands_cannot_run(self):
+        self.python_commands('py')
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('show', 'v1.0.1:pubspec.yaml'), 'name: sillydraft\nversion: 1.0.1+2')
+        self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'),
+                         self.git('rev-parse', 'v1.0.1^{}'))
+
+    def test_unavailable_python_reports_problem_without_release_changes(self):
+        self.python_commands(None)
+        result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Python 3', result.stderr)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.before)
+        self.assertEqual(self.git('tag'), '')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.assertEqual(self.git('--git-dir', str(self.remote), 'rev-parse', 'main'), self.before)
 
     def test_dirty_release_files_are_rejected_even_when_allowed(self):
         for name in ['pubspec.yaml', 'CHANGELOG.md', 'CHANGELOG.zh-CN.md']:

@@ -123,7 +123,7 @@ Flutter 3.47.7（engine `deb287481e`）的 [Command 映射](https://github.com/f
 
 更新日志以根目录 [CHANGELOG.md](../CHANGELOG.md)（英文）和 [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md)（中文）为唯一来源。开发时在 `## Unreleased` / `## 未发布` 下同步记录用户可见变化，跟随功能改动一起提交；分类使用 `### Added / Improved / Fixed` 与 `### 新增 / 改进 / 修复`，条目以 `- ` 开头，续行缩进两格。两种语言的条目顺序、含义保持对应；同一未发布功能的后续调整修改原条目，不重复追加。纯内部重构、测试和文档维护不必写入。
 
-发布脚本需要 Python 3（只使用标准库）。在仓库根目录执行：
+发布脚本需要 Python 3（只使用标准库），会实际试运行 `python3`、`python` 和 `py -3`，选择可用的命令；找不到时明确报错。Windows Git Bash 中的 `python3` 可能指向不可用的 Windows 应用执行别名，脚本会自动尝试其余命令，无需修改系统别名。在仓库根目录执行：
 
 ```sh
 python3 tool/changelog.py check  # 只读校验；CI 也会运行
@@ -131,6 +131,8 @@ python3 tool/changelog.py check  # 只读校验；CI 也会运行
 ./release.sh         # 不带参数时列出三项和结果版本供选择
 ./release.sh --allow-dirty minor   # 工作区有未提交改动时照常发布
 ```
+
+Windows 上手动检查更新日志时，若 `python3` 不可用，可改用 `python tool/changelog.py check` 或 `py -3 tool/changelog.py check`。
 
 脚本要求工作区干净、当前在分支上、不落后于 `origin`、目标 tag 不存在，中英文日志的版本、日期和各分类条目数量一致。加 `--allow-dirty` 时仍要求 `pubspec.yaml` 和两份 `CHANGELOG` 没有未提交改动，其余改动及暂存状态原样保留，不进入发布提交，CI 也只按 tag 构建。
 
