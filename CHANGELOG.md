@@ -6,6 +6,10 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+### Fixed
+
+- Fix a Windows crash when opening settings while using a local library.
+
 ## v1.2.3 · 2026-11-11
 
 ### Added

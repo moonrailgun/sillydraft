@@ -94,6 +94,9 @@ jobs:
       - run: flutter build ${{ matrix.target }} --release
       - if: runner.os == 'Windows'
         run: python tool/verify_windows_crash_log.py --build build/windows/x64
+      - name: Verify settings navigation in Windows AOT
+        if: runner.os == 'Windows'
+        run: flutter drive --profile --no-pub -d windows --target=integration_test/settings_navigation_test.dart --driver=test_driver/integration_test.dart
       - if: runner.os == 'macOS'
         run: xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' test
       - if: runner.os == 'macOS'

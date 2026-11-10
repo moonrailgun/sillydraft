@@ -63,3 +63,11 @@ Android Release 需要正式签名配置，或显式设置 `SILLYDRAFT_DEVELOPME
 - `python tool/verify_windows_crash_log.py --build build/windows/x64` 通过：独立临时进程的真实无效内存访问、`abort`、正常退出、中文及空格路径和保留数量检查；未对正式应用或作品库触发崩溃。
 - Flutter 界面测试共 456 项通过；核心日志测试 5 项通过；根目录与核心包静态分析、401 个 Dart 文件的格式检查及中英文更新日志检查通过。
 - 深浅主题、390/1000 逻辑像素宽度与窄窗口 1.5 倍文字的设置页已做 widget 渲染检查。这不等同于原生窗口交互验收；本次没有自动点击系统文件管理器，也未验证其他平台的原生运行。
+
+## 2026-11-11 Windows 设置页闪退
+
+- 同一 Windows 11 x64 / Flutter 3.47.7 / Dart 3.13.5 环境中，Debug 可以进入设置，Profile 原生构建在首次打开设置时稳定以 `0xC0000005` 退出。应用原生日志与 Windows 应用错误事件均记录了崩溃。
+- 原生调试器捕获到读取地址 `0x7` 的异常。用同一份编译输入保留 AOT 符号后，堆栈定位到设置页布局闭包中的 `remote.hello.name`；本机资料库的远程会话为 null。其表现与 [Dart 的循环优化问题 #63413](https://github.com/dart-lang/sdk/issues/63413) 一致，相关复现与规避方式见 [#64714](https://github.com/dart-lang/sdk/issues/64714)。修复将可空字段链读取移到布局循环之外。
+- `integration_test/settings_navigation_test.dart` 在修改前复现了闪退，修改后通过 Windows Profile 原生验证：临时资料库连续进入设置 5 次，切换通用、模型、创作、关于共 20 次；Windows CI 增加同一命令。
+- 另以临时入口在 Release 模式运行同一测试，结果为通过、失败列表为空、进程退出码为 0。测试不使用真实作品库或付费模型；结束后已用默认 `lib/main.dart` 入口重新构建 Windows Release 应用。
+- 456 项 Flutter 界面测试及静态分析通过。真实鼠标输入因本机自动化权限限制未能完成；上述原生验证通过 Flutter 集成测试派发点击，运行实际 Windows 引擎、字体、插件和 SQLite。

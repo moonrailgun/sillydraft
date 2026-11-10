@@ -67,6 +67,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final remote = ref.watch(servicesProvider).remote;
+    // Resolve the nullable field chain before the layout loop. Windows AOT on
+    // Dart 3.13.5 hoists remote.hello.name past the loop's null guard and crashes.
+    // https://github.com/dart-lang/sdk/issues/63413
+    final remoteName = remote?.hello.name;
     final appearance = ref.watch(settingProvider('appearance')).value;
     final html = ref.watch(settingProvider('html')).value;
     final beta = ref.watch(settingProvider('beta')).value?['enabled'] == true;
@@ -558,13 +562,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   vertical: 24,
                 ),
                 children: [
-                  if (remote != null) ...[
+                  if (remoteName != null) ...[
                     FTileGroup(
                       children: [
                         FTile(
                           key: const Key('settings-remote'),
                           prefix: const Icon(FLucideIcons.monitor),
-                          title: Text('正在使用桌面：${remote.hello.name}'),
+                          title: Text('正在使用桌面：$remoteName'),
                           subtitle: _wrapped('作品、资料和模型都来自这台桌面电脑'),
                           suffix: FButton(
                             variant: FButtonVariant.outline,

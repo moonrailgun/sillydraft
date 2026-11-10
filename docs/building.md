@@ -83,6 +83,12 @@ python tool/verify_windows_crash_log.py --build build/windows/x64
 
 该测试在临时目录中启动独立进程，覆盖未处理访问异常、`abort`、正常退出、中文及空格路径和日志清理。CI 的 Windows 验证任务也运行此检查。
 
+设置页还需使用 Windows AOT 构建验证。Dart 3.13.5 的循环优化可能把可空对象的字段读取提前到空值判断之前，曾导致本地作品库打开设置时闪退；Debug 和普通 widget 测试无法复现，参见 [Dart SDK #63413](https://github.com/dart-lang/sdk/issues/63413)。回归测试使用临时资料库，连续打开设置 5 次并切换四个页签，Windows CI 同样执行：
+
+```sh
+flutter drive --profile --no-pub -d windows --target=integration_test/settings_navigation_test.dart --driver=test_driver/integration_test.dart
+```
+
 Windows 已在 2026-11-10 的 Windows 11 x64 环境完成 Release 构建、启动失败日志落盘及上述独立崩溃测试；详细范围见[原生验证记录](verification/native-platforms.md#2026-11-10-windows-本地错误日志)。Linux 原生运行仍需在对应宿主上单独验收。
 
 ## 原生集成与截图
