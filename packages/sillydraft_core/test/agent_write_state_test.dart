@@ -34,6 +34,11 @@ void main() {
           yield const GenerationFinished('stop');
           return;
         }
+        if (request.usagePurpose == 'planning') {
+          yield const TextDelta('{}');
+          yield const GenerationFinished('stop');
+          return;
+        }
         if (request.tools.isEmpty) {
           writes++;
           yield const TextDelta('新正文');

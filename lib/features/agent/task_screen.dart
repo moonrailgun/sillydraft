@@ -489,6 +489,15 @@ class TaskScreen extends ConsumerWidget {
                     '${(task.result['comicCandidates'] as List).length} 章候选待处理',
                   ),
               ],
+              if (task.result['planning'] case final Map planning) ...[
+                const SizedBox(height: 12),
+                Text(switch (planning['status']) {
+                  'planning' =>
+                    task.isActive ? '正在核对事实、因果和伏笔，准备本章计划…' : '章前计划未完成。',
+                  'applied' => '章前计划已用于本次写作与审读；计划不代表已发生事实。',
+                  _ => planning['message'] as String? ?? '章前计划已结束。',
+                }),
+              ],
               if (task.result['quality'] case final Map quality) ...[
                 const SizedBox(height: 12),
                 Text(_qualityMessage(task, quality)),

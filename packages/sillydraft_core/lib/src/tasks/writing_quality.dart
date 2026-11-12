@@ -6,6 +6,7 @@ extension on TaskRunner {
     ModelProvider provider,
     GenerationCancellation cancel,
     String draft,
+    ProviderRequest source,
   ) async {
     final report = <String, dynamic>{'status': 'reviewing'};
     Future<void> save() => repository
@@ -28,9 +29,15 @@ extension on TaskRunner {
       return draft;
     }
 
-    final source = ProviderRequest.fromJson(
-      jsonObject(task.input['request'], 'request'),
-    );
+    if (((task.input['continuityReview'] as Map?)?['protocolVersion'] == 1 ||
+            {2, 3}.contains(
+              (task.input['chapterPlanning'] as Map?)?['protocolVersion'],
+            )) &&
+        task.input['replacementRange'] == null &&
+        source.completionText == null) {
+      return _reviewContinuity(task, provider, cancel, draft, source);
+    }
+
     final context = source.completionText ?? jsonEncode(source.messages);
     Future<Map<String, dynamic>> ask(
       String stage,
@@ -51,54 +58,15 @@ extension on TaskRunner {
         },
         {'role': 'user', 'content': jsonEncode(data)},
       ];
-      final outputLimit = min(provider.config.maxOutputTokens, 4096);
-      final request = ProviderRequest(
-        messages: messages,
-        completionText: source.completionText == null
-            ? null
-            : messages.map((m) => m['content']).join('\n\n'),
-        parameters: {'max_tokens': outputLimit},
-        executionId: 'writing-quality-${task.id}-$stage',
-        usagePurpose: 'quality',
-        usageBranchId: task.branchId,
+      return _writingJson(
+        task,
+        provider,
+        cancel,
+        source,
+        messages,
+        purpose: 'quality',
+        stage: stage,
       );
-      // Use the same conservative estimate as compilation; never truncate facts.
-      if (jsonEncode(messages).length / 2 + outputLimit >
-          provider.config.contextWindow) {
-        throw const FormatException('审读素材超过模型上下文上限');
-      }
-      final errors = provider
-          .validateParameters(request)
-          .where((d) => d.severity == DiagnosticSeverity.error);
-      if (errors.isNotEmpty) throw FormatException(errors.first.message);
-      final output = StringBuffer();
-      GenerationFinished? finish;
-      await for (final event in provider.generate(
-        request,
-        cancellation: cancel,
-      )) {
-        cancel.check();
-        switch (event) {
-          case TextDelta():
-            output.write(event.text);
-          case GenerationFinished():
-            finish = event;
-          case ToolCallReady():
-            throw const FormatException('审读不允许调用工具');
-          case ReasoningDelta():
-            break;
-        }
-      }
-      cancel.check();
-      if (finish?.isComplete != true) {
-        throw const FormatException('审读未完整结束');
-      }
-      final cleaned = output
-          .toString()
-          .trim()
-          .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
-          .replaceFirst(RegExp(r'\s*```$'), '');
-      return jsonObject(jsonDecode(cleaned), 'quality');
     }
 
     List<Map<String, dynamic>> issues(
@@ -210,5 +178,65 @@ extension on TaskRunner {
       await save();
       return draft;
     }
+  }
+
+  Future<Map<String, dynamic>> _writingJson(
+    GenerationTask task,
+    ModelProvider provider,
+    GenerationCancellation cancel,
+    ProviderRequest source,
+    List<Map<String, dynamic>> messages, {
+    required String purpose,
+    required String stage,
+    int maxOutputTokens = 4096,
+  }) async {
+    final outputLimit = min(provider.config.maxOutputTokens, maxOutputTokens);
+    final request = ProviderRequest(
+      messages: messages,
+      completionText: source.completionText == null
+          ? null
+          : messages.map((m) => m['content']).join('\n\n'),
+      parameters: {'max_tokens': outputLimit},
+      executionId: 'writing-$purpose-${task.id}-$stage',
+      usagePurpose: purpose,
+      usageBranchId: task.branchId,
+    );
+    // Use the same conservative estimate as compilation; never truncate facts.
+    if (jsonEncode(messages).length / 2 + outputLimit >
+        provider.config.contextWindow) {
+      throw const FormatException('辅助素材超过模型上下文上限');
+    }
+    final errors = provider
+        .validateParameters(request)
+        .where((d) => d.severity == DiagnosticSeverity.error);
+    if (errors.isNotEmpty) throw FormatException(errors.first.message);
+    final output = StringBuffer();
+    GenerationFinished? finish;
+    await for (final event in provider.generate(
+      request,
+      cancellation: cancel,
+    )) {
+      cancel.check();
+      switch (event) {
+        case TextDelta():
+          output.write(event.text);
+        case GenerationFinished():
+          finish = event;
+        case ToolCallReady():
+          throw const FormatException('辅助请求不允许调用工具');
+        case ReasoningDelta():
+          break;
+      }
+    }
+    cancel.check();
+    if (finish?.isComplete != true) {
+      throw const FormatException('辅助请求未完整结束');
+    }
+    final cleaned = output
+        .toString()
+        .trim()
+        .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
+        .replaceFirst(RegExp(r'\s*```$'), '');
+    return jsonObject(jsonDecode(cleaned), purpose);
   }
 }

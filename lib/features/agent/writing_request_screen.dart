@@ -352,6 +352,13 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   color: theme.colors.mutedForeground,
                 ),
               ),
+              if (draft.input['chapterPlanning'] is Map)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    '生成时会额外请求一次章前计划，核对事实、因果和伏笔。自动采纳前最多再请求三次审读、关联段落返修和复核；未通过时保留原稿。预览不调用模型，上述估算不含这些辅助请求。',
+                  ),
+                ),
               for (final d in draft.compiled['diagnostics'] as List)
                 if (d['code'] == 'world_book_budget_summary')
                   _budgetAlert(d['message'] as String, [

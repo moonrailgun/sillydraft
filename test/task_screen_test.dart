@@ -115,6 +115,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('planning status distinguishes advice from manuscript facts', (
+    tester,
+  ) async {
+    final repo = StoryRepository.memory();
+    final novel = await repo.createNovel(title: '连续性');
+    final task = await repo.createTask(
+      branchId: novel.activeBranchId,
+      kind: TaskKind.writing,
+      input: {},
+    );
+    await repo.updateTask(
+      task.id,
+      status: TaskStatus.running,
+      result: {
+        'planning': {'status': 'planning'},
+      },
+    );
+    await showTask(tester, repo, task);
+    expect(find.text('正在核对事实、因果和伏笔，准备本章计划…'), findsOneWidget);
+    await repo.updateTask(
+      task.id,
+      status: TaskStatus.completed,
+      result: {
+        'planning': {'status': 'applied'},
+      },
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('章前计划已用于本次写作与审读；计划不代表已发生事实。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'waiting for approval opens the task conversation, not the latest',
     (tester) async {
