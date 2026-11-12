@@ -400,6 +400,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                                   '${entry['name']} · ${switch (entry['reason']) {
                                     'pinned' => '必带 · 作者指定',
                                     'named' => '必带 · 本次要求点名',
+                                    'unresolved' => '已带 · 尚未回收的伏笔',
                                     'reference' => '${entry['required'] == true ? '必带' : '已带'} · 关联资料引用',
                                     'brief' => '已带 · 匹配本次要求',
                                     'recent' => '已带 · 匹配最近正文',

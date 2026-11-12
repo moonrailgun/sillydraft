@@ -94,6 +94,62 @@ void main() {
   );
 
   test(
+    'unresolved hooks survive unrelated chapter goals but remain budgeted',
+    () async {
+      final hook = await lore(
+        '红绳',
+        '柜底的结尚未解开',
+        kind: LoreKind.foreshadow,
+        data: {'status': 'planted'},
+      );
+      final resolved = await lore(
+        '旧信',
+        '真相已揭晓',
+        kind: LoreKind.foreshadow,
+        data: {'status': 'resolved'},
+      );
+      await lore('渡口', '渡口雨夜');
+      final chapter = await repo.createChapter(branchId: branch);
+      final draft = await service.prepare(
+        branchId: branch,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '写渡口',
+      );
+      expect(ids(draft), contains(hook.id));
+      expect(ids(draft), isNot(contains(resolved.id)));
+      final selected =
+          (draft.input['loreSelection'] as Map)['selected'] as List;
+      expect(
+        selected.singleWhere((e) => e['id'] == hook.id)['required'],
+        isFalse,
+      );
+      await repo.saveLoreEntry(
+        branchId: branch,
+        id: hook.id,
+        expectedRevisionId: hook.revisionId,
+        kind: hook.kind,
+        name: hook.name,
+        content: '绳结' * 5000,
+        data: hook.data,
+      );
+      final limited = await service.prepare(
+        branchId: branch,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '写渡口',
+      );
+      expect(limited.canRun, isTrue);
+      final omitted =
+          (limited.input['loreSelection'] as Map)['omitted'] as List;
+      expect(
+        omitted.singleWhere((e) => e['id'] == hook.id)['reason'],
+        'budget',
+      );
+    },
+  );
+
+  test(
     'drops optional lore to fit the compiled preset output budget',
     () async {
       final pinned = await lore('禁忌', '亡者不能复生', required: true);

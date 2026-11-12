@@ -40,6 +40,9 @@ final class LoreContextSelection {
           matches(recentTerms, recentText) +
           (_mentions(recentText, entry.name) ? 20 : 0);
       final pinned = entry.data['contextRequired'] == true;
+      final openHook =
+          entry.kind == LoreKind.foreshadow &&
+          !{'resolved', 'abandoned'}.contains(entry.data['status']);
       ranked.add(
         LoreContextCandidate(
           entry,
@@ -50,6 +53,8 @@ final class LoreContextSelection {
               ? 'pinned'
               : named
               ? 'named'
+              : openHook
+              ? 'unresolved'
               : briefScore > 0
               ? 'brief'
               : recentScore > 0
@@ -60,7 +65,13 @@ final class LoreContextSelection {
     }
     final hasMatch = ranked.any((c) => c.score > 0);
     final initial = ranked
-        .where((c) => c.required || c.score > 0 || !hasMatch)
+        .where(
+          (c) =>
+              c.required ||
+              c.reason == 'unresolved' ||
+              c.score > 0 ||
+              !hasMatch,
+        )
         .toList();
     final initialIds = initial.map((c) => c.entry.id).toSet();
     final referencedIds = {for (final c in initial) ...c.references};
@@ -125,7 +136,7 @@ final class LoreContextSelection {
   }
 
   Map<String, dynamic> toJson() => {
-    'method': 'lexical-v1',
+    'method': 'lexical-hooks-v2',
     'query': query,
     'recentText': recentText,
     'selected': [for (final candidate in selected) candidate.toJson()],
