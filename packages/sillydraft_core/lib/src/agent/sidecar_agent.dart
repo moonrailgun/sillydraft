@@ -36,9 +36,9 @@ enum SidecarDuty {
     },
     {LoreCertainty.fact},
     '【整理线索与记忆】为本章写一条 event 条目：name 用章节标题，content 概括本章发生了什么'
-        '（谁、做了什么、结果如何），storyTime 记故事内时间。这是长篇的记忆，之后的写作靠它回忆前情。'
+        '（谁因为什么作出选择、做了什么、造成什么结果、留下什么代价），storyTime 记故事内时间。这是长篇的记忆，之后的写作靠它回忆前情。'
         '新埋下的伏笔建 foreshadow 条目（status: planted）；本章推进或回收了已有伏笔就更新它的 status'
-        '（developing / resolved）。正文中有分量的地点、物品、组织建条目或更新，世界规则与背景设定写 world 条目。',
+        '（developing / resolved），保持原条目 id；resolved 必须有兑现或明确解释的正文依据，提及不等于回收。记录不能丢失的数字、日期、人物知情范围与尚未满足的条件。正文中有分量的地点、物品、组织建条目或更新，世界规则与背景设定写 world 条目。',
   ),
   projection(
     '推演剧情',
@@ -161,6 +161,7 @@ Map<String, dynamic> sidecarIndexEntry(LoreEntry entry, String chapterId) => {
   'kind': entry.kind.name,
   'name': entry.name,
   'certainty': entry.certainty.name,
+  if (entry.kind == LoreKind.foreshadow) 'status': entry.data['status'],
   if (entry.sourceStale) 'sourceStale': true,
   if (sidecarOwns(entry.provenance, chapterId)) 'fromThisChapter': true,
   if (entry.data['user'] == true) 'user': true,
@@ -175,6 +176,8 @@ const sidecarInstructions =
     '先用 list_lore、read_lore_batch 查看相关条目：已有的就更新，不要为同一人物或事件重复建条目。'
     '每轮最多 12 次工具调用；读取多个条目用 read_lore_batch（每批最多 20 个 id），不要逐条并行调用。'
     '每轮合计最多写入 4 条资料，控制单次输出长度；处理完一批再继续，直到相关变更整理完毕，不省略剩余条目。'
+    '写入 fact 时，每条须附 evidence：本章正文中 1 到 4 段逐字引文，每段 2 到 240 字，证明本次新增或改变的内容；'
+    '已有事实保持原值，不能从计划或猜测补成事实。引文不足就不改该事实。'
     '更新时把读到的 revisionId 作为 expectedRevisionId；返回版本冲突时重新读取再写。'
     '索引里同时标有 fromThisChapter 和 sourceStale 的条目来自本章的旧版正文：按新正文重新保存，已不成立的删除。'
     '写完后用一两句话说明改了什么，不要输出正文。';
@@ -247,6 +250,8 @@ final class SidecarAgent {
           ],
         ).raw,
         'duties': [for (final duty in duties) duty.name],
+        'evidenceVersion': 1,
+        'chapterText': chapter.content.text,
       },
     );
   }

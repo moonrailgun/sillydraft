@@ -10,6 +10,7 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 ### Improved
 
 - Background lore organization can read related entries in batches, reducing repeated model tool calls.
+- New facts saved by background lore organization require exact quotations from the chapter; foreshadowing updates distinguish mentions from completed payoffs.
 
 ## v1.2.4 · 2026-11-11
 

@@ -158,6 +158,60 @@ void main() {
     },
   );
 
+  test('new sidecars require frozen chapter evidence for facts', () async {
+    final b = await _book([
+      [
+        ToolCallReady('save', 'save_lore', {
+          'entries': [
+            {
+              'kind': 'event',
+              'name': '有据',
+              'content': '林岚渡口撑伞',
+              'certainty': 'fact',
+              'evidence': ['林岚撑着红伞走过渡口'],
+            },
+            {
+              'kind': 'event',
+              'name': '捏造',
+              'content': '林岚乘船',
+              'certainty': 'fact',
+              'evidence': ['林岚登上小船'],
+            },
+            {
+              'kind': 'event',
+              'name': '缺据',
+              'content': '林岚回家',
+              'certainty': 'fact',
+            },
+            {
+              'kind': 'foreshadow',
+              'name': '计划',
+              'content': '林岚可能回家',
+              'certainty': 'plan',
+            },
+          ],
+        }),
+        const GenerationFinished('tool_calls'),
+      ],
+    ]);
+    final started = await SidecarAgent(repository: b.repo, runner: b.runner)
+        .start(
+          branchId: b.chapter.branchId,
+          chapterId: b.chapter.id,
+          connection: _model,
+          duties: SidecarDuty.values.toSet(),
+        );
+    final task = await b.runner.wait(started.id);
+    final entries = await b.repo.listLore(b.chapter.branchId);
+    expect(entries.map((e) => e.name), unorderedEquals(['有据', '计划']));
+    final fact = entries.singleWhere((e) => e.name == '有据');
+    expect(fact.provenance['evidence'], ['林岚撑着红伞走过渡口']);
+    expect(fact.provenance['revisionId'], b.chapter.revisionId);
+    final results = _toolResults(task).single['results'] as List;
+    expect(results[1]['error'], contains('引文'));
+    expect(results[2]['error'], contains('引文'));
+  });
+
   test('sidecar switches round-trip; the main one stays unset until set', () {
     final fresh = SidecarSettings.fromJson(null);
     expect(fresh.enabled, isNull);

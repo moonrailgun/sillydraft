@@ -44,6 +44,14 @@ Map<String, dynamic> _saveLoreTool(
           },
           'name': {'type': 'string'},
           'content': {'type': 'string'},
+          if (!withSource)
+            'evidence': {
+              'type': 'array',
+              'minItems': 1,
+              'maxItems': 4,
+              'items': {'type': 'string', 'minLength': 2, 'maxLength': 240},
+              'description': '本章正文逐字引文；新任务写 fact 必填，证明本次变化',
+            },
           'certainty': {
             'type': 'string',
             'enum': [for (final c in LoreCertainty.values) c.name],
@@ -125,6 +133,7 @@ extension _LoreTools on TaskRunner {
       final fields = _loreFields[kind] ?? const <String>[];
       final common = {
         if (chapters != null) 'sourceChapterId',
+        if (chapters == null) 'evidence',
         'id',
         'expectedRevisionId',
         'kind',
@@ -187,6 +196,26 @@ extension _LoreTools on TaskRunner {
       )) {
         throw FormatException('当前开启的职责不能写入 ${kind.name}（${certainty.name}）');
       }
+      final evidence = args['evidence'];
+      if (chapters == null &&
+          (evidence != null ||
+              (task.input['evidenceVersion'] == 1 &&
+                  certainty == LoreCertainty.fact))) {
+        final chapter = task.input['chapterText'];
+        if (evidence is! List ||
+            evidence.isEmpty ||
+            evidence.length > 4 ||
+            chapter is! String ||
+            evidence.any(
+              (quote) =>
+                  quote is! String ||
+                  quote.trim().runes.length < 2 ||
+                  quote.runes.length > 240 ||
+                  !chapter.contains(quote),
+            )) {
+          throw const FormatException('事实须有本章正文的有效逐字引文（1 到 4 段，每段 2 到 240 字）');
+        }
+      }
       final saved = await repository.saveLoreEntry(
         branchId: task.branchId,
         id: id as String?,
@@ -198,7 +227,7 @@ extension _LoreTools on TaskRunner {
         atChapterId: chapterId,
         data: {...?previous?.data, ...given},
         provenance: source == null
-            ? _sidecarProvenance(task)
+            ? {..._sidecarProvenance(task), 'evidence': ?evidence}
             : {
                 'type': 'editor',
                 'taskId': task.id,
