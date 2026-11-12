@@ -32,6 +32,17 @@ void main() {
           maxOutputTokens: 200,
         ),
       );
+      if (!overflow) {
+        await services.saveConnection(
+          ModelConnection(
+            id: 'reviewer',
+            name: '审读',
+            baseUrl: 'http://localhost:1/v1',
+            model: 'audit',
+          ),
+        );
+        await repo.setSetting('modelRoles', {'review': 'reviewer'});
+      }
       final branch = (await repo.createNovel(title: '预览')).activeBranchId;
       await repo.saveLoreEntry(
         branchId: branch,
@@ -79,6 +90,10 @@ void main() {
       await tester.ensureVisible(find.text('预览提示词'));
       await tester.tap(find.text('预览提示词'));
       await tester.pumpAndSettle();
+      expect(
+        find.textContaining('连续性审读模型：${overflow ? 'test' : 'audit'}'),
+        findsOneWidget,
+      );
       expect(find.textContaining('生成时会额外请求一次章前计划'), findsOneWidget);
       expect(find.textContaining('上述估算不含这些辅助请求'), findsOneWidget);
       final selection = find.text('资料选择 · 已带 4 · 未带 1');

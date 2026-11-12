@@ -115,6 +115,7 @@ extension on TaskRunner {
         .then((_) {});
     final atomic =
         (task.input['continuityReview'] as Map?)?['protocolVersion'] == 1;
+    ModelProvider? reviewer;
     final evidenceLimits =
         atomic ||
         (task.input['chapterPlanning'] as Map?)?['protocolVersion'] == 3;
@@ -133,7 +134,7 @@ extension on TaskRunner {
       await save();
       return _writingJson(
         task,
-        provider,
+        stage == 'revising' ? provider : reviewer ?? provider,
         cancel,
         source,
         [
@@ -269,6 +270,16 @@ extension on TaskRunner {
     }
 
     try {
+      if (task.input['reviewConnection'] case final Map raw when atomic) {
+        final config = ModelConnection.fromJson(Map<String, dynamic>.from(raw));
+        if (jsonEncode(config.raw) != jsonEncode(provider.config.raw)) {
+          if (!connectionServes(config, 'review')) {
+            throw const FormatException('连续性审读连接不支持文本审读');
+          }
+          reviewer = await providerFactory(config);
+          cancel.check();
+        }
+      }
       final numbered = _writingPassages(
         draft,
         'd',
@@ -337,6 +348,8 @@ extension on TaskRunner {
       });
       await save();
       return draft;
+    } finally {
+      reviewer?.close();
     }
   }
 }

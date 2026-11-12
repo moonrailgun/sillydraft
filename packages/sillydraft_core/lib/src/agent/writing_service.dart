@@ -379,6 +379,10 @@ final class WritingService {
         compiled.completionText == null &&
         rangeStart == null;
 
+    final reviewConnection = planWriting && autoAccept
+        ? await repository.connectionFor('review') ?? connection
+        : null;
+
     return PreparedWriting(
       branchId: branchId,
       kind: rewrite || regenerate ? TaskKind.rewrite : TaskKind.writing,
@@ -400,8 +404,10 @@ final class WritingService {
         if (regenerate) 'regenerate': true,
         if (autoAccept) 'autoAccept': true,
         if (autoAccept) 'qualityReview': true,
-        if (planWriting && autoAccept)
+        if (reviewConnection != null) ...{
           'continuityReview': {'protocolVersion': 1},
+          'reviewConnection': reviewConnection.raw,
+        },
         if (planWriting)
           'chapterPlanning': {
             'protocolVersion': 3,

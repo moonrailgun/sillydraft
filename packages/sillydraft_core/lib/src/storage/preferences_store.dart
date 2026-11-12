@@ -40,7 +40,7 @@ extension PreferenceOperations on StoryRepository {
 
   /// The connection [role] uses: the one `modelRoles` assigns it, with the
   /// model chosen for it, else the first of [modelConnections] that serves
-  /// the role; null when none does.
+  /// the role; null when none does. Review and NSFW require explicit assignment.
   Future<ModelConnection?> connectionFor(
     String role, {
     bool localCli = true,
@@ -50,8 +50,9 @@ extension PreferenceOperations on StoryRepository {
         .toList();
     if (all.isEmpty) return null;
     final roles = await getSetting('modelRoles');
-    // NSFW support must be assigned by the author, never inferred from order.
-    if (role == 'imageNsfw' && !all.any((c) => c.id == roles?[role])) {
+    // These roles require an explicit choice, never one inferred from order.
+    if ((role == 'imageNsfw' || role == 'review') &&
+        !all.any((c) => c.id == roles?[role])) {
       return null;
     }
     final connection =

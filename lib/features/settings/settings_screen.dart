@@ -283,6 +283,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 16),
                 for (final role in {
                   'writing': '正文写作',
+                  'review': '连续性审读',
                   'editor': '编辑 Agent',
                   'analysis': '资料整理',
                   'image': '普通生图引擎',
@@ -591,9 +592,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// Which connection a task role uses: the saved choice when that connection
-  /// still serves the role. Without one the role falls back to the first that
-  /// does (as `connectionFor`), which the hint names but does not select, so
-  /// choosing it is a change that saves.
+  /// still serves the role. Hints explain each role's unassigned behavior.
   Widget _roleSelect(
     WidgetRef ref, {
     required String label,
@@ -606,18 +605,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       chosen = chosen.withModel(roles['${role}Model'] as String);
     }
     final fallback = connections.first;
-    return ConnectionModelSelect(
+    final select = ConnectionModelSelect(
       key: Key('role-$role'),
       label: label,
       connections: connections,
       value: chosen,
-      hint: role == 'imageNsfw'
-          ? '未指定（NSFW 画面将停止生成）'
-          : '未指定（使用 ${fallback.name} · ${fallback.model}）',
+      hint: switch (role) {
+        'review' => '未指定（沿用正文写作模型）',
+        'imageNsfw' => '未指定（NSFW 画面将停止生成）',
+        _ => '未指定（使用 ${fallback.name} · ${fallback.model}）',
+      },
       onChange: (value) => ref.read(repositoryProvider).setSetting(
         'modelRoles',
         {...roles, role: value.id, '${role}Model': value.model},
       ),
+    );
+    if (role != 'review') return select;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        select,
+        const SizedBox(height: 8),
+        const Text('用于原生章节的事实、因果和伏笔审读及复核；返修仍使用正文写作模型。'),
+        if (roles.containsKey(role)) ...[
+          const SizedBox(height: 8),
+          FButton(
+            key: const Key('reset-role-review'),
+            variant: FButtonVariant.outline,
+            size: FButtonSizeVariant.sm,
+            onPress: () => ref
+                .read(repositoryProvider)
+                .setSetting(
+                  'modelRoles',
+                  {...roles}
+                    ..remove(role)
+                    ..remove('${role}Model'),
+                ),
+            child: const Text('沿用正文写作模型'),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -211,6 +211,9 @@ bool connectionServes(ModelConnection connection, String role) =>
         connection.supportsText &&
             (connection.protocol == ModelProtocol.openAICompatible ||
                 connection.protocol.isLocalCli),
+      'review' =>
+        connection.supportsText &&
+            connection.protocol == ModelProtocol.openAICompatible,
       'image' || 'imageNsfw' => connection.supportsImages,
       _ => connection.supportsText,
     };
