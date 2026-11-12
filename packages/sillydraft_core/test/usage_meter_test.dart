@@ -83,11 +83,12 @@ void main() {
       expect(done.status, TaskStatus.completed, reason: done.error);
     }
     final book = (await repo.usageByBook()).single;
-    expect((book.label, book.requests, book.cost), ('雾港', 4, 1.0));
+    expect((book.label, book.requests, book.cost), ('雾港', 5, 1.25));
     expect((await repo.usageByTool()).map((t) => t.label).toSet(), {
       '正文生成',
       '正文改写',
       '章前计划',
+      '全书布局',
     });
   });
 

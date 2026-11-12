@@ -109,12 +109,55 @@ extension ProposalOperations on StoryRepository {
       sourceProposalId: proposal.id,
     );
     await _commitProposalVariables(proposal, chapter);
+    await _publishWritingFoundation(proposal, chapter);
     await _execute(
       "UPDATE proposals SET status = 'accepted', accepted_revision_id = ? WHERE id = ?",
       [chapter.revisionId, proposal.id],
     );
     return getRevision(chapter.revisionId);
   });
+
+  Future<void> _publishWritingFoundation(
+    ManuscriptProposal proposal,
+    Chapter chapter,
+  ) async {
+    if (proposal.taskId == null || chapter.content.text.trim().isEmpty) return;
+    final task = await getTask(proposal.taskId!);
+    final foundation = task.result['foundation'];
+    if (task.kind != TaskKind.writing ||
+        task.branchId != proposal.branchId ||
+        task.chapterId != chapter.id ||
+        (task.input['bookFoundation'] as Map?)?['protocolVersion'] != 1 ||
+        foundation is! Map ||
+        foundation['status'] != 'applied' ||
+        foundation['plan'] is! Map) {
+      return;
+    }
+    final original = await getRevision(proposal.baseRevisionId);
+    final story = await getStory(proposal.branchId);
+    if (original.content.text.trim().isNotEmpty ||
+        story.chapters.first.id != chapter.id ||
+        story.chapters.skip(1).any((c) => c.content.text.trim().isNotEmpty)) {
+      return;
+    }
+    // Publish in the acceptance transaction, never from an unaccepted draft.
+    await saveLoreEntry(
+      branchId: proposal.branchId,
+      kind: LoreKind.world,
+      name: '全书因果与伏笔布局',
+      content:
+          '以下仅为计划，不代表已发生事实；以作者要求与正式正文为准。\n${jsonEncode(foundation['plan'])}',
+      certainty: LoreCertainty.plan,
+      atChapterId: chapter.id,
+      data: {'writingFoundation': 1},
+      provenance: {
+        'type': 'writingFoundation',
+        'taskId': task.id,
+        'chapterId': chapter.id,
+        'revisionId': chapter.revisionId,
+      },
+    );
+  }
 
   Future<void> rejectProposal(String id) => _write(() async {
     final proposal = await getProposal(id);

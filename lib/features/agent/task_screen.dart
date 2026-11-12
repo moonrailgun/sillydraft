@@ -489,6 +489,14 @@ class TaskScreen extends ConsumerWidget {
                     '${(task.result['comicCandidates'] as List).length} 章候选待处理',
                   ),
               ],
+              if (task.result['foundation'] case final Map foundation) ...[
+                const SizedBox(height: 12),
+                Text(switch (foundation['status']) {
+                  'planning' => task.isActive ? '正在安排全书因果与伏笔布局…' : '全书布局未完成。',
+                  'applied' => '全书布局已用于本次写作；成功采纳首章后才保存为计划资料，不代表已发生事实。',
+                  _ => foundation['message'] as String? ?? '全书布局已结束。',
+                }),
+              ],
               if (task.result['planning'] case final Map planning) ...[
                 const SizedBox(height: 12),
                 Text(switch (planning['status']) {

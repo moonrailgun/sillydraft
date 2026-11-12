@@ -115,6 +115,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'foundation status explains its advisory and publication boundary',
+    (tester) async {
+      final repo = StoryRepository.memory();
+      final novel = await repo.createNovel(title: '布局');
+      final task = await repo.createTask(
+        branchId: novel.activeBranchId,
+        kind: TaskKind.writing,
+        input: {},
+      );
+      await repo.updateTask(
+        task.id,
+        status: TaskStatus.running,
+        result: {
+          'foundation': {'status': 'planning'},
+        },
+      );
+      await showTask(tester, repo, task);
+      expect(find.text('正在安排全书因果与伏笔布局…'), findsOneWidget);
+      await repo.updateTask(
+        task.id,
+        status: TaskStatus.completed,
+        result: {
+          'foundation': {'status': 'applied'},
+        },
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('全书布局已用于本次写作；成功采纳首章后才保存为计划资料，不代表已发生事实。'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('planning status distinguishes advice from manuscript facts', (
     tester,
   ) async {

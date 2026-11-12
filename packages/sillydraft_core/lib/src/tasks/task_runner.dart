@@ -44,6 +44,7 @@ part 'comic_runner.dart';
 part 'comic_agent.dart';
 part 'writing_quality.dart';
 part 'writing_planning.dart';
+part 'writing_foundation.dart';
 part 'writing_continuity.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
@@ -429,6 +430,10 @@ final class TaskRunner implements TaskControl {
       if (task.kind == TaskKind.sidecar) {
         await _executeSidecar(task, provider, cancel, text, reasoning);
         return;
+      }
+      if (input['bookFoundation'] is Map) {
+        request = await _prepareBookFoundation(task, provider, cancel, request);
+        cancel.check();
       }
       if (input['chapterPlanning'] is Map) {
         request = await _planWriting(task, provider, cancel, request);

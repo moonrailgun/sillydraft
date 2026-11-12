@@ -95,6 +95,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('生成时会额外请求一次章前计划'), findsOneWidget);
+      expect(find.textContaining('新书首章还会请求一次全书布局'), findsOneWidget);
       expect(find.textContaining('上述估算不含这些辅助请求'), findsOneWidget);
       final selection = find.text('资料选择 · 已带 4 · 未带 1');
       final pageScroll = find

@@ -89,6 +89,7 @@ extension UsageOperations on StoryRepository {
         "WHEN 'compaction' THEN '上下文摘要' "
         "WHEN 'quality' THEN '审读与返修' "
         "WHEN 'planning' THEN '章前计划' "
+        "WHEN 'foundation' THEN '全书布局' "
         "WHEN 'title' THEN '标题生成' "
         "WHEN 'persona' THEN '人设生成' "
         "WHEN 'connectionTest' THEN '连接测试' "

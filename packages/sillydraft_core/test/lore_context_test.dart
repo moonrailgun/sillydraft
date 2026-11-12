@@ -150,6 +150,53 @@ void main() {
   );
 
   test(
+    'book foundation stays recallable but optional within context budget',
+    () async {
+      final foundation = await repo.saveLoreEntry(
+        branchId: branch,
+        kind: LoreKind.world,
+        name: '全书布局',
+        content: '首场埋下旧谱差异，核对后再决定如何承认沉默。',
+        certainty: LoreCertainty.plan,
+        data: {'writingFoundation': 1},
+      );
+      await lore('渡口', '渡口雨夜');
+      final chapter = await repo.createChapter(branchId: branch);
+      Future<PreparedWriting> preview() => service.prepare(
+        branchId: branch,
+        chapterId: chapter.id,
+        connection: connection,
+        brief: '写渡口',
+      );
+      final draft = await preview();
+      expect(ids(draft), contains(foundation.id));
+      final selected =
+          (draft.input['loreSelection'] as Map)['selected'] as List;
+      final entry = selected.singleWhere((e) => e['id'] == foundation.id);
+      expect(entry['reason'], 'foundation');
+      expect(entry['required'], isFalse);
+      await repo.saveLoreEntry(
+        branchId: branch,
+        id: foundation.id,
+        expectedRevisionId: foundation.revisionId,
+        kind: foundation.kind,
+        name: foundation.name,
+        content: '未发生的计划' * 5000,
+        certainty: foundation.certainty,
+        data: foundation.data,
+      );
+      final limited = await preview();
+      expect(limited.canRun, isTrue);
+      final omitted =
+          (limited.input['loreSelection'] as Map)['omitted'] as List;
+      expect(
+        omitted.singleWhere((e) => e['id'] == foundation.id)['reason'],
+        'budget',
+      );
+    },
+  );
+
+  test(
     'drops optional lore to fit the compiled preset output budget',
     () async {
       final pinned = await lore('禁忌', '亡者不能复生', required: true);
