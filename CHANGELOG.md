@@ -6,6 +6,11 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 ## Unreleased
 
+
+### Improved
+
+- Background lore organization can read related entries in batches, reducing repeated model tool calls.
+
 ## v1.2.4 · 2026-11-11
 
 ### Fixed
