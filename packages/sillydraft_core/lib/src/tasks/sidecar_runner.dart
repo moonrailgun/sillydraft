@@ -67,6 +67,19 @@ List<Map<String, dynamic>> _sidecarTools(Set<SidecarDuty> duties) => [
     },
     ['id'],
   ),
+  _sidecarFunction(
+    'read_lore_batch',
+    '批量读取截至本章的资料全文、revisionId 与 data；最多 20 个 id，逐条返回错误。',
+    {
+      'ids': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'minItems': 1,
+        'maxItems': 20,
+      },
+    },
+    ['ids'],
+  ),
   _saveLoreTool({for (final duty in duties) ...duty.kinds}),
   _sidecarFunction(
     'delete_lore',
@@ -157,16 +170,25 @@ extension _SidecarExecution on TaskRunner {
           throw const FormatException('参数无效');
         }
         final e = await read(args['id']);
-        return {
-          'id': e.id,
-          'revisionId': e.revisionId,
-          'kind': e.kind.name,
-          'name': e.name,
-          'content': e.content,
-          'certainty': e.certainty.name,
-          'sourceStale': e.sourceStale,
-          'data': e.data,
-        };
+        return _sidecarEntry(e);
+      case 'read_lore_batch':
+        final ids = args['ids'];
+        if (args.length != 1 ||
+            ids is! List ||
+            ids.isEmpty ||
+            ids.length > 20 ||
+            ids.any((id) => id is! String || id.isEmpty)) {
+          throw const FormatException('ids 须为 1 到 20 个条目 id');
+        }
+        final entries = <Map<String, dynamic>>[];
+        for (final id in ids.toSet()) {
+          try {
+            entries.add(_sidecarEntry(await read(id)));
+          } on StoryNotFound {
+            entries.add({'id': id, 'error': '条目不存在或不在本章可见范围内'});
+          }
+        }
+        return {'entries': entries};
       case 'save_lore':
         final entries = args['entries'];
         if (args.length != 1 ||
@@ -213,3 +235,14 @@ extension _SidecarExecution on TaskRunner {
     throw const FormatException('未授权的工具');
   }
 }
+
+Map<String, dynamic> _sidecarEntry(LoreEntry e) => {
+  'id': e.id,
+  'revisionId': e.revisionId,
+  'kind': e.kind.name,
+  'name': e.name,
+  'content': e.content,
+  'certainty': e.certainty.name,
+  'sourceStale': e.sourceStale,
+  'data': e.data,
+};

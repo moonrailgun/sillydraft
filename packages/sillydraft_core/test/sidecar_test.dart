@@ -129,6 +129,35 @@ List<Map<String, dynamic>> _toolResults(GenerationTask task) => [
 ];
 
 void main() {
+  test(
+    'batch reads keep revisions and report missing entries separately',
+    () async {
+      final script = <List<ProviderEvent>>[];
+      final b = await _book(script);
+      final entry = await b.repo.saveLoreEntry(
+        branchId: b.chapter.branchId,
+        kind: LoreKind.foreshadow,
+        name: '红伞',
+        content: '尚未解释',
+        data: {'status': 'planted'},
+      );
+      script.add([
+        ToolCallReady('batch', 'read_lore_batch', {
+          'ids': [entry.id, 'missing', entry.id],
+        }),
+        const GenerationFinished('tool_calls'),
+      ]);
+      final task = await _run(b, {SidecarDuty.memory});
+      expect(task.status, TaskStatus.completed);
+      final results = _toolResults(task).single['entries'] as List;
+      expect(results, hasLength(2));
+      expect(results.first['revisionId'], entry.revisionId);
+      expect(results.first['data']['status'], 'planted');
+      expect(results.last['id'], 'missing');
+      expect(results.last['error'], isNotNull);
+    },
+  );
+
   test('sidecar switches round-trip; the main one stays unset until set', () {
     final fresh = SidecarSettings.fromJson(null);
     expect(fresh.enabled, isNull);
@@ -401,6 +430,7 @@ void main() {
       expect(tools.keys, [
         'list_lore',
         'read_lore',
+        'read_lore_batch',
         'save_lore',
         'delete_lore',
       ]);
