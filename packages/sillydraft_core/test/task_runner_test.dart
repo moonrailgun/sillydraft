@@ -100,6 +100,10 @@ void main() {
     connection: connection,
     brief: '写下一段',
     append: true,
+    preset: PresetImporter().decode({
+      ...defaultWritingPreset().raw,
+      'sillydraft_chapter_planning': false,
+    }),
   );
 
   test('writing at an earlier chapter uses only lore and variables available there', () async {

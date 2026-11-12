@@ -6,6 +6,11 @@ import 'package:test/test.dart';
 
 import 'task_runner_test.dart' show ScriptProvider;
 
+ImportedPreset qualityPreset() => PresetImporter().decode({
+  ...defaultWritingPreset().raw,
+  'sillydraft_chapter_planning': false,
+});
+
 void main() {
   for (final textCompletion in [false, true]) {
     test(
@@ -89,7 +94,7 @@ void main() {
                   ? PresetImporter().decode({
                       'temp': 0.8,
                     }, kindHint: PresetKind.textCompletion)
-                  : null,
+                  : qualityPreset(),
               brief: '继续写',
               autoAccept: true,
             );
@@ -206,6 +211,7 @@ void main() {
               baseUrl: 'http://localhost:1234/v1',
               model: 'test',
             ),
+            preset: qualityPreset(),
             brief: '继续写',
             autoAccept: true,
           );
@@ -325,6 +331,7 @@ void main() {
               branchId: novel.activeBranchId,
               chapterId: chapter.id,
               connection: connection,
+              preset: qualityPreset(),
               brief: '保持克制，不改变人物关系',
               autoAccept: true,
               append: scenario == 'append',

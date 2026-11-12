@@ -268,6 +268,10 @@ void main() {
           brief: '写',
           append: true,
           autoAccept: true,
+          preset: PresetImporter().decode({
+            ...defaultWritingPreset().raw,
+            'sillydraft_chapter_planning': false,
+          }),
         );
     expect(draft.input['autoAccept'], isTrue);
     final task = await WritingService(

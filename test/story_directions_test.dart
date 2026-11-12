@@ -37,6 +37,11 @@ class _Model implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
+    if (request.usagePurpose == 'planning') {
+      yield const TextDelta('{}');
+      yield const GenerationFinished('stop');
+      return;
+    }
     requests.add(request);
     if (jsonEncode(request.messages).contains('后续走向')) {
       yield TextDelta(

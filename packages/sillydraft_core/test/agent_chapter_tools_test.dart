@@ -19,6 +19,8 @@ Future<GenerationTask> runTools(
     providerFactory: (c) async => ScriptProvider(c, (request, _) async* {
       if (request.executionId?.startsWith('writing-quality-') == true) {
         yield const TextDelta('{"issues":[]}');
+      } else if (request.usagePurpose == 'planning') {
+        yield const TextDelta('{}');
       } else if (request.tools.isEmpty) {
         writes++;
         writingRequests?.add(request);

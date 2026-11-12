@@ -43,6 +43,8 @@ part 'lore_tools.dart';
 part 'comic_runner.dart';
 part 'comic_agent.dart';
 part 'writing_quality.dart';
+part 'writing_planning.dart';
+part 'writing_continuity.dart';
 
 typedef ProviderFactory = Future<ModelProvider> Function(
   ModelConnection connection,
@@ -396,7 +398,7 @@ final class TaskRunner implements TaskControl {
       final connection = ModelConnection.fromJson(
         jsonObject(input['connection'], 'connection'),
       );
-      final request = ProviderRequest.fromJson({
+      var request = ProviderRequest.fromJson({
         ...jsonObject(input['request'], 'request'),
         'usagePurpose': task.kind.name,
         'usageBranchId': task.branchId,
@@ -427,6 +429,10 @@ final class TaskRunner implements TaskControl {
       if (task.kind == TaskKind.sidecar) {
         await _executeSidecar(task, provider, cancel, text, reasoning);
         return;
+      }
+      if (input['chapterPlanning'] is Map) {
+        request = await _planWriting(task, provider, cancel, request);
+        cancel.check();
       }
       GenerationFinished? finish;
       // Completion and every failure path save the full text themselves.
@@ -491,7 +497,13 @@ final class TaskRunner implements TaskControl {
             : processed.text;
         if (input['qualityReview'] == true) {
           await progress.flush();
-          outputText = await _reviewWriting(task, provider, cancel, outputText);
+          outputText = await _reviewWriting(
+            task,
+            provider,
+            cancel,
+            outputText,
+            request,
+          );
           cancel.check();
         }
         final range = input['replacementRange'] as Map<String, dynamic>?;

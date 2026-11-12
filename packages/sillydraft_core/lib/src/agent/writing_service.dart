@@ -372,6 +372,13 @@ final class WritingService {
       return (extension['regex_scripts'] as List).cast<Map<String, dynamic>>();
     }
 
+    final planWriting =
+        selectedPreset.raw['sillydraft_chapter_planning'] == true &&
+        connection.protocol != ModelProtocol.sillyDraftRunner &&
+        mvuBase == null &&
+        compiled.completionText == null &&
+        rangeStart == null;
+
     return PreparedWriting(
       branchId: branchId,
       kind: rewrite || regenerate ? TaskKind.rewrite : TaskKind.writing,
@@ -393,6 +400,17 @@ final class WritingService {
         if (regenerate) 'regenerate': true,
         if (autoAccept) 'autoAccept': true,
         if (autoAccept) 'qualityReview': true,
+        if (planWriting && autoAccept)
+          'continuityReview': {'protocolVersion': 1},
+        if (planWriting)
+          'chapterPlanning': {
+            'protocolVersion': 3,
+            'hookIds': [
+              for (final candidate in selection.selected)
+                if (candidate.entry.kind == LoreKind.foreshadow)
+                  candidate.entry.id,
+            ],
+          },
         if (rangeStart != null)
           'replacementRange': {'start': rangeStart, 'end': rangeEnd},
         'selectedOrderId': ?selectedOrderId,
@@ -612,6 +630,7 @@ String? _chapterName(String reply) {
 
 ImportedPreset defaultWritingPreset() => PresetImporter().decode({
   'name': 'SillyDraft 小说创作',
+  'sillydraft_chapter_planning': true,
   'prompts': [
     {
       'identifier': 'main',

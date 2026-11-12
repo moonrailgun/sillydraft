@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,13 +26,28 @@ class _Model implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
-    if (request.executionId?.startsWith('writing-quality-') == true) {
+    if (request.usagePurpose == 'planning') {
+      yield const TextDelta('{}');
+    } else if (request.executionId?.startsWith('writing-quality-') == true) {
       yield TextDelta(
-        request.executionId!.endsWith('-reviewing')
-            ? '{"issues":[{"quote":"她推开门。","reason":"缺少要求中的犹豫动作"}]}'
-            : request.executionId!.endsWith('-revising')
-            ? '{"edits":[{"before":"她推开门。","after":"她迟疑片刻，才推开门。"}]}'
-            : '{"issues":[]}',
+        jsonEncode({
+          if (request.executionId!.endsWith('-revising'))
+            'text': '她迟疑片刻，才推开门。'
+          else ...{
+            'claims': [
+              {
+                'kind': 'knowledge',
+                'claim': '她推门前是否迟疑',
+                'passageIds': ['d1'],
+                'sourceIds': [],
+                'verdict': request.executionId!.endsWith('-reviewing')
+                    ? 'contradicted'
+                    : 'supported',
+                'reason': '核对推门动作中的迟疑',
+              },
+            ],
+          },
+        }),
       );
     } else if ('${request.messages.first['content']}'.startsWith(
       sidecarInstructions,
@@ -49,7 +65,7 @@ class _Model implements ModelProvider {
     } else {
       log.add('writing');
       await gates.writing;
-      yield const TextDelta('她推开门。');
+      yield const TextDelta('她毫不犹豫就推开门。');
     }
     yield const GenerationFinished('stop');
   }
