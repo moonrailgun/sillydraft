@@ -11,6 +11,7 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 
 - Background lore organization can read related entries in batches, reducing repeated model tool calls.
 - New facts saved by background lore organization require exact quotations from the chapter; foreshadowing updates distinguish mentions from completed payoffs.
+- Unresolved foreshadowing remains eligible for writing context even when the next chapter uses unrelated keywords, subject to the context budget.
 
 ## v1.2.4 · 2026-11-11
 
