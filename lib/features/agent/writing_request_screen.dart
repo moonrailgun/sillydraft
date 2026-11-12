@@ -352,6 +352,11 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   color: theme.colors.mutedForeground,
                 ),
               ),
+              if (draft.input['reviewConnection'] case final Map reviewer)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text('连续性审读模型：${reviewer['model']}；返修使用正文写作模型。'),
+                ),
               if (draft.input['chapterPlanning'] is Map)
                 const Padding(
                   padding: EdgeInsets.only(top: 12),

@@ -44,6 +44,14 @@ void main() {
     model: 'writer',
     maxOutputTokens: 16000,
   );
+  final reviewer = ModelConnection(
+    id: 'reviewer',
+    name: 'reviewer',
+    baseUrl: 'http://localhost:1',
+    model: 'old',
+    models: ['old', 'audit'],
+    maxOutputTokens: 16000,
+  );
   var scenario = '';
   Completer<void>? gate;
   Completer<void>? entered;
@@ -65,9 +73,23 @@ void main() {
       content: ManuscriptContent.plainText(fact),
     );
     chapter = await repo.createChapter(branchId: branch);
+    await repo.setSetting('connections', {
+      'items': [reviewer.raw, writer.raw],
+    });
+    await repo.setSetting('modelRoles', {
+      'review': reviewer.id,
+      'reviewModel': 'audit',
+    });
     runner = TaskRunner(
       repository: repo,
       providerFactory: (c) async {
+        if (c.id == reviewer.id) {
+          if (scenario == 'factory failure') throw StateError('unavailable');
+          if (scenario == 'cancel factory') {
+            entered!.complete();
+            await gate!.future;
+          }
+        }
         return TrackedProvider(
           ScriptProvider(c, (request, cancel) async* {
             requests.add((model: c.model, request: request));
@@ -190,19 +212,20 @@ void main() {
     chapterId: chapter.id,
   )).content.text.trim();
 
-  test('atomic claims guide bounded repair and verification', () async {
+  test('frozen reviewer audits while the writer plans and repairs', () async {
     final prepared = await prepare();
+    await repo.setSetting('modelRoles', {'review': writer.id});
     final done = await runner.wait((await service.startPrepared(prepared)).id);
     expect(done.status, TaskStatus.completed, reason: done.error);
     expect(await saved(), revised);
     expect(requests.map((r) => r.model), [
       'writer',
       'writer',
+      'audit',
       'writer',
-      'writer',
-      'writer',
+      'audit',
     ]);
-    expect(closed, unorderedEquals(['writer']));
+    expect(closed, unorderedEquals(['writer', 'audit']));
     final quality = done.result['quality'] as Map;
     expect(quality['status'], 'revised');
     expect(quality['reviewingClaims'], hasLength(2));
@@ -220,7 +243,7 @@ void main() {
       final done = await run();
       expect((done.result['quality'] as Map)['status'], 'passed');
       expect(await saved(), original);
-      expect(requests.map((r) => r.model), ['writer', 'writer', 'writer']);
+      expect(requests.map((r) => r.model), ['writer', 'writer', 'audit']);
       expect((done.result['quality'] as Map)['reviewingClaims'], hasLength(2));
     });
   }
@@ -245,6 +268,7 @@ void main() {
     'empty reason',
     'empty claims',
     'too many claims',
+    'factory failure',
     'request failure',
     'remaining',
   ]) {
@@ -258,9 +282,43 @@ void main() {
       );
       expect(await saved(), original);
       expect(closed, contains('writer'));
+      if (failure != 'factory failure') expect(closed, contains('audit'));
     });
   }
-  for (final value in ['cancel review']) {
+  for (final value in ['unassigned', 'deleted', 'cli', 'remote', 'image']) {
+    test(
+      '$value reviewer uses the selected writer, not the first connection',
+      () async {
+        final incompatible = ModelConnection(
+          id: 'incompatible',
+          name: 'incompatible',
+          baseUrl: 'http://localhost:1',
+          model: 'incompatible',
+          protocol: value == 'cli'
+              ? ModelProtocol.codexCli
+              : value == 'remote'
+              ? ModelProtocol.sillyDraftRunner
+              : ModelProtocol.openAICompatible,
+          kind: value == 'image' ? ModelKind.image : ModelKind.text,
+        );
+        await repo.setSetting('connections', {
+          'items': [reviewer.raw, writer.raw, incompatible.raw],
+        });
+        await repo.setSetting(
+          'modelRoles',
+          value == 'unassigned'
+              ? {}
+              : {'review': value == 'deleted' ? 'missing' : incompatible.id},
+        );
+        scenario = 'supported';
+        final done = await run();
+        expect((done.result['quality'] as Map)['status'], 'passed');
+        expect(requests.map((r) => r.model), ['writer', 'writer', 'writer']);
+        expect(closed, ['writer']);
+      },
+    );
+  }
+  for (final value in ['cancel factory', 'cancel review']) {
     test('$value propagates cancellation and closes providers', () async {
       scenario = value;
       gate = Completer<void>();
@@ -277,7 +335,7 @@ void main() {
         )).revisionId,
         chapter.revisionId,
       );
-      expect(closed, unorderedEquals(['writer']));
+      expect(closed, unorderedEquals(['writer', 'audit']));
     });
   }
 }

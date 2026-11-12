@@ -14,6 +14,10 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 - Unresolved foreshadowing remains eligible for writing context even when the next chapter uses unrelated keywords, subject to the context budget.
 - Native novel writing plans chapter facts, causes and foreshadowing before generation, then checks continuity claims before acceptance with one bounded repair and verification; failed checks preserve the original draft.
 
+### Added
+
+- Choose a separate continuity review model in settings; reviews use the frozen selection while repairs use the writing model, with the selection shown in request previews.
+
 ## v1.2.4 · 2026-11-11
 
 ### Fixed

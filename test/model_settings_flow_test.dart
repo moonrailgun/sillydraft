@@ -284,6 +284,32 @@ void main() {
     );
   });
 
+  testWidgets('continuity reviewer can be selected and reset to the writer', (
+    tester,
+  ) async {
+    final services = await openSettings(tester);
+    await tester.enterText(
+      find.widgetWithText(FTextFormField, '模型名称'),
+      'first\nsecond',
+    );
+    await tester.tap(find.text('保存连接'));
+    await tester.pumpAndSettle();
+    expect(await services.connectionFor('review'), isNull);
+    final review = find.byKey(const Key('role-review'));
+    await tester.ensureVisible(review);
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的模型 · second').last);
+    await tester.pumpAndSettle();
+    expect((await services.connectionFor('review'))!.model, 'second');
+    final reset = find.byKey(const Key('reset-role-review'));
+    await tester.ensureVisible(reset);
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(await services.connectionFor('review'), isNull);
+    expect(find.text('未指定（沿用正文写作模型）'), findsOneWidget);
+  });
+
   testWidgets('save multiple models and choose a different model for writing', (
     tester,
   ) async {
@@ -303,6 +329,11 @@ void main() {
     await tester.tap(find.text('我的模型 · second').last);
     await tester.pumpAndSettle();
     expect((await services.connectionFor('writing'))!.model, 'second');
+    await Scrollable.ensureVisible(
+      tester.element(findAction('编辑连接')),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(findAction('编辑连接'));
     await tester.pumpAndSettle();
     final field = tester.widget<FTextFormField>(
