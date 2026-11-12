@@ -408,6 +408,13 @@ final class WritingService {
           'continuityReview': {'protocolVersion': 1},
           'reviewConnection': reviewConnection.raw,
         },
+        if (planWriting &&
+            position == 0 &&
+            !append &&
+            !rewrite &&
+            !regenerate &&
+            story.chapters.every((c) => c.content.text.trim().isEmpty))
+          'bookFoundation': {'protocolVersion': 1},
         if (planWriting)
           'chapterPlanning': {
             'protocolVersion': 3,

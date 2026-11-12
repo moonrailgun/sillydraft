@@ -43,6 +43,10 @@ final class LoreContextSelection {
       final openHook =
           entry.kind == LoreKind.foreshadow &&
           !{'resolved', 'abandoned'}.contains(entry.data['status']);
+      final foundation =
+          entry.kind == LoreKind.world &&
+          entry.certainty == LoreCertainty.plan &&
+          entry.data['writingFoundation'] == 1;
       ranked.add(
         LoreContextCandidate(
           entry,
@@ -53,6 +57,8 @@ final class LoreContextSelection {
               ? 'pinned'
               : named
               ? 'named'
+              : foundation
+              ? 'foundation'
               : openHook
               ? 'unresolved'
               : briefScore > 0
@@ -68,6 +74,7 @@ final class LoreContextSelection {
         .where(
           (c) =>
               c.required ||
+              c.reason == 'foundation' ||
               c.reason == 'unresolved' ||
               c.score > 0 ||
               !hasMatch,
@@ -136,7 +143,7 @@ final class LoreContextSelection {
   }
 
   Map<String, dynamic> toJson() => {
-    'method': 'lexical-hooks-v2',
+    'method': 'lexical-foundation-v3',
     'query': query,
     'recentText': recentText,
     'selected': [for (final candidate in selected) candidate.toJson()],

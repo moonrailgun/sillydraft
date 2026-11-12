@@ -109,7 +109,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         chapterId: widget.chapter.id,
         connection: connection,
         brief: brief.isEmpty ? '继续推进当前故事，保持人物动机与叙事视角一致。' : brief,
-        append: append,
+        append: append && widget.chapter.content.text.trim().isNotEmpty,
         rewrite: !append,
         preset: profile.preset,
         card: profile.card,
@@ -352,6 +352,13 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                   color: theme.colors.mutedForeground,
                 ),
               ),
+              if (draft.input['bookFoundation'] is Map)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    '新书首章还会请求一次全书布局，安排因果与伏笔的铺垫、获取和回收路径；成功采纳首章后才保存为计划资料。',
+                  ),
+                ),
               if (draft.input['reviewConnection'] case final Map reviewer)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -413,6 +420,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
                                     'pinned' => '必带 · 作者指定',
                                     'named' => '必带 · 本次要求点名',
                                     'unresolved' => '已带 · 尚未回收的伏笔',
+                                    'foundation' => '已带 · 全书布局计划',
                                     'reference' => '${entry['required'] == true ? '必带' : '已带'} · 关联资料引用',
                                     'brief' => '已带 · 匹配本次要求',
                                     'recent' => '已带 · 匹配最近正文',
