@@ -312,8 +312,62 @@ void main() {
     },
   );
 
+  for (final content in ['', ' \n\t\n']) {
+    test(
+      'appending to a blank first chapter prepares and saves foundation (${content.length} characters)',
+      () async {
+        if (content.isNotEmpty) {
+          await repo.saveChapter(
+            branchId: branch,
+            chapterId: first.id,
+            expectedRevisionId: first.revisionId,
+            content: ManuscriptContent.plainText(content),
+          );
+        }
+        await expectLater(
+          prepare(append: true, regenerate: true),
+          throwsArgumentError,
+        );
+        final draft = await prepare(append: true);
+        expect(draft.input['append'], isFalse);
+        expect(draft.input['bookFoundation'], {'protocolVersion': 1});
+        final done = await run(draft);
+        expect(done.status, TaskStatus.completed, reason: done.error);
+        expect((done.result['foundation'] as Map)['status'], 'applied');
+        expect(requests.first.usagePurpose, 'foundation');
+        expect(
+          (await repo.listLore(branch)).single.data['writingFoundation'],
+          1,
+        );
+      },
+    );
+  }
+
+  test(
+    'appending to existing prose preserves it and skips foundation',
+    () async {
+      await repo.saveChapter(
+        branchId: branch,
+        chapterId: first.id,
+        expectedRevisionId: first.revisionId,
+        content: ManuscriptContent.plainText('排练开始前，她先走进后台。'),
+      );
+      final draft = await prepare(append: true);
+      expect(draft.input['append'], isTrue);
+      expect(draft.input['bookFoundation'], isNull);
+      final done = await run(draft);
+      expect(done.status, TaskStatus.completed, reason: done.error);
+      expect(requests.any((r) => r.usagePurpose == 'foundation'), isFalse);
+      final saved = await repo.getChapter(
+        branchId: branch,
+        chapterId: first.id,
+      );
+      expect(saved.content.text, startsWith('排练开始前，她先走进后台。'));
+      expect(saved.content.text.trim(), endsWith('她翻开旧谱，在被划掉的第七灯号旁停住。'));
+    },
+  );
+
   test('existing prose, non-first chapters and explicit editing modes skip foundation', () async {
-    expect((await prepare(append: true)).input['bookFoundation'], isNull);
     expect((await prepare(rewrite: true)).input['bookFoundation'], isNull);
     expect((await prepare(regenerate: true)).input['bookFoundation'], isNull);
     expect(

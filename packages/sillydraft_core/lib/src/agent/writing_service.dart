@@ -185,6 +185,7 @@ final class WritingService {
       brief =
           '$brief\n只输出下列选中片段的替换正文，保持前后衔接，不重复其他段落：\n${chapter.content.text.substring(rangeStart, rangeEnd)}';
     }
+    append = append && chapter.content.text.trim().isNotEmpty;
     final variables = await repository.getBranchVariables(
       branchId,
       throughChapterId: chapterId,

@@ -26,7 +26,8 @@ class _Model implements ModelProvider {
     ProviderRequest request, {
     GenerationCancellation? cancellation,
   }) async* {
-    if (request.usagePurpose == 'planning') {
+    if (request.usagePurpose == 'foundation' ||
+        request.usagePurpose == 'planning') {
       yield const TextDelta('{}');
     } else if (request.executionId?.startsWith('writing-quality-') == true) {
       yield TextDelta(
@@ -196,6 +197,11 @@ void main() {
         );
         expect(chapter.id == d.first.id, content == 'empty');
         await _settle(tester);
+        final writing = (await _tasks(d, TaskKind.writing)).single;
+        expect(
+          writing.input['bookFoundation'],
+          content == 'empty' ? {'protocolVersion': 1} : isNull,
+        );
         if (content != 'empty') {
           final original = await repo.getChapter(
             branchId: d.branchId,

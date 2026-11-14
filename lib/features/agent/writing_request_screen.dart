@@ -109,7 +109,7 @@ class _RequestState extends ConsumerState<WritingRequestScreen> {
         chapterId: widget.chapter.id,
         connection: connection,
         brief: brief.isEmpty ? '继续推进当前故事，保持人物动机与叙事视角一致。' : brief,
-        append: append && widget.chapter.content.text.trim().isNotEmpty,
+        append: append,
         rewrite: !append,
         preset: profile.preset,
         card: profile.card,

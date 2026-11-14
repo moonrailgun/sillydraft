@@ -17,7 +17,7 @@ User-facing changes from v1.0.0 onward, including v1.0.0. Historical entries wer
 ### Added
 
 - Choose a separate continuity review model in settings; reviews use the frozen selection while repairs use the writing model, with the selection shown in request previews.
-- First chapters of new native novels prepare an overall causal and foreshadowing plan, saved as planning lore only after the chapter is accepted and recalled in later writing.
+- First chapters of new native novels prepare an overall causal and foreshadowing plan, whether started from the reader composer or writing preview; the plan is saved as planning lore only after the chapter is accepted and recalled in later writing.
 
 ## v1.2.4 · 2026-11-11
 
