@@ -119,7 +119,11 @@ void main() {
             } else if (request.usagePurpose != 'quality') {
               output = original;
             } else if (request.executionId!.endsWith('-revising')) {
-              output = {'text': revised};
+              output = {
+                'text': scenario == 'remaining'
+                    ? original.replaceFirst('又打开', '再次打开')
+                    : revised,
+              };
             } else {
               if (scenario == 'request failure') {
                 throw StateError('unavailable');
@@ -135,13 +139,16 @@ void main() {
                   .firstWhere((e) => e.value.contains(fact))
                   .key;
               final checking = request.executionId!.endsWith('-checking');
+              final repaired = checking && scenario != 'remaining';
               final claim = <String, dynamic>{
                 'kind': 'payoff',
-                'claim': '盒底的字迹证明了日期',
+                'claim': repaired ? '木盒没有字迹，交货日期仍未证实' : '盒底的字迹证明了日期',
                 'passageIds': passages.keys.toList(),
                 'sourceIds': [id],
                 'verdict': checking ? 'supported' : 'contradicted',
-                'reason': '前章明确无字迹，不能凭空用字迹作证。',
+                'reason': repaired
+                    ? '修订稿删除了凭空出现的字迹及其证明结论，与前章一致。'
+                    : '前章明确无字迹，不能凭空用字迹作证。',
               };
               switch (scenario) {
                 case 'bad kind':
@@ -237,6 +244,41 @@ void main() {
     );
     expect(quality['checkingClaims'], hasLength(2));
   });
+  test(
+    'checking rechecks original issues using only the atomic claims schema',
+    () async {
+      scenario = 'remaining';
+      final done = await run();
+      final checking = requests
+          .singleWhere(
+            (r) => r.request.executionId?.endsWith('-checking') == true,
+          )
+          .request;
+      final instruction = checking.messages.first['content'] as String;
+      expect(instruction, contains('原问题及关联段落是否全部解决'));
+      expect(instruction, contains('在 claims 中逐项记录原问题的复核结论'));
+      expect(instruction, contains('"claims"'));
+      expect(instruction, isNot(contains('"issues"')));
+      expect(instruction, isNot(contains('"checks"')));
+      final data =
+          jsonDecode(checking.messages.last['content'] as String) as Map;
+      expect(data['原稿'], original);
+      expect(data['原问题'], hasLength(1));
+      expect(data['原问题'][0]['claim'], '盒底的字迹证明了日期');
+      expect(data['原问题'][0]['quotes'].join(), original);
+      final unchangedContradiction = original.replaceFirst('又打开', '再次打开');
+      expect((data['本次正文'] as Map).values.join(), unchangedContradiction);
+      final quality = done.result['quality'] as Map;
+      expect(quality['status'], 'kept_original');
+      expect(quality['revision'], unchangedContradiction);
+      expect(
+        quality['remainingIssues'][0]['quotes'].join(),
+        unchangedContradiction,
+      );
+      expect(await saved(), original);
+      expect(requests, hasLength(5));
+    },
+  );
   for (final value in ['uncertain', 'supported']) {
     test('$value claims preserve the draft without repair', () async {
       scenario = value;
@@ -270,16 +312,12 @@ void main() {
     'too many claims',
     'factory failure',
     'request failure',
-    'remaining',
   ]) {
     test('$failure preserves the accepted original', () async {
       scenario = failure;
       final done = await run();
       expect(done.status, TaskStatus.completed, reason: done.error);
-      expect(
-        (done.result['quality'] as Map)['status'],
-        failure == 'remaining' ? 'kept_original' : 'unavailable',
-      );
+      expect((done.result['quality'] as Map)['status'], 'unavailable');
       expect(await saved(), original);
       expect(closed, contains('writer'));
       if (failure != 'factory failure') expect(closed, contains('audit'));
